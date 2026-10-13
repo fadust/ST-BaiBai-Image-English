@@ -30,19 +30,19 @@ function entry(name: string, fields: Partial<Record<string, string>>, source: Ch
 describe('formatEntryForPrompt / buildLibraryText', () => {
   it('renders non-empty fields with labels in fixed order', () => {
     const text = formatEntryForPrompt(entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'red eyes' }));
-    expect(text).toBe('- 小雪: 性别=1girl, 头发=long black hair, 眼睛=red eyes');
+    expect(text).toBe("- 小雪: Gender=1girl, Hair=long black hair, Eyes=red eyes");
   });
 
   it('falls back to raw tag when no structured fields', () => {
     const e = entry('旧角色', {});
     e.raw = '1girl, red eyes';
-    expect(formatEntryForPrompt(e)).toBe('- 旧角色: tag=1girl, red eyes');
+    expect(formatEntryForPrompt(e)).toBe("- 旧角色: tag=1girl, red eyes");
   });
 
   it('builds the library block with a header', () => {
     const text = buildLibraryText([entry('小雪', { sex: '1girl' })]);
-    expect(text).toContain('【角色固定外貌库');
-    expect(text).toContain('- 小雪: 性别=1girl');
+    expect(text).toContain('【 character fixed appearance library');
+    expect(text).toContain("- 小雪: Gender=1girl");
   });
 
   it('returns empty string for no entries', () => {
@@ -54,8 +54,8 @@ describe('formatEntryForPrompt / buildLibraryText', () => {
       [entry('小雪', { sex: '1girl' }), entry('张三', { sex: '1boy' })],
       new Set(['小雪']),
     );
-    expect(text).toContain('- 小雪 [locked]: 性别=1girl');
-    expect(text).toContain('- 张三: 性别=1boy');
+    expect(text).toContain("- 小雪 [locked]: Gender=1girl");
+    expect(text).toContain("- 张三: Gender=1boy");
     expect(text).toContain('[locked] are global and immutable');
     // 无锁定名时头部保持原样(不带锁定说明)
     expect(buildLibraryText([entry('小雪', { sex: '1girl' })])).not.toContain('immutable');
@@ -137,7 +137,7 @@ describe('positioned character state', () => {
     const entries = [entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'blue eyes' })];
     const resolved = resolveCharAnchors(entries);
     expect(resolved.entries).toBe(entries);
-    expect(resolved.text).toContain('- 小雪: 性别=1girl');
+    expect(resolved.text).toContain("- 小雪: Gender=1girl");
     expect(resolveCharAnchors([]).text).toBeNull();
   });
 

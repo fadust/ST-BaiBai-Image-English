@@ -69,7 +69,7 @@ export interface ManagedRegexScript extends Record<string, unknown> {
 export function imageTagSlotScript(): ManagedRegexScript {
   return {
     id: IMAGE_TAG_SLOT_REGEX_ID,
-    scriptName: '柏宝绘 · 生图标签占位',
+    scriptName: 'BaiBai Image · Picture label placeholder',
     findRegex: IMAGE_TAG_FIND_REGEX_LITERAL,
     replaceString: '<div data-bbi-slot=""></div>',
     trimStrings: [],
@@ -88,7 +88,7 @@ export function imageTagSlotScript(): ManagedRegexScript {
 export function imageTagHideScript(): ManagedRegexScript {
   return {
     id: IMAGE_TAG_HIDE_REGEX_ID,
-    scriptName: '柏宝绘 · 隐藏生图标签',
+    scriptName: 'BaiBai Image · Hidden Picture Tags',
     findRegex: IMAGE_TAG_FIND_REGEX_LITERAL,
     replaceString: '',
     trimStrings: [],
@@ -275,7 +275,7 @@ export function formatPromptText(
     content.tag,
     content.nl,
     ...content.characters.map(character =>
-      [`角色: ${character.name}`, character.tag, character.nl].filter(Boolean).join('\n'),
+      [`Role: ${character.name}`, character.tag, character.nl].filter(Boolean).join('\n'),
     ),
     content.negative ? `Negative: ${content.negative}` : '',
   ]

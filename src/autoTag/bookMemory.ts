@@ -64,12 +64,12 @@ function fmtProtagonist(protagonist: unknown): string {
   const p = (protagonist ?? {}) as Record<string, unknown>;
   const parts: string[] = [];
   const fields: Array<[string, string]> = [
-    ['性别', 'gender'],
-    ['年龄', 'age'],
-    ['身份', 'identity'],
-    ['外貌', 'appearance'],
-    ['着装', 'outfit'],
-    ['状态', 'condition'],
+    ['Gender', 'gender'],
+    ['Age', 'age'],
+    ['Identity', 'identity'],
+    ['Appearance', 'appearance'],
+    ['Outfit', 'outfit'],
+    ['Condition', 'condition'],
   ];
   for (const [label, key] of fields) {
     const v = oneLine(p[key]);
@@ -87,18 +87,18 @@ function fmtNpc(n: Record<string, unknown>): string {
   const bracket = [oneLine(n.gender), oneLine(n.age), oneLine(n.title)].filter(Boolean).join('·');
   let line = bracket ? `${name}(${bracket})` : name;
   const rel = oneLine(n.relation);
-  if (rel) line += ` —— 与主角:${rel}`;
+  if (rel) line += ` ——With the protagonist:${rel}`;
   const tail: string[] = [];
   const desc = oneLine(n.desc);
-  if (desc) tail.push(`外貌:${desc}`);
+  if (desc) tail.push(`Appearance:${desc}`);
   const outfit = oneLine(n.outfit);
-  if (outfit) tail.push(`着装:${outfit}`);
+  if (outfit) tail.push(`Outfit:${outfit}`);
   const condition = oneLine(n.condition);
-  if (condition) tail.push(`状态:${condition}`);
-  if (n.follow === true) tail.push('随行');
+  if (condition) tail.push(`Condition:${condition}`);
+  if (n.follow === true) tail.push('Following');
   else {
     const loc = oneLine(n.location);
-    if (loc) tail.push(`在:${loc}`);
+    if (loc) tail.push(`In:${loc}`);
   }
   return tail.length ? `${line} 〔${tail.join(';')}〕` : line;
 }
@@ -116,7 +116,7 @@ function fmtNpcs(npcs: unknown, bodyText: string, roles: BookRole[]): string {
       roles.push({ name, desc: oneLine(n.desc), isProtagonist: false });
     }
   }
-  return lines.length ? `重要角色:\n${lines.join('\n')}` : '';
+  return lines.length ? `Important role:\n${lines.join('\n')}` : '';
 }
 
 /** 把快照解析成角色参考文本 + 结构化角色列表(空角色信息 → 空串,调用方视为未提供)。 */
@@ -129,7 +129,7 @@ function formatSnapshotRoles(
   const roles: BookRole[] = [];
   const protagonist = fmtProtagonist(snapshot.protagonist);
   if (protagonist) {
-    lines.push(`主角:${protagonist}`);
+    lines.push(`Protagonist:${protagonist}`);
     const p = (snapshot.protagonist ?? {}) as Record<string, unknown>;
     roles.push({ name: protagonistName, desc: oneLine(p.appearance), isProtagonist: true });
   }
@@ -140,7 +140,7 @@ function formatSnapshotRoles(
 
 /* ============ 文本包装 ============ */
 
-const ROLE_NOTE = '【角色参考(柏宝书同步的最新状态,只读参考)】\n';
+const ROLE_NOTE = '【 character reference (the latest status of BaiBai Book synchronization, read-only reference) 】\n';
 
 function buildMemoryText(roles: string): string {
   return `${ROLE_NOTE}${roles}`;
@@ -158,7 +158,7 @@ function buildMemoryText(roles: string): string {
 export function readBookMemory(
   floor: number,
   bodyText: string,
-  protagonistName = '主角',
+  protagonistName = 'Protagonist',
 ): BookMemoryContext | null {
   const api = getBookApi();
   if (!api) return null;
@@ -187,7 +187,7 @@ export function readBookMemory(
         }
       }
       if (!snapshot) {
-        console.warn('[柏宝绘] 柏宝书在读取期间持续变化，本次不附带角色参考');
+        console.warn('[BaiBai Image] BaiBai Book continues to change during reading, and there is no character reference included this time.');
         return null;
       }
     }
@@ -197,7 +197,7 @@ export function readBookMemory(
     if (!text) return null;
     return { timing, text: buildMemoryText(text), roles };
   } catch (error) {
-    console.warn('[柏宝绘] 读取柏宝书角色状态失败，本次仅使用最近正文', error);
+    console.warn('[BaiBai Image] Failed to read the character status of BaiBai Book. Only the latest text will be used this time.', error);
     return null;
   }
 }

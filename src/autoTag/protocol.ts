@@ -125,7 +125,7 @@ function parseObject(raw: string): Record<string, unknown> {
       // 尝试下一个候选 JSON 块。
     }
   }
-  throw new Error('AI 没有返回可解析的 JSON 对象');
+  throw new Error('AI did not return a parsable JSON object');
 }
 
 /** tag / nl / negative 内容里不允许出现的子标签字面量（口径见 st/imageTagRegex.ts）。 */
@@ -133,7 +133,7 @@ function parseObject(raw: string): Record<string, unknown> {
 function sanitizeContent(value: unknown, field: string, index: number): string {
   const text = typeof value === 'string' ? value.trim().replace(/[\r\n]+/g, ' ') : '';
   if (text && FORBIDDEN_SUBTAG.test(text)) {
-    throw new Error(`images[${index}].${field} 不得包含 bbi_image/tag/nl/negative/size 标签`);
+    throw new Error(`images[${index}].${field} Must not contain bbi_image/tag/nl/negative/size tag`);
   }
   return text;
 }
@@ -159,8 +159,8 @@ function sanitizeCharacters(value: unknown, imageIndex: number): ImageCharacterP
 
 function sanitizePosition(value: unknown, index: number): string {
   const position = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  if (!position) throw new Error(`images[${index}].position 不能为空`);
-  if (!/^P\d+$/.test(position)) throw new Error(`images[${index}].position 必须是目标正文中的 P编号`);
+  if (!position) throw new Error(`images[${index}].position cannot be empty`);
+  if (!/^P\d+$/.test(position)) throw new Error(`images[${index}].position must be the P number in the target body`);
   return position;
 }
 
@@ -178,7 +178,8 @@ export function parseImagePlan(
   maxImages: number,
 ): ImagePlan {
   const parsed = parseObject(raw);
-  if (!Array.isArray(parsed.images)) throw new Error('AI 返回的 JSON 缺少 images 数组');
+  const sourceText = segments.map(segment => segment.text).join('\n');
+  if (!Array.isArray(parsed.images)) throw new Error('AI returned JSON missing images array');
   const normalizedMax = Math.max(1, Math.floor(Number(maxImages)) || 1);
   const normalizedMin = Math.min(
     normalizedMax,
@@ -190,20 +191,21 @@ export function parseImagePlan(
   for (let index = 0; index < parsed.images.length; index += 1) {
     const item = parsed.images[index];
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new Error(`images[${index}] 必须是对象`);
+      throw new Error(`images[${index}] must be an object`);
     }
     const entry = item as Record<string, unknown>;
     const position = sanitizePosition(entry.position ?? entry.id, index);
     const sourceLine = positions.get(position);
     if (sourceLine === undefined) {
-      throw new Error(`images[${index}].position=${position} 不在目标正文可选位置中`);
+      throw new Error(`images[${index}].position=${position} Not in target body optional position`);
     }
     // 兼容模型按旧协议/习惯返回 prompt 键的情况
     const tag = sanitizeContent(entry.tag ?? entry.prompt, 'tag', index);
-    if (!tag) throw new Error(`images[${index}].tag 不能为空`);
+    if (!tag) throw new Error(`images[${index}].tag cannot be empty`);
     const nl = sanitizeContent(entry.nl, 'nl', index);
     const negative = sanitizeContent(entry.negative ?? entry.negative_prompt, 'negative', index);
     const characters = sanitizeCharacters(entry.characters, index);
+    for (const character of characters) character.name = sourceName(character.name, sourceText);
     // 兼容模型按习惯返回 orientation / aspect 键
     const size = normalizeOrientation(entry.size ?? entry.orientation ?? entry.aspect);
     images.push({ position, sourceLine, tag, nl, negative, characters, size });
@@ -212,14 +214,26 @@ export function parseImagePlan(
   const limitedImages = images.slice(0, normalizedMax);
   if (limitedImages.length < normalizedMin) {
     throw new Error(
-      `AI 返回了 ${limitedImages.length} 张图片，少于设置的最少图片数 ${normalizedMin}`,
+      `AI returned ${limitedImages.length} pictures, less than the minimum number of pictures set ${normalizedMin}`,
     );
   }
 
   return {
     images: limitedImages,
-    changes: parseChanges(parsed.changes, positions),
+    changes: parseChanges(parsed.changes, positions).map(change => ({
+      ...change,
+      name: sourceName(change.name, sourceText),
+    })),
   };
+}
+
+// Models often straighten apostrophes or lowercase names; recover only an unambiguous source spelling.
+function sourceName(name: string, source: string): string {
+  if (source.includes(name)) return name;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/['‘’]/g, "['‘’]").replace(/[-‐‑–—]/g, '[-‐‑–—]');
+  const matches = new Set(source.match(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu')) ?? []);
+  return matches.size === 1 ? [...matches][0] : name;
 }
 
 /**
@@ -293,7 +307,7 @@ export function injectImageTags(source: string, images: ImageInsertion[]): strin
   const byLine = new Map<number, ImageInsertion[]>();
   for (const image of images) {
     if (!Number.isInteger(image.sourceLine) || image.sourceLine < 0 || image.sourceLine >= lines.length) {
-      throw new Error(`位置 ${image.position} 对应的原始物理行已失效`);
+      throw new Error(`Location ${image.position} The corresponding original physical row has expired`);
     }
     const line = image.sourceLine;
     const list = byLine.get(line) ?? [];

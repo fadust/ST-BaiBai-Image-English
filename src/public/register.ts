@@ -73,7 +73,7 @@ function emitNotice(type: PublicChangeNotice['type']): void {
     try {
       listener(clonePublic(detail));
     } catch (error) {
-      console.warn('[柏宝绘] 公共接口订阅回调异常', error);
+      console.warn('[BaiBai Image] Public interface subscription callback exception', error);
     }
   }
   const eventName = type === 'ready' ? PUBLIC_READY_EVENT : PUBLIC_CHANGED_EVENT;
@@ -108,7 +108,7 @@ function createApi(): STBaiBaiImageApi {
     getBackendStatus: () => getBackendStatus(),
     generate: (request: GenerateRequest, options?: GenerateOptions) => generate(request, options),
     subscribe(listener: PublicChangeListener) {
-      if (typeof listener !== 'function') throw new TypeError('subscribe listener 必须是函数');
+      if (typeof listener !== 'function') throw new TypeError('subscribe listener must be a function');
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
@@ -134,5 +134,5 @@ export function registerPublicInterface(): void {
 
   ready = true;
   emitNotice('ready');
-  console.log('[柏宝绘] 公共接口已就绪', clonePublic(capabilities));
+  console.log('[BaiBai Image] The public interface is ready', clonePublic(capabilities));
 }

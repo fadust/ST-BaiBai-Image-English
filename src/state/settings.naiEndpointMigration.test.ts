@@ -125,7 +125,7 @@ describe('NAI 接入点库 · 恒非空与官方条不变式', () => {
     });
     expect(settings.nai.endpoints[0].url).toBe(OFFICIAL);
     // 名字也归回内置名(官方条不可改名,脏数据同样纠正);key 是用户自己的,保留
-    expect(settings.nai.endpoints[0].name).toBe('NovelAI 官方');
+    expect(settings.nai.endpoints[0].name).toBe("NovelAI official");
     expect(settings.nai.endpoints[0].key).toBe('k');
   });
 
@@ -163,7 +163,7 @@ describe('NAI 接入点库 · 恒非空与官方条不变式', () => {
     expect(first.id).toBeTruthy();
     expect(first.name).toBe('no id');
     expect(second.id).toBeTruthy();
-    expect(second.name).toBe('接入点 2');
+    expect(second.name).toBe('access point 2');
     expect(second.url).toBe('');
     // 非字符串归空串;有效 id 仍被 activeEndpointId 认到
     expect(third.url).toBe('');

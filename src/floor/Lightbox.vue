@@ -125,7 +125,7 @@ onBeforeUnmount(() => {
 });
 
 async function copyPrompt(): Promise<void> {
-  await copyText(props.prompt ?? '', '提示词已复制');
+  await copyText(props.prompt ?? '', 'Prompt word has been copied');
 }
 
 function save(): void {
@@ -143,14 +143,14 @@ const promptText = computed(() => (props.prompt ?? '').trim());
     <!-- 遮罩自身承接关闭点击;图片与操作栏 stop 掉,避免误关 -->
     <div class="bbi-lightbox" @click="emit('close')">
       <div class="bbi-lightbox__bar" @click.stop>
-        <button class="bbi-lb-btn" type="button" title="保存图片" @click="save">
+        <button class="bbi-lb-btn" type="button" title="save image" @click="save">
           <Icon name="download" :size="18" />
         </button>
         <button
           v-if="promptText"
           class="bbi-lb-btn"
           type="button"
-          title="复制提示词"
+          title="copy prompt word"
           @click="copyPrompt"
         >
           <Icon name="copy" :size="18" />
@@ -159,12 +159,12 @@ const promptText = computed(() => (props.prompt ?? '').trim());
           v-if="deletable"
           class="bbi-lb-btn bbi-lb-btn--danger"
           type="button"
-          title="删除这张图"
+          title="Delete this picture"
           @click="emit('delete')"
         >
           <Icon name="trash" :size="18" />
         </button>
-        <button class="bbi-lb-btn" type="button" title="关闭 (Esc)" @click="emit('close')">
+        <button class="bbi-lb-btn" type="button" title="Close (Esc)" @click="emit('close')">
           <Icon name="close" :size="18" />
         </button>
       </div>
@@ -179,7 +179,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
         <img
           class="bbi-lightbox__img"
           :src="src"
-          alt="生图结果"
+          alt="Drawing results"
           :data-zoomed="zoomed ? '1' : ''"
           @click.stop="onImageClick"
           @pointerdown="onPointerDown"

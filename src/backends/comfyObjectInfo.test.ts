@@ -111,6 +111,6 @@ describe('fetchComfyModelLists', () => {
   });
 
   it('空 url 直接报错', async () => {
-    await expect(fetchComfyModelLists('  ')).rejects.toThrow('服务地址');
+    await expect(fetchComfyModelLists('  ')).rejects.toThrow("service address");
   });
 });

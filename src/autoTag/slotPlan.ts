@@ -40,7 +40,7 @@ export function buildSlotTaskNote(rawSource: string, seq: number, maxSummary = M
   for (let index = 0; index < tags.length; index += 1) {
     if (index === seq) continue;
     const summary = summarize(tags, index, maxSummary);
-    occupied.push(`- 第 ${index + 1} 张：${summary || '（无提示词）'}`);
+    occupied.push(`- Image ${index + 1}: ${summary || '(no prompt)'}`);
   }
 
   // 目标槽位的当前提示词:锚点,不截断——要模型照着同一个画面重写,就得给它全文。
@@ -49,16 +49,16 @@ export function buildSlotTaskNote(rawSource: string, seq: number, maxSummary = M
     : formatPromptText(parseImageTagContent(tags[seq])).trim();
 
   const lines = [
-    `【本次只重写第 ${seq + 1} 张的提示词】`,
-    '这一张画的仍然是它原本的那个瞬间：**不要另选画面、不要换构图主体、不要挪到正文别处**。',
-    '你的任务是把这同一个画面的提示词重写一遍——依据正文把它写得更准确、更具体，补上漏掉的关键信息，修掉与正文不符或含糊的部分。',
-    'images 数组必须恰好返回 1 项。',
+    `【Rewrite only image ${seq + 1}'s prompt】`,
+    'Keep the original moment: **Do not choose another scene, change the main subject or interaction, or move the image elsewhere in the text**.',
+    'Rewrite the prompt for this same image: make it more accurate and specific, supply missing visual details, and remove ambiguity or contradictions with the story.',
+    'The images array must return exactly 1 item.',
   ];
   if (current) {
-    lines.push('', '这一张当前的提示词（要重写的就是它，画面以它为准）：', current);
+    lines.push('', 'Current prompt for this image (preserve its depicted moment):', current);
   }
   if (occupied.length) {
-    lines.push('', '本楼其余画面（它们各自的提示词已经确定，不要把它们的画面抢过来，也不要改动它们）：', ...occupied);
+    lines.push('', 'Other images in this message (do not take over their scenes or change their prompts):', ...occupied);
   }
   return lines.join('\n');
 }

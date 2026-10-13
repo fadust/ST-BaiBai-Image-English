@@ -104,7 +104,7 @@ function formatVibe(vibe: GenerationVibe): string {
   const group = vibe.group ? `(${vibe.group})` : '';
   const normalized =
     Math.abs(vibe.effectiveStrength - vibe.strength) > 1e-6
-      ? `(实际 ×${round(vibe.effectiveStrength)})`
+      ? `(Actual ×${round(vibe.effectiveStrength)})`
       : '';
   return `${vibe.name}${group} ×${round(vibe.strength)}${normalized}`;
 }
@@ -119,38 +119,38 @@ export function formatGenerationMeta(meta: GenerationMeta): string {
   const lines: string[] = [];
 
   if (meta.artist) {
-    lines.push(`画师串: ${meta.artist.name}${meta.artist.prompt ? ` · ${meta.artist.prompt}` : ''}`);
+    lines.push(`Artist Tags: ${meta.artist.name}${meta.artist.prompt ? ` · ${meta.artist.prompt}` : ''}`);
   }
   if (meta.params.quality) {
-    lines.push(`质量词: ${meta.params.quality}`);
+    lines.push(`Quality word: ${meta.params.quality}`);
   }
   if (meta.vibes.length) {
     lines.push(`Vibe: ${meta.vibes.map(formatVibe).join('、')}`);
   }
-  lines.push(`模型: ${meta.model}`);
+  lines.push(`Model: ${meta.model}`);
   if (meta.width > 0 && meta.height > 0) {
-    lines.push(`尺寸: ${meta.width}×${meta.height}`);
+    lines.push(`Dimensions: ${meta.width}×${meta.height}`);
   }
   if (meta.negative) {
-    lines.push(`负面: ${meta.negative}`);
+    lines.push(`Negative: ${meta.negative}`);
   }
 
   const p = meta.params;
   const sampling: string[] = [];
-  if (p.template) sampling.push(`模板 ${p.template}`);
-  if (p.baseModel) sampling.push(`底模 ${p.baseModel}`);
+  if (p.template) sampling.push(`Template ${p.template}`);
+  if (p.baseModel) sampling.push(`Base model ${p.baseModel}`);
   if (p.vae) sampling.push(`VAE ${p.vae}`);
   if (p.clips) sampling.push(`CLIP ${p.clips}`);
   if (p.loras) sampling.push(`LoRA ${p.loras}`);
   if (p.sampler) sampling.push(p.scheduler ? `${p.sampler}/${p.scheduler}` : p.sampler);
-  if (typeof p.steps === 'number') sampling.push(`${p.steps} 步`);
+  if (typeof p.steps === 'number') sampling.push(`${p.steps} steps`);
   if (typeof p.cfg === 'number') sampling.push(`CFG ${round(p.cfg)}`);
   if (typeof p.cfgRescale === 'number' && p.cfgRescale > 0) sampling.push(`CFG-Rescale ${round(p.cfgRescale)}`);
-  if (p.noiseSchedule) sampling.push(`噪声表 ${p.noiseSchedule}`);
+  if (p.noiseSchedule) sampling.push(`Noise schedule ${p.noiseSchedule}`);
   if (p.varietyBoost) sampling.push('Variety Boost');
-  if (typeof p.guidance === 'number') sampling.push(`引导 ${round(p.guidance)}`);
+  if (typeof p.guidance === 'number') sampling.push(`Guidance ${round(p.guidance)}`);
   if (typeof p.shift === 'number') sampling.push(`Shift ${round(p.shift)}`);
-  if (sampling.length) lines.push(`采样: ${sampling.join(' · ')}`);
+  if (sampling.length) lines.push(`Sampling: ${sampling.join(' · ')}`);
 
   return lines.join('\n');
 }

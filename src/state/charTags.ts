@@ -27,14 +27,14 @@ export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
 ];
 
 export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
-  fandom: '同人身份 tag',
-  sex: '性别',
-  hair: '头发',
-  eyes: '眼睛',
-  skin: '肤色',
-  body: '体型',
-  extra: '标志特征',
-  outfit: '固定着装',
+  fandom: 'Fandom Identity Tag',
+  sex: 'Gender',
+  hair: 'Hair',
+  eyes: 'Eyes',
+  skin: 'Skin',
+  body: 'Build',
+  extra: 'Distinctive Features',
+  outfit: 'Permanent Outfit',
 };
 
 export type CharTagSource = 'book' | 'manual' | 'ai';
@@ -479,7 +479,7 @@ function detachFromExistingFloors(...rawNames: Array<string | undefined>): void 
   }
   if (changed) {
     void context.saveChat?.().catch(error => {
-      console.warn('[柏宝绘] 手动角色变更已生效,但清理旧楼层角色记录保存失败', error);
+      console.warn('[BaiBai Image] Manual role change has taken effect, but clearing and saving the old floor role records failed', error);
     });
   }
 }
@@ -519,17 +519,17 @@ export function upsertCharTag(
           field,
           from: previous.fields[field],
           to: next.fields[field],
-          reason: '手动编辑',
+          reason: 'Manual editing',
           floor: -1,
           at,
         });
       }
     }
     if (previous.raw !== next.raw && (previous.raw || next.raw)) {
-      pushHistory(next, { field: 'raw', from: previous.raw, to: next.raw, reason: '手动编辑', floor: -1, at });
+      pushHistory(next, { field: 'raw', from: previous.raw, to: next.raw, reason: 'Manual editing', floor: -1, at });
     }
     if (previous.nl !== next.nl && (previous.nl || next.nl)) {
-      pushHistory(next, { field: 'nl', from: previous.nl, to: next.nl, reason: '手动编辑', floor: -1, at });
+      pushHistory(next, { field: 'nl', from: previous.nl, to: next.nl, reason: 'Manual editing', floor: -1, at });
     }
   }
 
@@ -571,7 +571,7 @@ export function rollbackCharTag(name: string, record: CharTagChangeRecord): bool
     field: record.field,
     from: record.to,
     to: record.from,
-    reason: '手动回滚',
+    reason: 'Manual rollback',
     floor: -1,
     at: Date.now(),
   });

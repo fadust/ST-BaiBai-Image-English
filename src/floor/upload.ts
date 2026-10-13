@@ -17,7 +17,7 @@ export class FileStoreError extends Error {
 
 async function postFile(endpoint: string, body: Record<string, unknown>): Promise<{ ok: boolean; status: number; text: string }> {
   const ctx = getContext();
-  if (!ctx) throw new FileStoreError('SillyTavern 上下文不可用');
+  if (!ctx) throw new FileStoreError('SillyTavern context is not available');
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: ctx.getRequestHeaders(),
@@ -31,7 +31,7 @@ async function postFile(endpoint: string, body: Record<string, unknown>): Promis
 export async function uploadBase64File(name: string, base64: string): Promise<string> {
   const { ok, status, text } = await postFile('/api/files/upload', { name, data: base64 });
   if (!ok) {
-    throw new FileStoreError(`文件上传失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
+    throw new FileStoreError(`File upload failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
   }
   let path = '';
   try {
@@ -40,7 +40,7 @@ export async function uploadBase64File(name: string, base64: string): Promise<st
   } catch {
     /* 响应不是 JSON，落到下方统一报错 */
   }
-  if (!path) throw new FileStoreError('文件上传失败：服务端未返回路径');
+  if (!path) throw new FileStoreError('File upload failed: The server did not return the path');
   return path;
 }
 
@@ -54,7 +54,7 @@ export async function deleteUploadedFile(path: string): Promise<boolean> {
   const { ok, status, text } = await postFile('/api/files/delete', { path });
   if (ok) return true;
   if (status === 404) return false;
-  throw new FileStoreError(`文件删除失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
+  throw new FileStoreError(`File deletion failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
 }
 
 /** 删除已上传图片。 */

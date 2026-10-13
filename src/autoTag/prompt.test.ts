@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { autoTagProfile, buildAutoTagMessages, expandNlSections } from '@/autoTag/prompt';
 import {
   activeComfyPreset,
+  DEFAULT_NAI_THINKING,
   DEFAULT_NAI_V5_SPEC,
   DEFAULT_NAI_V5_THINKING,
   settings,
@@ -71,33 +72,33 @@ describe('auto tag prompt', () => {
     const messages = await buildAutoTagMessages(context(), 1, options, null);
 
     expect(messages[0].content).toContain('附加规则');
-    expect(messages.some(m => m.role === 'system' && m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))).toBe(true);
-    expect(messages.some(m => m.content.includes('除一个 <thinking> 块和一个 JSON 对象外'))).toBe(true);
-    expect(messages.some(m => m.content.includes('最终结果必须包含且只能包含一个可解析的 JSON 对象'))).toBe(true);
-    expect(messages.some(m => m.content.includes('images 数量必须在 0～3 之间'))).toBe(true);
-    expect(messages.some(m => m.content.includes('没有值得绘制的可见瞬间时可以返回空数组'))).toBe(true);
-    expect(messages.some(m => m.content.includes('不得包含质量词'))).toBe(true);
-    expect(messages.some(m => m.content.includes('先完成角色建档与变化检查'))).toBe(true);
-    expect(messages.some(m => m.content.includes('同一事件的相邻动作'))).toBe(true);
-    expect(messages.some(m => m.content.includes('两人同框不等于必须横屏'))).toBe(true);
+    expect(messages.some(m => m.role === 'system' && m.content.includes("You are a rigorous plot screen planner"))).toBe(true);
+    expect(messages.some(m => m.content.includes("Please complete the check briefly in <thinking>...</thinking> first, then output the final JSON. Nothing other than an <thinking> block and an JSON object must be returned, and do not use Markdown code blocks. The final result must contain and can contain only one parsable JSON object, with a fixed format of:"))).toBe(true);
+    expect(messages.some(m => m.content.includes("Please complete the check briefly in <thinking>...</thinking> first, then output the final JSON. Nothing other than an <thinking> block and an JSON object must be returned, and do not use Markdown code blocks. The final result must contain and can contain only one parsable JSON object, with a fixed format of:"))).toBe(true);
+    expect(messages.some(m => m.content.includes("images must contain between 0 and 3 items"))).toBe(true);
+    expect(messages.some(m => m.content.includes("An empty array can be returned"))).toBe(true);
+    expect(messages.some(m => m.content.includes("cannot contain quality words"))).toBe(true);
+    expect(messages.some(m => m.content.includes("1. Complete the character profile and change check first, and then select pictures; you cannot skip the changes check because there are no pictures or the number of pictures is small. If there are no changes, changes returns an empty array."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Multiple images must be of a single moment with significantly different plot or visual status, and do not return to adjacent action or shot-change versions of the same event."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Having two people in the same frame does not mean that the screen must be horizontal. The direction must be consistent with the lens word in tag (wide, shot usually matches landscape, close-up / upper, body usually matches portrait)."))).toBe(true);
     expect(messages.some(m => m.content.includes('"field":"new"'))).toBe(true);
     expect(messages.some(m => m.content.includes('"hair":"long black hair","eyes":"blue eyes"'))).toBe(true);
-    expect(messages.some(m => m.content.includes('首次出场就必须建档'))).toBe(true);
-    expect(messages.some(m => m.content.includes('角色卡、世界书、柏宝书或持续剧情'))).toBe(true);
-    expect(messages.some(m => m.content.includes('hair 与 eyes 必填'))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- Priority of file creation: current appearance specified in the target text > current character status in BaiBai Book > character card/World Info specified > reasonable completion. When the color is clearly written in the character design, it must be converted as it is and cannot be tampered with; hair and eyes are required, hair contains at least hair color and length/hair style, eyes must contain eye color, if any of the items is missing, the file will be discarded."))).toBe(true);
     expect(messages.some(m => m.content.includes('"position":"P2"'))).toBe(true);
-    expect(messages.some(m => m.content.includes('后续不得重新随机'))).toBe(true);
+    expect(messages.some(m => m.content.includes("- If the setting does not include hair color, hairstyle or eye color, make up a concise, coordinated, long-term reusable color and hairstyle based on the world view, race, identity, personality and other character settings; this is a one-time file creation decision and cannot be re-randomized in the future."))).toBe(true);
     // 建档不受入选与否影响,也不受位置门控 —— 这两条是修复的核心,措辞必须在协议里
-    expect(messages.some(m => m.content.includes('不论他是否入选本次图片'))).toBe(true);
-    expect(messages.some(m => m.content.includes('建档在本楼全程有效'))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
     // 已撤销的 characters 审计:不得回流到协议里
-    expect(messages.some(m => m.content.includes('characters'))).toBe(false);
+    expect(messages.some(m => m.content.includes("\"characters\""))).toBe(false);
     expect(messages.some(m => m.content.includes('"tag":"@小雪'))).toBe(false);
     const user = messages[messages.length - 1];
     expect(user.role).toBe('user');
-    expect(user.content).toContain('【角色固定外貌库】[system-maintained; currently empty]');
-    expect(user.content).toContain('当前为空，没有任何角色已建档');
-    expect(user.content).not.toContain('上一层');
+    expect(user.content).toContain("[system-maintained; currently empty]");
+    expect(user.content).toContain("【 character fixed appearance database 】[system-maintained; currently empty]\n (Currently empty, no character has been profiled. The World Info, character card, BaiBai Book and text only provide the basis for creation; official characters not listed in this block must be profiled through field:\"new\".)");
+    expect(user.content).not.toContain("The upper layer to be hung does not exist, or that layer is not a collection.");
     expect(user.content).toContain('目标第一行 ⟦P1⟧\n\n目标第三行 ⟦P2⟧');
     expect(user.content).not.toContain('[L0001]');
     expect(messages.some(message => message.content.includes('"position"'))).toBe(true);
@@ -115,9 +116,9 @@ describe('auto tag prompt', () => {
     };
     const messages = await buildAutoTagMessages(context(), 1, options, null);
 
-    expect(messages.some(m => m.content.includes('images 数量必须在 2～4 之间'))).toBe(true);
-    expect(messages.some(m => m.content.includes('下限 2 是用户明确要求'))).toBe(true);
-    expect(messages.some(m => m.content.includes('不得返回少于 2 张或空数组'))).toBe(true);
+    expect(messages.some(m => m.content.includes("images must contain between 2 and 4 items"))).toBe(true);
+    expect(messages.some(m => m.content.includes("The minimum of 2 is an explicit user requirement"))).toBe(true);
+    expect(messages.some(m => m.content.includes("no less than 2 images or an empty array"))).toBe(true);
   });
 
   it('uses the prepared target snapshot without recomputing position IDs', async () => {
@@ -190,7 +191,7 @@ describe('auto tag prompt', () => {
     expect(user.content).toContain('<bbi_image>1girl, long silver hair, red eyes<size>portrait</size></bbi_image>');
     expect(user.content).toContain('中间用户楼');
     expect(user.content).not.toContain('隐藏思维');
-    expect(user.content).not.toContain('状态栏');
+    expect(user.content).not.toContain("Take a look at whether the item in the status bar should be a number or text, and then diagnose again.");
     expect(user.content).not.toContain('尾部状态');
     expect(user.content).not.toContain('上下文楼层');
     expect(user.content).toContain('当前目标楼 ⟦P1⟧');
@@ -209,95 +210,95 @@ describe('auto tag prompt', () => {
     };
     const messages = await buildAutoTagMessages(context(), 1, options, null);
 
-    const thinkingMsg = messages.find(m => m.content.includes('输出前思考清单'));
+    const thinkingMsg = messages.find(m => m.content.includes("Consideration Checklist before Output"));
     expect(thinkingMsg?.role).toBe('system');
 
     // 两层结构:A~E 是整楼一次的全局判断,第二层是逐图槽位块。
     // 结构骨架比逐字文案更值得钉——散装 bullet 正是模型把每图压成一句话的原因。
-    expect(thinkingMsg?.content).toContain('第一层｜全局判断（整楼各做一次）');
-    expect(thinkingMsg?.content).toContain('第二层｜逐张图槽位块');
-    expect(thinkingMsg?.content).toContain('不得合并、不得跨图共用一份');
-    expect(thinkingMsg?.content).toContain('第三层｜落笔前自查');
-    for (const slot of ['人物：', '核心动作：', '景别：', '场景：', '环境光：', 'size：']) {
+    expect(thinkingMsg?.content).toContain("First floor｜Global judgment (one for the whole floor)");
+    expect(thinkingMsg?.content).toContain("Second layer | Picture slot blocks");
+    expect(thinkingMsg?.content).toContain("Second layer | Picture slot blocks one by one (Write one block for each P selected by E, and may not be merged or shared across pictures)");
+    expect(thinkingMsg?.content).toContain("Self-check before writing");
+    for (const slot of ['Character:', "Core actions:", 'Scene:', 'Scene:', 'Ambient light:', "size："]) {
       expect(thinkingMsg?.content).toContain(slot);
     }
-    expect(thinkingMsg?.content).toContain('<角色名>｜表情｜视线｜本镜头可见服装｜临时状态｜个人动作');
-    expect(thinkingMsg?.content).toContain('确实不适用的槽位写 "-"');
-    expect(thinkingMsg?.content).toContain('核心动作、景别、表情、视线、场景、环境光、size 七项永远不得为 "-"');
+    expect(thinkingMsg?.content).toContain("Character rows (one row for each character present): <character name>｜expression｜line of sight｜clothing visible in this shot｜temporary status｜personal actions");
+    expect(thinkingMsg?.content).toContain("Slot filling requirements (the slot value directly writes the English word you want to eventually put into tag; write \"-\" for the slot that is indeed not applicable, but the seven items of core action, scenery, expression, sight, scene, ambient light, and size must never be \"-\"):");
+    expect(thinkingMsg?.content).toContain("Slot filling requirements (the slot value directly writes the English word you want to eventually put into tag; write \"-\" for the slot that is indeed not applicable, but the seven items of core action, scenery, expression, sight, scene, ambient light, and size must never be \"-\"):");
     // 表情/视线此前全库没有槽位,是「木脸」的根因;两个后端规范也要各带一份。
-    expect(thinkingMsg?.content).toContain('两项都不得留空，面无表情也要主动填 expressionless');
-    expect(thinkingMsg?.content).toContain('表情与视线填后端规范给出的标准 danbooru 词');
-    expect(thinkingMsg?.content).toContain('没有漏掉表情、视线或环境光');
+    expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
+    expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
+    expect(thinkingMsg?.content).toContain("- tag of each picture covers all non-\"-\" slots of its own piece, without missing expressions, line of sight or ambient light; when nl is required, it describes the same picture as tag.");
     // 不再发送 assistant 预填充,消息以 user 任务消息收尾。
-    expect(thinkingMsg?.content).toContain('不得开启第二个 <thinking> 块');
+    expect(thinkingMsg?.content).toContain("First go through <thinking> and </thinking> in the following order, and then output the final JSON after thinking. Nothing shall be output except this one <thinking> block and the final JSON, nor shall a second <thinking> block be opened.");
 
     // 以下是重写前就必须守住的既有约束,逐条确认没有在重构中丢失。
-    expect(thinkingMsg?.content).toContain('不得把临时状态恢复成角色默认值');
-    expect(thinkingMsg?.content).toContain('即使 images 为空也不能跳过这一步');
-    expect(thinkingMsg?.content).toContain('视觉明确度、剧情重要度、动作完整度');
-    expect(thinkingMsg?.content).toContain('下限大于 0 时从较次但仍可见的候选中补足');
-    expect(thinkingMsg?.content).toContain('一次快门完整拍下');
+    expect(thinkingMsg?.content).toContain("- The temporary state cannot be restored to the character's default value without clear transition, organization, change of clothes, state release, time jump or scene switch.");
+    expect(thinkingMsg?.content).toContain("- Check the permanent changes against the character library: hair dyeing, hair cutting, permanent transformation, etc. are written in changes and marked with the effective P number; temporary status such as wigs, contact lenses, wet hair, light discoloration, etc. are not written. This step cannot be skipped even if images is ​​empty.");
+    expect(thinkingMsg?.content).toContain("- Sort by visual clarity, plot importance, action completeness, and difference from other candidates, and abide by the minimum to maximum numbers given in the task agreement: when the lower limit is greater than 0, make up for it from lesser but still visible candidates; after reaching the lower limit, only continue to select pictures that are strong enough and clearly different from each other, and do not use adjacent actions or different shots of the same event to get closer to the upper limit.");
+    expect(thinkingMsg?.content).toContain("- Sort by visual clarity, plot importance, action completeness, and difference from other candidates, and abide by the minimum to maximum numbers given in the task agreement: when the lower limit is greater than 0, make up for it from lesser but still visible candidates; after reaching the lower limit, only continue to select pictures that are strong enough and clearly different from each other, and do not use adjacent actions or different shots of the same event to get closer to the upper limit.");
+    expect(thinkingMsg?.content).toContain("- A single moment: a picture that can only be captured completely by one shutter. Do not put multiple actions, multiple time points or causal processes that happened one after another into the same piece; the plot facts are strictly based on the text, and do not make up characters, actions or number of people.");
     // size 判定口径瘦身后只留在后端规范一份(thinking 与协议都不再复述),
     // 但整套消息里必须仍有且有这一份,否则模型无从判断横竖。
-    expect(messages.some(m => m.content.includes('双人近距离构图可写 portrait'))).toBe(true);
+    expect(messages.some(m => m.content.includes("Write landscape for group portraits, long-range panoramas, wide scenes, and horizontally unfolding interactions; write portrait for single people, vertical stances, close-ups, and close-up compositions of two people."))).toBe(true);
     expect(thinkingMsg?.content).not.toContain('双人近距离可 portrait');
-    expect(thinkingMsg?.content).toContain('只跳过没有视觉变化的对话');
-    expect(thinkingMsg?.content).toContain('首次出场就建档');
-    expect(thinkingMsg?.content).toContain('不论他是否入选本次图片');
-    expect(thinkingMsg?.content).toContain('建档在本楼全程有效');
+    expect(thinkingMsg?.content).toContain("- The candidate must be a visible moment with a clear subject, action or visual state and scene. Pure dialogue is retained only when accompanied by expressions, body movements, character relationships, or environmental changes worth drawing; only dialogue without visual changes, pure psychology, and transitions are skipped.");
+    expect(thinkingMsg?.content).toContain("- Each person writes a line of conclusion: the hit library entry with the same name, or this time field: \"new\". Only those whose names are actually listed in the 】 block of the 【 character fixed appearance database are considered to have been archived - the detailed settings in the World Info, character card, BaiBai Book or text are only sources of archive creation and do not mean that they are already in the database, and they cannot be claimed to be in the database based on impressions. If Curry does not have a role but is a formal character (with a setting or continuous participation in the plot), the profile will be created for the first time, regardless of whether he is selected for this picture; one-time unknown passers-by will not be created.");
+    expect(thinkingMsg?.content).toContain("regardless of whether he is selected for this picture");
+    expect(thinkingMsg?.content).toContain("profile creation is valid throughout this building");
     // 建档的 hair 必须带长度/发型:只写颜色的旧措辞会让模型以 black hair 过关。
-    expect(thinkingMsg?.content).toContain('hair 必须同时带发色和长度/发型');
+    expect(thinkingMsg?.content).toContain("hair must have both hair color");
     expect(thinkingMsg?.content).not.toContain('hair 与 eyes 都不得留空');
     // 白皙肤色词禁令(ComfyUI 默认肤色已够白,叠 pale skin 会白得失真):
     // 规范给禁令,思维链第三层给落笔前的检查位;tan/dark skin 是豁免项。
-    expect(messages.some(m => m.content.includes('白皙词一律禁止'))).toBe(true);
-    expect(thinkingMsg?.content).toContain('白皙肤色词混进任何一张图');
-    expect(thinkingMsg?.content).toContain('tan、dark skin 不在此列');
+    expect(messages.some(m => m.content.includes("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped."))).toBe(true);
+    expect(thinkingMsg?.content).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
+    expect(thinkingMsg?.content).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
     // 建档字段的详细写法瘦身后只留在任务协议一份,thinking 不再复述。
-    expect(messages.some(m => m.content.includes('建档写法：{"name":"角色名","field":"new"'))).toBe(true);
+    expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
     // 新旧档案的 position 语义、时代判断的发挥边界:瘦身后各自只留一份权威副本
     // (分别在任务协议与后端规范),thinking 不再复述,但整套消息里必须仍在。
-    expect(messages.some(m => m.content.includes('该位置之前的图片使用旧档案'))).toBe(true);
-    expect(messages.some(m => m.content.includes('证据较少时可以合理补全时代风格'))).toBe(true);
-    expect(thinkingMsg?.content).toContain('不得退回中性服装或默认现代都市');
-    expect(thinkingMsg?.content).toContain('把未知的场景事实具体化');
+    expect(messages.some(m => m.content.includes("- The permanently changed position is the position where the new status takes effect: the pictures before this position use the old file, and the position and after use the new file; multiple changes are reported separately in the text."))).toBe(true);
+    expect(messages.some(m => m.content.includes("When there is a clear setting, strictly follow it; when there is no clear setting, you must also take the initiative to choose the most reasonable, specific and self-consistent era, civilization or original visual system based on the existing clues and plot temperament. When there is less evidence, the style of the era, clothing styles, materials, accessories, light and tone can be reasonably supplemented, but this is limited to \"how to draw\" and cannot be used to make up \"what is in the picture\"."))).toBe(true);
+    expect(thinkingMsg?.content).toContain("- Define a specific, self-consistent era/culture/visual system and use it throughout the building: strictly follow it if there is a clear setting, even if there is little evidence, choose one proactively, and do not fall back on neutral clothing or default to modern cities. Implemented in clothing styles, materials, accessories and evidence-based architectural artifacts.");
+    expect(thinkingMsg?.content).toContain("- This set of judgments only determines \"how to draw\" and cannot be used to concretize unknown scene facts.");
     // 泥地/地形禁令原本 3 份(规范 + 槽位 + 自查),瘦身后规范留完整版、
     // thinking 只留一句「没依据就别写」。outdoors/forest 的具体口径归规范。
-    expect(messages.some(m => m.content.includes('只确定“森林”时写 forest 即可'))).toBe(true);
-    expect(messages.some(m => m.content.includes('不得为了丰富画面自行添加泥地、土路'))).toBe(true);
-    expect(thinkingMsg?.content).toContain('没依据就别写');
-    expect(thinkingMsg?.content).toContain('没依据就删除');
-    expect(thinkingMsg?.content).toContain('只有名字实际列在【角色固定外貌库】区块中的才算已建档');
-    expect(thinkingMsg?.content).toContain('按正文 P 位置维护每个角色的临时服装');
-    expect(thinkingMsg?.content).toContain('视觉指纹');
-    expect(thinkingMsg?.content).toContain('版型/剪裁 + 主色 + 关键部件');
-    expect(thinkingMsg?.content).toContain('裤袜含颜色与透明度');
-    expect(thinkingMsg?.content).toContain('模型会自行重新设计的孤立词');
+    expect(messages.some(m => m.content.includes("Just write outdoors when the text only confirms \"wild\", write forest when only confirm \"forest\"; only write muddy, ground, dirt, path, puddles, etc. corresponding to tag when the text, context or world settings clearly support the facts such as rain, mud, dirt road, etc."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
+    expect(thinkingMsg?.content).toContain("- Scene and ambient light: For a scene, only write facts that can be supported by the main text, context or world setting. Terrain, ground material, weather traces and environmental conditions are all considered facts. Don’t write if there is no basis for it. Ambient light is the opposite. The light source, time and tone will not be written in the text and must be determined by you. Without the picture, it will be a mediocre headshot.");
+    expect(thinkingMsg?.content).toContain("- Each plot tag can be traced back to the main text/setting; terrain, ground, roads, weather and environmental conditions tag will be deleted if there is no basis.");
+    expect(thinkingMsg?.content).toContain("- Each person writes a line of conclusion: the hit library entry with the same name, or this time field: \"new\". Only those whose names are actually listed in the 】 block of the 【 character fixed appearance database are considered to have been archived - the detailed settings in the World Info, character card, BaiBai Book or text are only sources of archive creation and do not mean that they are already in the database, and they cannot be claimed to be in the database based on impressions. If Curry does not have a role but is a formal character (with a setting or continuous participation in the plot), the profile will be created for the first time, regardless of whether he is selected for this picture; one-time unknown passers-by will not be created.");
+    expect(thinkingMsg?.content).toContain("- Maintain the temporary clothing of each character according to the P position in the main text: the initial outfit is reasonably decided once when the main text does not specify it; if there is no putting on or taking off, changing clothes, clothing damage or scene/time jump, the previous state will be used. After the change is clear, it will be updated from the corresponding P position.");
+    expect(thinkingMsg?.content).toContain("visual fingerprint");
+    expect(thinkingMsg?.content).toContain("main color + key components");
+    expect(thinkingMsg?.content).toContain("pantyhose includes color and transparency");
+    expect(thinkingMsg?.content).toContain("- Each set of clothing freezes a \"visual fingerprint\" (version/cut + main color + key components, pantyhose includes color and transparency, please see the task agreement for specific requirements). The same copy is reused throughout the building in the same state. Do not write isolated words such as school, uniform, dress, and pantyhose. These models will be redesigned by themselves.");
     // 槽位侧同样要挡住笼统词,否则 C 段定了 navy school blazer、槽位里仍退回 school uniform。
-    expect(thinkingMsg?.content).toContain('槽位里不许退回 school uniform、dress、pantyhose 这种笼统孤立词');
-    expect(thinkingMsg?.content).toContain('多人画面每人的服装各写各的');
+    expect(thinkingMsg?.content).toContain("- In the visible costume photo C, the visual fingerprint of the current state of the character is written piece by piece, only the parts visible in the current scene are written; the parts that are invisible outside the camera can be omitted, but omitting does not mean taking them off. They must be restored when they are re-visible later and there are no changes in the middle. General isolated words such as school, uniform, dress, and pantyhose are not allowed to be returned in the slot - the C segment is navy school blazer, so write navy school blazer, writing a general term is equivalent to letting the model redesign the clothes by herself. The same character will change the style in every picture. In the multiplayer screen, each person's clothing is written separately, and they are bound when they enter tag: both of them wear school uniforms, but the men's and women's styles are different. If you write school or uniform naked, the model will put the skirt on the boy.");
+    expect(thinkingMsg?.content).toContain("- In the visible costume photo C, the visual fingerprint of the current state of the character is written piece by piece, only the parts visible in the current scene are written; the parts that are invisible outside the camera can be omitted, but omitting does not mean taking them off. They must be restored when they are re-visible later and there are no changes in the middle. General isolated words such as school, uniform, dress, and pantyhose are not allowed to be returned in the slot - the C segment is navy school blazer, so write navy school blazer, writing a general term is equivalent to letting the model redesign the clothes by herself. The same character will change the style in every picture. In the multiplayer screen, each person's clothing is written separately, and they are bound when they enter tag: both of them wear school uniforms, but the men's and women's styles are different. If you write school or uniform naked, the model will put the skirt on the boy.");
     // 自查项要点名服装,上一版只提「表情视线」,模型自查时就只核对了表情视线。
-    expect(thinkingMsg?.content).toContain('没有谁的衣服只写在槽位里却没进 tag');
+    expect(thinkingMsg?.content).toContain("- In the multiplayer screen, clothing, body shape, objects, expressions, sightlines and personal actions have all been bound to their respective characters, and there are no scattered ownerless characteristics; the clothing of each character present actually appears in tag, and no one's clothing is only written in the slot but not in tag, nor school uniform, pantyhose This type of general isolated word has no owner; each character present has an expression word and sight word bound to himself, and no one has only actions but no expression.");
     // 配角只写「弯腰换鞋」不写表情词 → tag 里他没有表情。角色行必须逐人写全英文词。
-    expect(thinkingMsg?.content).toContain('配角也要写全');
-    expect(thinkingMsg?.content).toContain('这一行没有表情词');
-    expect(thinkingMsg?.content).toContain('每个在场角色都各有一个绑定到自己的表情词和视线词');
+    expect(thinkingMsg?.content).toContain("- The character line is one line for each character present. The supporting characters must also be written in full. It is not allowed to write a complete line only for the protagonist and use a Chinese action sentence to describe the supporting characters. The expression and gaze of each line must be an independent English danbooru word: writing a Chinese phrase like \"look to the other side, bending down to change shoes\" means that there is no expression word in this line. When tag is written, the character will have no expression and be painted as a wooden face by the model.");
+    expect(thinkingMsg?.content).toContain("- The character line is one line for each character present. The supporting characters must also be written in full. It is not allowed to write a complete line only for the protagonist and use a Chinese action sentence to describe the supporting characters. The expression and gaze of each line must be an independent English danbooru word: writing a Chinese phrase like \"look to the other side, bending down to change shoes\" means that there is no expression word in this line. When tag is written, the character will have no expression and be painted as a wooden face by the model.");
+    expect(thinkingMsg?.content).toContain("- In the multiplayer screen, clothing, body shape, objects, expressions, sightlines and personal actions have all been bound to their respective characters, and there are no scattered ownerless characteristics; the clothing of each character present actually appears in tag, and no one's clothing is only written in the slot but not in tag, nor school uniform, pantyhose This type of general isolated word has no owner; each character present has an expression word and sight word bound to himself, and no one has only actions but no expression.");
     // 超限重选必须发生在 E 段,不能等到第三层「让位」——那几块槽位是白写的。
-    expect(thinkingMsg?.content).toContain('写出 P 列表之前先数一遍');
-    expect(thinkingMsg?.content).toContain('这一层只核对、不改决定');
+    expect(thinkingMsg?.content).toContain("- The quantity is stuck here: count it before writing the P list. If it exceeds the upper limit, cut it to the upper limit on the spot and then go down. The second level only writes blocks for the final selected P. It is absolutely not allowed to overwrite a few blocks first and then delete them when the third level finds that the limit is exceeded - those blocks are written in vain, and the third level only checks and does not change the decision.");
+    expect(thinkingMsg?.content).toContain("- This layer only checks and does not change decisions: if you find a problem, correct it directly when you enter tag. Do not write down revision processes such as \"over limit, need to streamline\", \"give way\" and \"change to\" in your thinking. The number of shots is already fixed in the E segment and should not be changed here.");
     expect(messages.some(m => m.content.includes('navy school blazer, white collared shirt, red ribbon'))).toBe(true);
-    expect(thinkingMsg?.content).toContain('镜头外不可见的部件可以省略，但省略不等于脱掉');
-    expect(thinkingMsg?.content).toContain('没有散落的无主特征');
-    expect(messages.some(m => m.content.includes('每个在场正式角色必须二选一'))).toBe(true);
-    expect(messages.some(m => m.content.includes('禁止把两人的外貌特征散放成无法归属的一串公共 tag'))).toBe(true);
-    expect(thinkingMsg?.content).toContain('定一套具体、自洽的时代/文明/视觉体系并全楼沿用');
-    expect(messages.some(m => m.content.includes('必须先判断，并主动具体化'))).toBe(true);
-    expect(messages.some(m => m.content.includes('具体不等于编造'))).toBe(true);
-    expect(messages.some(m => m.content.includes('不得为了丰富画面自行添加泥地、土路'))).toBe(true);
+    expect(thinkingMsg?.content).toContain("omitting does not mean taking them off");
+    expect(thinkingMsg?.content).toContain("- In the multiplayer screen, clothing, body shape, objects, expressions, sightlines and personal actions have all been bound to their respective characters, and there are no scattered ownerless characteristics; the clothing of each character present actually appears in tag, and no one's clothing is only written in the slot but not in tag, nor school uniform, pantyhose This type of general isolated word has no owner; each character present has an expression word and sight word bound to himself, and no one has only actions but no expression.");
+    expect(messages.some(m => m.content.includes("- \"File has been created\" can only be judged by the entry with the same name in the 】 block of the 【 character fixed appearance library: only the name is actually listed in the block is considered to be a file; the detailed settings in the World Info, character card, BaiBai Book or text are only the basis for the creation of the file, and do not mean that it is already in the library. Each official character present must choose one of two options: point to an entry with the same name in the library, or type field:\"new\" in changes. The one-time nameless character is not included in this alternative: he neither files nor writes changes, does not need to specify any library entries, and missing files is normal and not an omission."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- In the multiplayer screen, each character's hair color, eye color, body shape, clothing, objects, and personal actions must be bound adjacently using the character's distinctive title. It is prohibited to scatter the appearance characteristics of two people into a string of public tag that cannot be attributed."))).toBe(true);
+    expect(thinkingMsg?.content).toContain("- Define a specific, self-consistent era/culture/visual system and use it throughout the building: strictly follow it if there is a clear setting, even if there is little evidence, choose one proactively, and do not fall back on neutral clothing or default to modern cities. Implemented in clothing styles, materials, accessories and evidence-based architectural artifacts.");
+    expect(messages.some(m => m.content.includes("2. The era and world view (clothing system, architecture, utensils, environmental style) - **must be judged first and actively embodied**."))).toBe(true);
+    expect(messages.some(m => m.content.includes("In a word: lens, composition, light, tone, etc. ** how to shoot ** can be actively specified; ** characters, actions, terrain, ground materials, weather traces and environmental conditions, etc. ** what is in the picture must be based on the text and settings. Being specific does not mean making it up."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
     expect(messages.some(m => m.content.includes('允许为了完成画面作合理猜测'))).toBe(false);
     const last = messages[messages.length - 1];
     expect(last.role).toBe('user');
-    expect(last.content).toContain('目标正文');
+    expect(last.content).toContain("---Target text｜");
   });
 
   it('uses custom thinking when provided', async () => {
@@ -313,7 +314,7 @@ describe('auto tag prompt', () => {
     const messages = await buildAutoTagMessages(context(), 1, options, null);
 
     expect(messages.some(m => m.content.includes('自定义清单'))).toBe(true);
-    expect(messages.some(m => m.content.includes('输出前思考清单'))).toBe(false);
+    expect(messages.some(m => m.content.includes("Consideration Checklist before Output"))).toBe(false);
     // 预填充功能已移除:消息里不应再出现 assistant 角色。
     expect(messages.some(m => m.role === 'assistant')).toBe(false);
   });
@@ -389,20 +390,20 @@ describe('auto tag prompt', () => {
       let text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
         .join('\n');
-      expect(text).toContain('判定为同人时同一行定出最终身份 tag 词');
+      expect(text).toContain("final identity tag words are determined in the same line");
       expect(text).toContain(
-        '每个同人角色的 tag 串里都有 B 段定下的 character name \\(copyright name\\) 身份 tag',
+        "The tag string of each fan character",
       );
-      expect(text).toContain('若本图协议含 negative 键');
-      expect(text).not.toContain('若本图是显式 NSFW 场景');
+      expect(text).toContain("- If the protocol of this image contains the negative key: negative has compared tag and nl of this image word by word. All words that can be found corresponding to the content have been deleted, which does not offset the fact that the text has been established; any uncertainties have been left blank. If the protocol does not contain the negative key, this item will be skipped directly.");
+      expect(text).not.toContain("- If this picture is an explicit NSFW scene: the actual visible sexual organs, body parts and contact relationships have all been written accurately with tag, and there are no generalized words such as nsfw, nude, sex. The non-explicit scene will be skipped directly.");
       // spec 的转义指导必须原样到达模型:模板字符串里 \( 会被烹饪成 (,
       // 0.1.16 起这条实际发给模型的就是未转义括号,一直是坏的。
-      expect(text).toContain('实际提示词形态为 character name \\(copyright name\\)');
+      expect(text).toContain("The actual prompt word form is character name");
       expect(text).toContain('"character name \\\\(copyright name\\\\)"');
       expect(text).not.toContain('形态为 character name (copyright name)');
       // 白皙肤色词禁令只给 ComfyUI:本地模型默认肤色已够白,再叠 pale skin 会白得失真。
-      expect(text).toContain('白皙词一律禁止');
-      expect(text).toContain('白皙肤色词混进任何一张图');
+      expect(text).toContain("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped.");
+      expect(text).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
 
       // NAI 4 系:身份 tag 不转义 + 显式 NSFW 解剖落点(从有变无的回归,此处补回)。
       // 负面词由后端按模型固定附加,AI 不写 negative——不该有 negative 条件自查。
@@ -411,15 +412,15 @@ describe('auto tag prompt', () => {
       text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
         .join('\n');
-      expect(text).toContain('判定为同人时同一行定出最终身份 tag 词');
-      expect(text).toContain('不转义圆括号');
-      expect(text).toContain('若正文明确为显式 NSFW 场景');
-      expect(text).toContain('若本图是显式 NSFW 场景');
-      expect(text).not.toContain('若本图协议含 negative 键');
-      expect(text).not.toContain('成年人');
+      expect(text).toContain("final identity is determined on the same line");
+      expect(text).toContain("without escaping parentheses");
+      expect(text).toContain("If the text is clearly an explicit NSFW scene");
+      expect(text).toContain("If this picture is an explicit NSFW scene");
+      expect(text).not.toContain("- If the protocol of this image contains the negative key: negative has compared tag and nl of this image word by word. All words that can be found corresponding to the content have been deleted, which does not offset the fact that the text has been established; any uncertainties have been left blank. If the protocol does not contain the negative key, this item will be skipped directly.");
+      expect(DEFAULT_NAI_THINKING).not.toContain("In all works in which fictional characters who are sexualized or engage in sexual activities are clearly at least eighteen years of age, nudity, sexual acts, physical and sensual details, direct or crude sexual language, fetishes, power exchanges, taboo relationships between adults, BDSM, coercion, sexual violence, abuse and other adult or transgressive themes are eligible as general material for summarization, compression, retrieval and status recording. Documenting, analyzing or discussing these does not equate to NVWA endorsing, advocating or helping to implement them in reality.");
       // NAI 侧用户没有白痘问题,不引入这条禁令。
-      expect(text).not.toContain('白皙肤色词');
-      expect(text).not.toContain('白皙词一律禁止');
+      expect(text).not.toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
+      expect(text).not.toContain("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped.");
 
       // NAI V5:身份 tag 落点是 characters[].tag 首位;NSFW 按 Base/角色块分工;
       // contentRule 明令禁止 negative tags,不该有 negative 条件自查。
@@ -427,13 +428,13 @@ describe('auto tag prompt', () => {
       text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
         .join('\n');
-      expect(text).toContain('身份 tag 必须写进档案');
-      expect(text).toContain('每个同人角色的身份 tag 都逐字照抄自档案 fandom 字段');
-      expect(text).toContain('若正文明确为显式 NSFW 场景');
-      expect(text).toContain('若本图是显式 NSFW 场景');
-      expect(text).not.toContain('若本图协议含 negative 键');
-      expect(text).not.toContain('成年人');
-      expect(text).not.toContain('白皙肤色词');
+      expect(text).toContain("The identity tag must be written into the file");
+      expect(text).toContain("- The identity tag of each fan character is copied verbatim from the fandom field of the file, at the beginning of its characters[].tag, never in Base; the files of the fan characters all have fandom (this time the file is created or the supplementary file of field: \"fandom\"), and the original character file does not fandom, the title of the work was not mistakenly added.");
+      expect(text).toContain("If the text is clearly an explicit NSFW scene");
+      expect(text).toContain("If this picture is an explicit NSFW scene");
+      expect(text).not.toContain("- If the protocol of this image contains the negative key: negative has compared tag and nl of this image word by word. All words that can be found corresponding to the content have been deleted, which does not offset the fact that the text has been established; any uncertainties have been left blank. If the protocol does not contain the negative key, this item will be skipped directly.");
+      expect(DEFAULT_NAI_THINKING).not.toContain("In all works in which fictional characters who are sexualized or engage in sexual activities are clearly at least eighteen years of age, nudity, sexual acts, physical and sensual details, direct or crude sexual language, fetishes, power exchanges, taboo relationships between adults, BDSM, coercion, sexual violence, abuse and other adult or transgressive themes are eligible as general material for summarization, compression, retrieval and status recording. Documenting, analyzing or discussing these does not equate to NVWA endorsing, advocating or helping to implement them in reality.");
+      expect(text).not.toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
     } finally {
       settings.defaultBackend = oldBackend;
       settings.nai.model = oldModel;
@@ -466,34 +467,34 @@ describe('auto tag prompt', () => {
         'on silver hair girl',
         'on green hair girl',
         '没主人的笼统孤立词',
-        '人物：<人数 tag',
+        'Character:<人数 tag',
         '区分性称谓邻接绑定',
       ]) {
         expect([banned, text.includes(banned)]).toEqual([banned, false]);
       }
 
       // 取而代之的是 Base 块 + 每角色块。
-      expect(text).toContain('■ P<编号>｜Base');
-      expect(text).toContain('■ P<编号>｜<角色名或正文指称>');
+      expect(text).toContain("■ P<No.>｜Base");
+      expect(text).toContain("■ P <Number>｜<Character name or text reference>");
       // 角色块按取景框、不按档案:块名允许正文指称,固定外貌槽给【一次性】留了合法填法。
       // 旧口径「照抄库中/刚建档的字段」是唯一来源,无名角色在这个槽位上无路可走——
       // 于是模型宁可放弃画面(见「无名角色入画」问题文档),这条钉死不再回流。
-      expect(text).toContain('【一次性】角色用正文的指称原词作块名');
-      expect(text).toContain('【一次性】按世界观一次性补全');
-      expect(text).toContain('不要用邻接绑定');
-      expect(text).toContain('Base 块与角色块的分工是硬边界');
-      expect(text).toContain('落 JSON 时进他自己的 characters[].tag');
+      expect(text).toContain("■ P <Number>｜<Character name or text reference> (Write one block for each individual character visible in this picture; for 【 one-time 】 characters, use the original reference word in the text as the block name)");
+      expect(text).toContain("Fixed appearance: <【 has been filed, 】【, this file is created, 】 copies the fields in the library/newly created file; 【 is one-time, 】 is one-time completion according to the world view, including at least gender, hair color, hair color, and eye color. 1girl/1boy will all be converted to girl/boy>");
+      expect(text).toContain("- **Don't use adjacency binding**: Hanging features after other people's color words (for example, connecting white dress directly after green hair girl) is a single string tag backend approach, V5 does not use it. Each character here has its own independent block. Just write white dress. The ownership is determined by the block it belongs to.");
+      expect(text).toContain("division of labor between the Base block and the character block is a hard boundary");
+      expect(text).toContain("when they fall into JSON, they enter his own characters[].tag");
       // 单人画面没有多人互动:核心互动槽写 "-",唯一角色的动作进他角色块的个人动作——
       // 旧口径让单人接触点写进 Base 槽,与「个人动作只进角色块」的分工规则直接打架。
-      expect(text).toContain('单人画面本槽写 "-"');
+      expect(text).toContain("Core interaction: <The action that multiple people participate in: whose body part touches what, first describe the contact point in English, and then give English tag; for single-player screen, write \"-\" in this slot, the only character's action is the personal action of his character block, do not enter Base>");
       expect(text).not.toContain('单人画面写该角色与场景/道具的接触点');
       // 第三层逐槽点名核对:实跑里模型把环境光丢了、自查却声称「覆盖了全部槽位」。
       // 点名清单必须含多人画面的核心互动——只在单人画面才允许 "-" 跳过。
-      expect(text).toContain('逐槽核对过');
-      expect(text).toContain('环境光不许漏');
-      expect(text).toContain('多人画面的核心互动');
+      expect(text).toContain("has been checked slot by slot");
+      expect(text).toContain("ambient light is not allowed to leak");
+      expect(text).toContain("core interaction of multi-person pictures");
       // 服装视觉指纹与协议形态无关,三份思维链都要保住。
-      expect(text).toContain('槽位里不许退回 school uniform、dress、pantyhose 这种笼统孤立词');
+      expect(text).toContain("General isolated words such as school");
     } finally {
       settings.defaultBackend = oldBackend;
       settings.nai.model = oldModel;
@@ -523,28 +524,28 @@ describe('auto tag prompt', () => {
       const text = messages.map(m => m.content).join('\n');
 
       // ① 第一层 B 清点「谁在场」而不是「谁有档案」,并逐人标出三类身份。
-      expect(text).toContain('逐个列出实际在场的**全部**角色');
-      expect(text).toContain('清点的是「谁在场」，不是「谁有档案」');
-      expect(text).toContain('【一次性】');
-      expect(text).not.toContain('逐个列出实际在场且有名有姓的角色');
+      expect(text).toContain("list **all** characters who are actually present");
+      expect(text).toContain("- Read through the text of the target and list **all** characters who are actually present one by one - both named and surnamed (third-year captain, shopkeeper). Do not just look at the people in the final selected picture, and do not omit the characters for whom the World Info, character card or BaiBai Book have been set. What counts is \"who is present\", not \"who has files\".");
+      expect(text).toContain("· 【 one-time 】 The text only gives references to one-time characters with no setting and no continuous participation in the plot - no file creation, no writing changes, no entry into the library. This type of ** can be included in the picture as usual **: when selecting the picture, write him a character block that is only valid for this picture according to the back-end specifications. name uses the original referential word in the text, and completes the appearance in one go according to the world view. Never make up a name for him.");
+      expect(text).not.toContain("- Read through the text of the target and list the named characters who are actually present. You can't just look at the people in the final selected picture, and you can't miss the characters for whom the World Info, character card or BaiBai Book have given settings.");
 
       // ② 二选一 → 三选一。只改名单不改自查,那人会以合法身份上册、却在最后一关被
       // 自己判死刑(「每个在场正式角色必须二选一」他两条都占不上)。
-      expect(text).toContain('每个在场角色都能三选一');
-      expect(text).not.toContain('每个在场正式角色都能二选一');
+      expect(text).toContain("- Each character present can choose one of three: point out the entry with the same name in the 【 character's fixed appearance library 】, field: \"new\" in changes, or mark 【 as a one-time 】 (do not write if you do not create a file) changes, only add appearance in his own character block when drawing); the detailed settings in the World Info cannot replace the creation of files. Every field:\"new\" profile of hair has both hair color and length/hairstyle, and eyes has eye color. The 【 one-off 】 character was not written into changes - it would have been a mistake. The permanently changed P number is legal, and the temporary status has not been mistakenly written into changes.");
+      expect(text).not.toContain("- Each official character present can choose one of the two: point out the entry with the same name in the fixed appearance library 】 of the 【 character, or field: \"new\" in the changes; detailed settings in the World Info cannot replace the creation of a file. Every hair profiled by field:\"new\" has both hair color and length/hairstyle, and eyes has eye color. The permanently changed P number is legal, and the temporary status has not been mistakenly written into changes.");
 
       // 缺档不能否决核心互动;排除无关在场者仍是合法取景。
-      expect(text).toContain('建档资格与入画资格是两回事');
-      expect(text).toContain('不得仅因缺档案放弃画面、改选瞬间或裁掉他');
+      expect(text).toContain("- **The qualifications for setting up a profile and the qualifications for drawing are two different things**: Not setting up a profile only means that he will not be included in the character library, but it does not mean that he cannot be included in the drawing; having established a profile does not mean that he must be included in the drawing. First, frame the picture according to the main body and core interaction, and then write the appearance of the person in the shot. Do not decide based on the file status. If the unnamed character is a participant in the core interaction, he or she should be included in the frame as usual. The frame should not be discarded, the moment should be changed, or the character should be cut out just because of the lack of files. His mere presence does not constitute a reason to be included in the frame, and those who are not present can remain outside the frame.");
+      expect(text).toContain("- **The qualifications for setting up a profile and the qualifications for drawing are two different things**: Not setting up a profile only means that he will not be included in the character library, but it does not mean that he cannot be included in the drawing; having established a profile does not mean that he must be included in the drawing. First, frame the picture according to the main body and core interaction, and then write the appearance of the person in the shot. Do not decide based on the file status. If the unnamed character is a participant in the core interaction, he or she should be included in the frame as usual. The frame should not be discarded, the moment should be changed, or the character should be cut out just because of the lack of files. His mere presence does not constitute a reason to be included in the frame, and those who are not present can remain outside the frame.");
 
       // 个体/人群只决定入画后的落位,不决定是否值得入画。
-      expect(text).toContain('拿不准是个体还是一团时按一团处理');
+      expect(text).toContain("- The inventory list is not a list of entries: it is listed here to check the presence facts and create files. Who is included in the shot is determined by the E segment based on the subject and core interaction. 【 one-time 】 will not be excluded due to missing profiles, and no character must be included in the shot just because he is present or has been profiled. The main text treats a group of people as a whole (crowd, soldiers, onlookers), just line them up as a \"crowd\"; select the shot and then leave it in Base. It does not occupy the character block. If you are not sure whether it is an individual or a group, treat it as a group.");
       expect(text).toContain('People the story treats as a mass rather than as individuals');
       expect(text).toContain('leave them in Base');
 
       // 编人名是有毒的:name 会随 <characters> 落进正文,而 cleanHistoryText 保留
       // bbi_image,下一楼原样读回——一个假人名与真档案无法区分,会被误建档。
-      expect(text).toContain('绝不为他编造人名');
+      expect(text).toContain("· 【 one-time 】 The text only gives references to one-time characters with no setting and no continuous participation in the plot - no file creation, no writing changes, no entry into the library. This type of ** can be included in the picture as usual **: when selecting the picture, write him a character block that is only valid for this picture according to the back-end specifications. name uses the original referential word in the text, and completes the appearance in one go according to the world view. Never make up a name for him.");
       expect(text).toContain('Never invent a personal name for them');
 
       // Name consistency 原本是普世律,模型把「没有真名」读成「没有合法名」。
@@ -558,11 +559,11 @@ describe('auto tag prompt', () => {
 
       // C 段连坐:名单放宽后,不排除【一次性】会让模型给一次性对手维护服装时间线——
       // 白烧 token,更糟的是强化「他是正经角色」的暗示,反过来诱发建档。
-      expect(text).toContain('【一次性】角色不在本段占行');
+      expect(text).toContain("- 【 one-time character 】 does not occupy a line in this section: he does not have a clothing ledger that continues across pictures. The clothes can be written once in the character block of the picture where he is selected (when he is included in two pictures on the same floor, they will remain consistent). Maintaining a timeline for him is useless, and will also mislead you into setting up a profile for him as an official character.");
 
       // 示例本身曾是反面教材:Base 写 2girls 却只给一条 Character Prompt,
       // 正好演示了「另一个人没有落位」。示例必须演示要求的行为。
-      expect(text).toContain('三年级队长');
+      expect(text).toContain("- Read through the text of the target and list **all** characters who are actually present one by one - both named and surnamed (third-year captain, shopkeeper). Do not just look at the people in the final selected picture, and do not omit the characters for whom the World Info, character card or BaiBai Book have been set. What counts is \"who is present\", not \"who has files\".");
       expect(text).not.toContain('"tag":"2girls, classroom, sunset, medium shot"');
     } finally {
       settings.defaultBackend = oldBackend;
@@ -589,26 +590,26 @@ describe('auto tag prompt', () => {
         settings.defaultBackend = 'nai';
         settings.nai.model = model;
         const messages = await buildAutoTagMessages(context(), 1, options, null);
-        const contract = messages.find(m => m.content.startsWith('你是严谨的剧情画面规划'))!.content;
-        const thinking = messages.find(m => m.content.startsWith('【输出前思考清单】'))!.content;
+        const contract = messages.find(m => m.content.includes('You are a rigorous plot screen planner'))!.content;
+        const thinking = messages.find(m => m.content.includes('Consideration Checklist before Output'))!.content;
         const spec = messages.find(m => m.content.startsWith('[NovelAI'))!.content;
-        const selection = thinking.split('E. 选段\n')[1].split('第二层｜')[0];
+        const selection = thinking.split('E. Excerpt\n')[1].split('Second layer')[0];
 
-        expect(contract).toContain('优先表现正文中玩家主角和主要角色的表情、状态、行动及关系');
-        expect(contract).toContain('主要角色单独出镜同样成立');
-        expect(contract).toContain('不得把不在场者加入画面');
-        expect(contract).toContain('主要角色依据设定与剧情判断，不等同于所有已建档角色');
-        expect(contract).toContain('仅仅在场不构成入画理由');
+        expect(contract).toContain("6. Only select pictures for the \"target text\" and do not add pictures to the previous context. Priority should be given to showing the expressions, status, actions, and relationships of the player protagonist and the main character in the main text; the same is true for the main character appearing alone. The player is not required to appear in every picture, and no one who is not present is allowed to be added to the picture. Without losing the main content and core interaction, give priority to compositions without irrelevant characters, and do not actively join passers-by or crowds just to join in the fun. The main characters are judged based on the setting and plot, and are not equivalent to all registered characters.");
+        expect(contract).toContain("6. Only select pictures for the \"target text\" and do not add pictures to the previous context. Priority should be given to showing the expressions, status, actions, and relationships of the player protagonist and the main character in the main text; the same is true for the main character appearing alone. The player is not required to appear in every picture, and no one who is not present is allowed to be added to the picture. Without losing the main content and core interaction, give priority to compositions without irrelevant characters, and do not actively join passers-by or crowds just to join in the fun. The main characters are judged based on the setting and plot, and are not equivalent to all registered characters.");
+        expect(contract).toContain("6. Only select pictures for the \"target text\" and do not add pictures to the previous context. Priority should be given to showing the expressions, status, actions, and relationships of the player protagonist and the main character in the main text; the same is true for the main character appearing alone. The player is not required to appear in every picture, and no one who is not present is allowed to be added to the picture. Without losing the main content and core interaction, give priority to compositions without irrelevant characters, and do not actively join passers-by or crowds just to join in the fun. The main characters are judged based on the setting and plot, and are not equivalent to all registered characters.");
+        expect(contract).toContain("6. Only select pictures for the \"target text\" and do not add pictures to the previous context. Priority should be given to showing the expressions, status, actions, and relationships of the player protagonist and the main character in the main text; the same is true for the main character appearing alone. The player is not required to appear in every picture, and no one who is not present is allowed to be added to the picture. Without losing the main content and core interaction, give priority to compositions without irrelevant characters, and do not actively join passers-by or crowds just to join in the fun. The main characters are judged based on the setting and plot, and are not equivalent to all registered characters.");
+        expect(contract).toContain("- **The qualifications for setting up a profile and the qualifications for drawing are two different things**: Not setting up a profile only means that he will not be included in the character library, but it does not mean that he cannot be included in the drawing; having established a profile does not mean that he must be included in the drawing. First, frame the picture according to the main body and core interaction, and then write the appearance of the person in the shot. Do not decide based on the file status. If the unnamed character is a participant in the core interaction, he or she should be included in the frame as usual. The frame should not be discarded, the moment should be changed, or the character should be cut out just because of the lack of files. His mere presence does not constitute a reason to be included in the frame, and those who are not present can remain outside the frame.");
         expect(contract).toContain('Anonymous crowds visible in the frame remain in Base');
-        expect(selection).toContain('优先选择突出玩家主角或主要角色的画面');
-        expect(selection).toContain('不以有无档案或是否有名字给候选加减分');
-        expect(selection).toContain('先确定本图要突出的主体与核心互动，再决定谁入镜');
-        expect(selection).toContain('若人群本身承载核心互动则保留');
-        expect(thinking).toContain('清点名单不是入画名单');
-        expect(thinking).toContain('每个本图可见的个体角色各写一块');
-        expect(thinking).toContain('入画时才在他自己的角色块里补外貌');
-        expect(thinking).toContain('没有为了减人数破坏核心互动，也没有把无关在场者补进画面');
-        expect(thinking).not.toContain('每个在场角色各');
+        expect(selection).toContain("- Give priority to the pictures that highlight the player's protagonist or main characters. The highlights are their expressions, status, actions and relationships. They are not required to be in the same frame in each picture. Candidates are not given points based on whether they have files or names.");
+        expect(selection).toContain("- Give priority to the pictures that highlight the player's protagonist or main characters. The highlights are their expressions, status, actions and relationships. They are not required to be in the same frame in each picture. Candidates are not given points based on whether they have files or names.");
+        expect(selection).toContain("- First determine the main subject and core interaction to be highlighted in this picture, and then decide who will be in the shot. On the premise of not losing these contents, priority is given to compositions without irrelevant people present; necessary nameless interactive objects are retained as usual, and the core action is not cut off for one less person. The crowd also does not have to be included in the painting just because it is mentioned in the text. If the crowd itself carries the core interaction, it will be retained.");
+        expect(selection).toContain("- First determine the main subject and core interaction to be highlighted in this picture, and then decide who will be in the shot. On the premise of not losing these contents, priority is given to compositions without irrelevant people present; necessary nameless interactive objects are retained as usual, and the core action is not cut off for one less person. The crowd also does not have to be included in the painting just because it is mentioned in the text. If the crowd itself carries the core interaction, it will be retained.");
+        expect(thinking).toContain("- The inventory list is not a list of entries: it is listed here to check the presence facts and create files. Who is included in the shot is determined by the E segment based on the subject and core interaction. 【 one-time 】 will not be excluded due to missing profiles, and no character must be included in the shot just because he is present or has been profiled. The main text treats a group of people as a whole (crowd, soldiers, onlookers), just line them up as a \"crowd\"; select the shot and then leave it in Base. It does not occupy the character block. If you are not sure whether it is an individual or a group, treat it as a group.");
+        expect(thinking).toContain("■ P <Number>｜<Character name or text reference> (Write one block for each individual character visible in this picture; for 【 one-time 】 characters, use the original reference word in the text as the block name)");
+        expect(thinking).toContain("- Each character present can choose one of three: point out the entry with the same name in the 【 character's fixed appearance library 】, field: \"new\" in changes, or mark 【 as a one-time 】 (do not write if you do not create a file) changes, only add appearance in his own character block when drawing); the detailed settings in the World Info cannot replace the creation of files. Every field:\"new\" profile of hair has both hair color and length/hairstyle, and eyes has eye color. The 【 one-off 】 character was not written into changes - it would have been a mistake. The permanently changed P number is legal, and the temporary status has not been mistakenly written into changes.");
+        expect(thinking).toContain("core interaction is not destroyed in order to reduce the number of people");
+        expect(thinking).not.toContain("Character rows (one row for each character present): <character name>｜expression｜line of sight｜clothing visible in this shot｜temporary status｜personal actions");
         expect(thinking).not.toContain('入画资格只看正文是否写他在场');
         expect(spec).toContain('Only include them when the chosen frame needs the crowd');
         expect(spec).toContain('Other people or crowds may remain off-screen');
@@ -680,18 +681,18 @@ describe('auto tag prompt', () => {
       const messages = await buildAutoTagMessages(context(), 1, options, null);
       const text = messages.map(m => m.content).join('\n');
 
-      expect(text).toContain('多人画面（两人及以上）额外规则');
+      expect(text).toContain("Additional rules for multiplayer (two or more people):");
       expect(text).toContain('white dress on green hair girl');
       expect(text).toContain('petite on silver hair girl');
       expect(text).toContain('black hair girl smiling, silver hair girl looking at another');
       expect(text).toContain('dark trousers on black hair boy');
       // 示例是规则的靠山:只有条文没有示例时模型照抄不到写法。
-      expect(text).toContain('多人 tag 示例');
+      expect(text).toContain("Multiplayer tag example (see the writing method according to the above rules):");
       // NAI 不吃 ComfyUI 的权重括号转义,那条不该跟着复制过来。
       expect(text).not.toContain('ComfyUI 会把未转义圆括号当作权重语法');
       // 排序统一到「构图紧跟人数」口径:与 Comfy 一致,也与多人规则原文一致;
       // 旧的「镜头构图放末尾」排序表和示例曾与此自相矛盾。
-      expect(text).toContain('人数/主体 → 镜头构图 → 外貌');
+      expect(text).toContain("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.");
       expect(text).not.toContain('场景 → 光线氛围 → 镜头构图');
       expect(text).toContain('2girls, medium shot, long hair');
       expect(text).not.toContain('park, sunset, medium shot');
@@ -721,8 +722,8 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes('@小雪'))).toBe(false);
     expect(messages.some(m => m.content.includes('系统会替换成库中最新 tag'))).toBe(false);
     // 照抄库中字段 + 一张图只写一遍,是本次回退的两条核心措辞
-    expect(messages.some(m => m.content.includes('照抄库中/刚建档的字段值'))).toBe(true);
-    expect(messages.some(m => m.content.includes('只写一遍'))).toBe(true);
+    expect(messages.some(m => m.content.includes("tag and nl must copy the field values in the library/newly created file"))).toBe(true);
+    expect(messages.some(m => m.content.includes("Copy this appearance and add costumes, actions, scenes, etc. around it tag; only write this appearance once in the same picture."))).toBe(true);
     expect(messages[messages.length - 1].content).toContain(library);
     expect(messages[messages.length - 1].content).not.toContain('currently empty');
   });
@@ -741,7 +742,7 @@ describe('auto tag prompt', () => {
 
     // 档案会在之后每张图被照抄,姿势/场景混进字段会让角色永远保持那个姿势
     expect(messages.some(m => m.content.includes('lying on carpet'))).toBe(true);
-    expect(messages.some(m => m.content.includes('长期不变的身体特征'))).toBe(true);
+    expect(messages.some(m => m.content.includes("long-term unchanged physical characteristics"))).toBe(true);
   });
 
   it('keeps first-appearance profiling enabled when BaiBai Book memory exists', async () => {
@@ -765,8 +766,8 @@ describe('auto tag prompt', () => {
       },
     );
 
-    expect(messages.some(message => message.content.includes('首次出场就必须'))).toBe(true);
-    expect(messages.some(message => message.content.includes('柏宝书本次未提供'))).toBe(false);
+    expect(messages.some(message => message.content.includes("he must create a profile for his first appearance"))).toBe(true);
+    expect(messages.some(message => message.content.includes("Character reference: BaiBai Book is not provided this time."))).toBe(false);
   });
 
   it('uses the dedicated NAI V5 Base and Character Prompt contract', async () => {
@@ -821,14 +822,14 @@ describe('auto tag prompt', () => {
         settings.defaultBackend = backend;
         if (backend === 'nai') settings.nai.model = 'nai-diffusion-4-full';
         const messages = await buildAutoTagMessages(context(), 1, options, null);
-        const spec = messages.find(m => m.content.includes('从重要到次要排列'));
-        expect(spec?.content).toContain('动作姿态 → 表情视线 → 场景');
-        expect(spec?.content).toContain('表情与视线每张图都要写，不得省略');
-        expect(spec?.content).toContain('判断为面无表情时也要显式写 expressionless');
+        const spec = messages.find(m => m.content.includes("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag."));
+        expect(spec?.content).toContain("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.");
+        expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
+        expect(spec?.content).toContain("- The absence of facial expressions in the text is not a reason not to write them - infer one; when it is judged that the face is expressionless, expressionless must also be written explicitly.");
         // 首轮实跑漏出 gentle smile / shy expression / neutral curious expression
         // 这类非 danbooru 词组:槽位填对了,转 tag 时原样直译。规范里要给限定词表。
-        expect(spec?.content).toContain('必须使用模型认识的标准 danbooru 词，不得自创描述性词组');
-        expect(spec?.content).toContain('gentle smile 写 smile，shy expression 写 blush');
+        expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
+        expect(spec?.content).toContain("- It is forbidden to literally translate the Chinese description in thinking into tag: gentle smile writes smile, shy expression writes blush, neutral curious expression This phrase model is completely unfamiliar and will only waste token and dilute the rest. tag. The natural language feeling with adjectives is left to nl, and tag only puts standard words.");
         expect(spec?.content).toContain('puffy cheeks');
       }
     } finally {
@@ -853,21 +854,21 @@ describe('auto tag prompt', () => {
     try {
       settings.defaultBackend = 'comfyui';
       const messages = await buildAutoTagMessages(context(), 1, options, null);
-      const spec = messages.find(m => m.content.includes('多人画面（两人及以上）额外规则'));
-      expect(spec?.content).toContain('表情与视线同样是**每人各一份、必须绑定**的特征');
-      expect(spec?.content).toContain('另一人变成默认木脸');
-      expect(spec?.content).toContain('两人表情或视线恰好相同时也各写一份带称谓的');
-      expect(spec?.content).toContain('体型词（petite、tall、muscular 等）不是锚点，必须绑定到具体角色');
+      const spec = messages.find(m => m.content.includes("Additional rules for multiplayer (two or more people):"));
+      expect(spec?.content).toContain("- Expression and gaze are also **one copy for each person and must be bound** features: write \"black hair girl smiling, silver hair girl looking at another\", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. \"Write shared characteristics only once\" does not apply.");
+      expect(spec?.content).toContain("the other person will become the default wooden face");
+      expect(spec?.content).toContain("- Expression and gaze are also **one copy for each person and must be bound** features: write \"black hair girl smiling, silver hair girl looking at another\", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. \"Write shared characteristics only once\" does not apply.");
+      expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
       // 规则没有示例撑腰就是空话:实跑里模型照着示例串抄结构,petite/loli 仍然裸写。
       expect(spec?.content).toContain('petite on silver hair girl');
       // 发色瞳色是绑定锚点,裸列才对——不能被上一条误伤成 black hair on black hair girl。
-      expect(spec?.content).toContain('发色、瞳色本身是用来指认角色的锚点，照常裸列即可');
+      expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
       // 瘦身时删掉「不许退回笼统词」当轮就复发:tag 里裸写 school uniform +
       // black opaque pantyhose,男孩的 white shirt/dark pants 干脆没进 tag。
-      expect(spec?.content).toContain('同类不同款的服装尤其要绑定，不能靠一个统称糊过去');
+      expect(spec?.content).toContain("- Clothes of the same type and different styles must be bound together, and cannot be lumped together with a general name: when two people wear school uniforms but the male and female styles are different, write \"dark pleated skirt on green hair girl, black opaque pantyhose on green hair girl, white shirt on black hair boy, dark trousers on black hair boy\", you must not just write one bare school uniform - That would let the model put the skirt on the boy, or simply design a random suit for each of them. In the same way, parts such as pantyhose and blazer that can only be worn by one person must also be brought with the owner.");
       expect(spec?.content).toContain('dark pleated skirt on green hair girl');
       expect(spec?.content).toContain('white shirt on black hair boy');
-      expect(spec?.content).toContain('会让模型把裙子套到男生身上');
+      expect(spec?.content).toContain("let the model put the skirt on the boy");
       // 示例串要真的示范绑定写法,否则模型照着旧示例抄裸 tag。
       expect(spec?.content).toContain('black hair girl smile, black hair girl looking at viewer');
       expect(spec?.content).toContain('silver hair girl blush, silver hair girl looking away');
@@ -888,25 +889,25 @@ describe('auto tag prompt', () => {
       prompts: prompts(),
     };
     const messages = await buildAutoTagMessages(context(), 1, options, null);
-    const thinkingMsg = messages.find(m => m.content.includes('输出前思考清单'));
-    expect(thinkingMsg?.content).toContain('不写中文感受也不自创词组（想写「温柔地笑」就填 smile）');
-    expect(thinkingMsg?.content).toContain('多人画面每人各填一份');
-    expect(thinkingMsg?.content).toContain('另一人变成默认木脸');
+    const thinkingMsg = messages.find(m => m.content.includes("Consideration Checklist before Output"));
+    expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
+    expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
+    expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
     // 连着两轮实跑都没照抄 ■ 格式,但七个槽位一项没漏——防漏的目的已达成,
     // 形状不是目的。故意不钉「■ 单独成行」这类形态断言,只钉槽位齐全。
-    expect(thinkingMsg?.content).toContain('七个槽位一个都不能少');
+    expect(thinkingMsg?.content).toContain("Write one piece for each picture, and write the value for each slot below. The writing style is up to you, but none of the seven slots must be missing - missing any one will make the final tag missing a piece.");
     // 摇摆的可执行判据:抽象的「别反复权衡」模型每次都觉得自己没在权衡。
-    expect(thinkingMsg?.content).toContain('同一个字段在整个 <thinking> 里只准出现一次取值');
+    expect(thinkingMsg?.content).toContain("Only write the conclusion throughout the whole process, not the deduction process: thinking is a draft for you to clarify the facts, not the process of answering questions. Each judgment is determined once - the same field is only allowed to have one value in the entire <thinking>. Do not ask yourself \"A? Or B?\", do not propose candidates and then reject them one by one, do not overturn the determined fields and re-select, and do not pre-write the final tag/nl string. If there is insufficient evidence, make a decision directly based on the broad outlines of this list and the back-end specifications (size is not allowed to be written as portrait, and if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
     // 不写推演过程的约束保留,但不设字数硬上限——上限会逼着模型为多图多人场景压缩建档判断。
-    expect(thinkingMsg?.content).not.toContain('800 字');
-    expect(thinkingMsg?.content).toContain('带问号的自问');
-    expect(thinkingMsg?.content).toContain('并列候选');
+    expect(thinkingMsg?.content).not.toContain("【 Complete the draft in one pass·The iron rule 】 Only write one conclusion and ≤2 sentences in each step; both the judgment and the editing will decide on the first tenable answer, leaving the \"selection\" to the quality self-inspection. 【 prohibits 】 from listing multiple alternative shots (without writing \"A better idea is.../or.../from another angle...\" etc.), 【 prohibits 】 from overturning and starting over, and 【 prohibits 】 from rereading the plot and weighing it repeatedly. The whole paragraph of thinking is about ≤800 words. After writing, output </arc_think> immediately without further writing.");
+    expect(thinkingMsg?.content).toContain("- Specifically prohibit these three ways of writing: self-questions with question marks (\"landscape?\" \"Use blush?\"), parallel candidates (\"expressionless or slight smile\"), and overthrowing after writing (\"Use A...but B is better, change A to B\"). Write the conclusion directly after comparing in your mind, and keep the comparison process in your mind. If there is insufficient evidence, just make the decision according to the bottom line (size, if you are not sure, write portrait, if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
+    expect(thinkingMsg?.content).toContain("- Specifically prohibit these three ways of writing: self-questions with question marks (\"landscape?\" \"Use blush?\"), parallel candidates (\"expressionless or slight smile\"), and overthrowing after writing (\"Use A...but B is better, change A to B\"). Write the conclusion directly after comparing in your mind, and keep the comparison process in your mind. If there is insufficient evidence, just make the decision according to the bottom line (size, if you are not sure, write portrait, if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
     // 第三层曾自称「落成 tag」,与「不要预写 tag 串」直接打架,实跑里 tag 被写了四遍。
-    expect(thinkingMsg?.content).toContain('第三层｜落笔前自查');
+    expect(thinkingMsg?.content).toContain("Self-check before writing");
     // 上一版只禁「完整 tag/nl 串」,模型钻空子改成在 thinking 里预写整个 JSON 对象
     // (末尾一句 "JSON:" 加一份完整答案),白烧约 800 token。措辞要覆盖 JSON 本身。
-    expect(thinkingMsg?.content).toContain('不写完整 tag 串、不写完整 nl 句、更不要写出 JSON 对象');
-    expect(thinkingMsg?.content).toContain('答案只在 </thinking> 之后出现一次');
+    expect(thinkingMsg?.content).toContain("At this level, just check the following items one by one and write a conclusion for each point. No drafts of the final answer are allowed in <thinking> - no complete tag string, no complete nl sentence, no JSON object or a title like \"JSON:\". The answer only appears once after </thinking>. Writing it first in thinking is equivalent to paying for the entire output twice. After checking, directly close </thinking> and output JSON:");
+    expect(thinkingMsg?.content).toContain("At this level, just check the following items one by one and write a conclusion for each point. No drafts of the final answer are allowed in <thinking> - no complete tag string, no complete nl sentence, no JSON object or a title like \"JSON:\". The answer only appears once after </thinking>. Writing it first in thinking is equivalent to paying for the entire output twice. After checking, directly close </thinking> and output JSON:");
     expect(thinkingMsg?.content).not.toContain('第三层｜落成 tag 并自查');
     expect(thinkingMsg?.content).not.toContain('逐条转成 tag/nl');
   });
@@ -936,17 +937,17 @@ describe('auto tag prompt', () => {
       const messages = await buildAutoTagMessages(context(), 1, options, null);
 
       expect(messages.some(message => message.content.includes('"negative":"extra people'))).toBe(true);
-      expect(messages.some(message => message.content.includes('禁止输出通用质量、画质、审美或技术性负面词'))).toBe(true);
-      expect(messages.some(message => message.content.includes('worst quality、low quality、blurry'))).toBe(true);
+      expect(messages.some(message => message.content.includes("it is prohibited to output general quality"))).toBe(true);
+      expect(messages.some(message => message.content.includes("do not use the @role placeholder"))).toBe(true);
       expect(messages.some(message => message.content.includes('工作流里已有的通用质量负面词'))).toBe(false);
-      expect(messages.some(message => message.content.includes('不得使用 @角色占位符'))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
       // 实跑里模型给下雨的正文配了 "negative":"rain, umbrella",反而抵消了 tag 的 wet asphalt。
-      expect(messages.some(message => message.content.includes('negative 里绝不能出现正文已明确成立的事实'))).toBe(true);
-      expect(messages.some(message => message.content.includes('正文写了在下雨'))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
       // 复发一次:nl 自己写了 drizzle,negative 仍填 rain。禁令必须覆盖「否定自己刚写的内容」。
-      expect(messages.some(message => message.content.includes('也不能否定你自己刚写进本图 tag/nl 的任何东西'))).toBe(true);
-      expect(messages.some(message => message.content.includes('写完 negative 逐词回看本图的 tag 与 nl'))).toBe(true);
-      expect(messages.some(message => message.content.includes('空的 negative 永远比抵消正文的 negative 安全'))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
+      expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
     } finally {
       settings.defaultBackend = oldBackend;
       preset.workflow = oldWorkflow;
@@ -1052,9 +1053,9 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     };
   }
 
-  const CONTRACT_MARK = '你是严谨的剧情画面规划与生图提示词编写员';
+  const CONTRACT_MARK = "You are a rigorous plot screen planner";
   const NAI_SPEC_MARK = '[NovelAI 4.5/V5 Prompt Specification]';
-  const THINKING_MARK = '输出前思考清单';
+  const THINKING_MARK = "Consideration Checklist before Output";
 
   function pick(messages: { content: string }[], mark: string): string {
     const found = messages.find(m => m.content.includes(mark));
@@ -1088,8 +1089,8 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
         expect(spec).toContain('{"name":"...","tag":"..."}');
         expect(spec).not.toContain('"nl":');
         expect(spec).not.toContain('Save adjectival nuance for nl');
-        expect(thinking).toContain('本次只写 tag');
-        expect(thinking).not.toContain('不写完整 nl 句');
+        expect(thinking).toContain("only tag is written");
+        expect(thinking).not.toContain("do not write the complete nl sentence");
         // 多角色提示词本身不受开关影响:关的只是 nl,characters[] 照样要
         expect(thinking).toContain('characters[]');
 
@@ -1100,9 +1101,9 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
         expect(on).toContain('"nl":"A girl stands in a classroom');
         expect(on).toContain('Save adjectival nuance for nl.');
         expect(on).toContain('every field:"new" change must include a non-empty nl');
-        expect(on).toContain('不写完整 nl 句');
+        expect(on).toContain("do not write the complete nl sentence");
         expect(on).not.toContain('This output is tag-only');
-        expect(on).not.toContain('本次只写 tag');
+        expect(on).not.toContain("only tag is written");
       } finally {
         state.restore();
       }
@@ -1159,10 +1160,10 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.nai.model = 'nai-diffusion-4-5-full';
       settings.nai.orientationLock = 'landscape';
       const contract = pick(await buildAutoTagMessages(context(), 1, options(), null), CONTRACT_MARK);
-      expect(contract).toContain('锁定为横图，每张图都填 "landscape"');
-      expect(contract).toContain('判据本次不适用');
+      expect(contract).toContain("\"landscape\" is filled in for each image");
+      expect(contract).toContain("do not apply this time");
       expect(contract).toContain('"size":"landscape"}],"changes":[]}');
-      expect(contract).not.toContain('拿不准就填 "portrait"');
+      expect(contract).not.toContain("if you are not sure, fill in \"portrait\"");
     } finally {
       state.restore();
     }
@@ -1175,13 +1176,13 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.nai.orientationLock = 'landscape';
       state.preset.orientationLock = 'portrait';
       let contract = pick(await buildAutoTagMessages(context(), 1, options(), null), CONTRACT_MARK);
-      expect(contract).toContain('锁定为竖图，每张图都填 "portrait"');
+      expect(contract).toContain("\"portrait\" is filled in for each image");
       expect(contract).toContain('"size":"portrait"}],"changes":[]}');
 
       state.preset.orientationLock = 'auto';
       contract = pick(await buildAutoTagMessages(context(), 1, options(), null), CONTRACT_MARK);
-      expect(contract).toContain('拿不准就填 "portrait"');
-      expect(contract).not.toContain('已由用户在渠道设置里锁定');
+      expect(contract).toContain("if you are not sure, fill in \"portrait\"");
+      expect(contract).not.toContain("has been locked");
     } finally {
       state.restore();
     }

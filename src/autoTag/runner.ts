@@ -82,7 +82,7 @@ function abort(
   payload: Record<string, unknown> = {},
 ): void {
   diagnostic('runForFloor:skip', { floor, reason, ...payload });
-  if (manual) toastr.warning(hint, '柏宝绘');
+  if (manual) toastr.warning(hint, 'BaiBai Image');
 }
 
 function activeSwipeId(message: STMessage): number | null {
@@ -115,19 +115,19 @@ interface RunOptions {
 
 /** 放弃写入的用户可读原因。文本变化已不在其中——那是正常情况,会 rebase 后照常写入。 */
 const ABANDON_REASON: Partial<Record<ApplyMessageResult, string>> = {
-  'chat-changed': '已切换聊天，本次没有写入生图 tag',
-  'floor-changed': '该楼层已被删除或替换，本次没有写入生图 tag',
-  'swipe-changed': '已切换 swipe，本次没有写入生图 tag',
-  'build-failed': '楼层正文已被大幅改写或已存在生图 tag，本次没有写入',
-  unavailable: '当前聊天不可写入，本次没有写入生图 tag',
+  'chat-changed': 'Chat has been switched, no pictures were written this time tag',
+  'floor-changed': 'This floor has been deleted or replaced, and no raw map is written this time tag',
+  'swipe-changed': 'swipe has been switched, and the raw image tag has not been written this time.',
+  'build-failed': 'The text of the floor has been greatly rewritten or the existing drawing tag has not been written this time.',
+  unavailable: 'The current chat cannot be written, no pictures are written this time tag',
 };
 
 /** 重定位结果的一行摘要;全部原位命中时返回空串(无需记日志)。 */
 function describeRebase(report: RebaseReport): string {
   if (!report.remapped && !report.drifted) return '';
-  const parts = [`原位 ${report.anchored}`];
-  if (report.remapped) parts.push(`跟随改写句 ${report.remapped}`);
-  if (report.drifted) parts.push(`顺延到上一段 ${report.drifted}`);
+  const parts = [`in situ ${report.anchored}`];
+  if (report.remapped) parts.push(`Follow the paraphrased sentence ${report.remapped}`);
+  if (report.drifted) parts.push(`Postponed to the previous paragraph ${report.drifted}`);
   return parts.join(' · ');
 }
 
@@ -187,11 +187,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     autoTagEnabled: settings.autoTag.enabled,
   });
   if (!context) {
-    abort(floor, 'missing-context', opts.manual, 'SillyTavern 还没就绪，请稍后重试');
+    abort(floor, 'missing-context', opts.manual, 'SillyTavern is not ready yet, please try again later.');
     return;
   }
   if (!settings.enabled) {
-    abort(floor, 'extension-disabled', opts.manual, '柏宝绘已停用，请先在插件设置里开启');
+    abort(floor, 'extension-disabled', opts.manual, 'BaiBai Image has been disabled. Please enable it in the plug-in settings first.');
     return;
   }
   if (!opts.manual && !settings.autoTag.enabled) {
@@ -201,7 +201,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
   // 排除角色闸门(与柏宝书同名单):该角色名所在聊天的自动 tag 全流程停用,
   // 手动按钮也在 actionButton 层撤掉,这里做兜底(手动触发时给反馈)。
   if (isCurrentChatExcluded()) {
-    abort(floor, 'chat-excluded', opts.manual, '该角色已被排除，不生成生图 tag');
+    abort(floor, 'chat-excluded', opts.manual, 'This character is excluded from image planning.');
     return;
   }
   const message = context.chat[floor];
@@ -215,7 +215,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     : null;
   // 与楼层按钮同一个谓词(st/context.ts):被 /hide 隐藏的普通楼算剧情楼,照样能跑
   if (!isAiStoryMessage(message)) {
-    abort(floor, 'not-ai-story-message', opts.manual, '这一楼不是可插图的剧情楼层（用户楼 / ST 系统楼）', {
+    abort(floor, 'not-ai-story-message', opts.manual, 'Only assistant story messages can be illustrated.', {
       message: messageDiagnostic,
     });
     return;
@@ -230,7 +230,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'slot-missing',
       true,
-      `第 ${slot.seq + 1} 张图片的提示词已不存在（可能已换 swipe 或被编辑），本次没有重写`,
+      `No. ${slot.seq + 1} The prompt word of this picture no longer exists (it may have been changed to swipe or edited), and it has not been rewritten this time.`,
     );
     return;
   }
@@ -242,16 +242,16 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'already-has-image-tag',
       opts.manual,
-      '本楼已有生图 tag，没有确认重新生成，本次未改动',
+      'There is already a picture of tag in this building. There is no confirmation to regenerate it. It has not been changed this time.',
     );
-    if (!opts.manual) console.debug(`[柏宝绘] 第 ${floor} 楼已经含有 bbi_image tag，跳过自动分析`);
+    if (!opts.manual) console.debug(`[BaiBai Image] No. ${floor} Floor already contains bbi_image tag, skip automatic analysis`);
     return;
   }
   // replace / slot:分析都基于剔除旧 tag 后的正文。写回时 replace 让旧 tag 随之消失,
   // slot 按 seq 原位替换——别的 tag 在写回基底里原样保留。
   const source = opts.replace || slot ? stripImageTags(rawSource) : rawSource;
   if (!source.trim()) {
-    abort(floor, 'empty-source', opts.manual, '本楼正文是空的（或只剩生图 tag），没有可分析的内容');
+    abort(floor, 'empty-source', opts.manual, 'The text of this page is empty (or only the raw picture tag is left), and there is no content that can be analyzed.');
     return;
   }
   const preparedTarget = prepareTargetText(source, settings.excludes.customStripTags);
@@ -260,7 +260,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'no-target-segments',
       opts.manual,
-      '本楼正文清洗后没剩下叙事内容（可能被「剔除标签」名单或思维链/注释规则全删了），没有可分析的段落',
+      'There is no narrative content left after cleaning the main text of this article (it may have been completely deleted by the "elimination tag" list or thought chain/annotation rules), and there are no paragraphs that can be analyzed.',
       { sourceLength: source.length },
     );
     return;
@@ -268,7 +268,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
 
   const chatId = context.getCurrentChatId?.() ?? '';
   if (!chatId) {
-    abort(floor, 'missing-chat-id', opts.manual, '当前没有打开的聊天，本次没有生成生图 tag');
+    abort(floor, 'missing-chat-id', opts.manual, 'There is currently no open chat, and no pictures are generated this time tag');
     return;
   }
   const swipeId = activeSwipeId(message);
@@ -353,16 +353,16 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
             profile.nl &&
             candidate.changes.some(change => change.field === 'new' && !change.nl?.trim())
           ) {
-            throw new Error('NAI 4.5/V5 建档必须附带 nl 外貌描述');
+            throw new Error('NAI 4.5/V5 file must be accompanied by nl appearance description');
           }
           parsed.plan = candidate;
         };
         // 有重试时给 source 带上第几次,历史里两条记录一眼看出是重试关系
         const source = slot
-          ? `重写提示词(第 ${floor} 楼 · 第 ${slot.seq + 1} 张${retries > 0 ? ` · 第 ${attempt + 1} 次` : ''})`
+          ? `Rewrite Prompt Words (No. ${floor} Floor · No. ${slot.seq + 1} image${retries > 0 ? ` · No. ${attempt + 1} times` : ''})`
           : retries > 0
-            ? `自动 tag(第 ${floor} 楼 · 第 ${attempt + 1} 次)`
-            : `自动 tag(第 ${floor} 楼)`;
+            ? `Automatic tag (No. ${floor} Floor · No. ${attempt + 1} times)`
+            : `Automatic tag (No. ${floor} floor)`;
         if (channel) {
           await requestCompletion(channel, messages, {
             signal: controller.signal,
@@ -387,15 +387,15 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           return;
         }
         lastError = error instanceof Error ? error.message : String(error);
-        console.warn(`[柏宝绘] 第 ${floor} 楼第 ${attempt + 1}/${retries + 1} 次生成 tag 失败`, error);
+        console.warn(`[BaiBai Image] No. ${floor} Building ${attempt + 1}/${retries + 1} Generation tag failed`, error);
       }
     }
     if (!plan) {
       // 重试耗尽:允许同一正文在后续重新渲染后再试
       processed.delete(identity);
       toastr.error(
-        `${lastError}${retries > 0 ? `(已自动重试 ${retries} 次)` : ''}`,
-        '柏宝绘自动 tag 失败',
+        `${lastError}${retries > 0 ? `(Automatically retried ${retries} times)` : ''}`,
+        'BaiBai Image automatic tag failed',
       );
       return;
     }
@@ -473,19 +473,19 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       // 模型认为这是角色、却没给它建档 —— 该角色在图里将完全没有外貌。
       // 这是漏建档唯一的确定性信号,藏进控制台等于没有,必须让用户看见。
       const names = [...unknownNames].join('、');
-      console.warn('[柏宝绘] AI 引用了库里没有的角色占位符,已剥除:', names);
-      toastr.warning(`角色「${names}」没有建档，本次画面中缺少其外貌`, '柏宝绘');
+      console.warn('[BaiBai Image] AI references a character placeholder that is not in the library and has been stripped:', names);
+      toastr.warning(`role "${names}"No file has been created, and his appearance is missing from this screen.`, 'BaiBai Image');
     }
 
     // 单槽重写没给出新提示词:保留原提示词与原图,不替换(空 images 不是错误)。
     if (slot && !plan.images.length) {
-      toastr.info('模型没有给出新的提示词，本张保持原样', '柏宝绘');
+      toastr.info('The model does not give new prompt words, and this picture remains as it is.', 'BaiBai Image');
       return;
     }
     // 没有图片、没有角色变化、也没有旧楼层变化要清理时,保持原来的无写入早退。
     if (!plan.images.length && !floorOps.length && !previousDelta) {
-      if (opts.manual) toastr.info('模型认为本楼没有值得插图的画面', '柏宝绘');
-      else console.debug(`[柏宝绘] 第 ${floor} 楼无需插图`);
+      if (opts.manual) toastr.info('The model believes that this building has no scenes worthy of illustration.', 'BaiBai Image');
+      else console.debug(`[BaiBai Image] No. ${floor} No illustration required`);
       return;
     }
 
@@ -545,17 +545,17 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     );
     if (result === 'saved') {
       if (slot) {
-        toastr.success(`已重写第 ${slot.seq + 1} 张的提示词，正在按新提示词出图`, '柏宝绘');
+        toastr.success(`rewritten ${slot.seq + 1} image’s prompt word, the picture is being produced according to the new prompt word`, 'BaiBai Image');
         return;
       }
       recomputeCharTags();
-      if (rebaseNote) console.info(`[柏宝绘] 第 ${floor} 楼 tag 位置重定位:${rebaseNote}`);
+      if (rebaseNote) console.info(`[BaiBai Image] No. ${floor} Floor tag location relocation:${rebaseNote}`);
       if (plan.images.length) {
-        toastr.success(`已在第 ${floor} 楼插入 ${plan.images.length} 个生图 tag`, '柏宝绘');
+        toastr.success(`Already in the ${floor} floor insert ${plan.images.length} Personality chart tag`, 'BaiBai Image');
       } else if (opts.manual) {
-        toastr.info('模型认为本楼没有值得插图的画面', '柏宝绘');
+        toastr.info('The model believes that this building has no scenes worthy of illustration.', 'BaiBai Image');
       } else {
-        console.debug(`[柏宝绘] 第 ${floor} 楼无需插图`);
+        console.debug(`[BaiBai Image] No. ${floor} No illustration required`);
       }
       return;
     }
@@ -564,12 +564,12 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       if (slot) consumeAutoGenerate(chatId, floor, markSwipeId, slot.seq);
       else clearAutoGenerateForFloor(chatId, floor);
     }
-    console.info(`[柏宝绘] 第 ${floor} 楼放弃写入生图 tag：${result}`);
+    console.info(`[BaiBai Image] No. ${floor} Lou gave up and wrote the picture tag:${result}`);
     // 单槽重写的放弃原因与全量不同:正文其它部分改没改不重要,关键是这一条 tag 被改过
     if (slot && result === 'build-failed') {
-      toastr.warning('这张图的提示词在生成期间已被改动，本次没有覆盖它', '柏宝绘');
+      toastr.warning('The prompt word of this picture has been changed during generation, and it has not been overwritten this time.', 'BaiBai Image');
     } else {
-      toastr.warning(ABANDON_REASON[result] ?? '本次没有写入生图 tag', '柏宝绘');
+      toastr.warning(ABANDON_REASON[result] ?? 'There is no raw picture tag written this time', 'BaiBai Image');
     }
   } catch (error) {
     // 请求失败或被切换聊天取消时允许同一正文在后续重新渲染后重试。
@@ -580,8 +580,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     else clearAutoGenerateForFloor(chatId, floor);
     if (controller.signal.aborted) return;
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[柏宝绘] 第 ${floor} 楼自动生成 tag 失败`, error);
-    toastr.error(message, '柏宝绘自动 tag 失败');
+    console.error(`[BaiBai Image] No. ${floor} Floor automatic generation tag failed`, error);
+    toastr.error(message, 'BaiBai Image automatic tag failed');
   } finally {
     if (running.get(runKey) === controller) running.delete(runKey);
   }

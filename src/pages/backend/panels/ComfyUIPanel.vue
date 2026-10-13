@@ -53,7 +53,7 @@ const inUse = computed(() => settings.defaultBackend === 'comfyui');
 const active = computed(() => activeComfyPreset());
 
 const workflowOptions = computed(() =>
-  settings.comfyui.workflows.map(w => ({ value: w.id, label: w.name || '未命名工作流' })),
+  settings.comfyui.workflows.map(w => ({ value: w.id, label: w.name || 'Unnamed workflow' })),
 );
 
 /**
@@ -92,7 +92,7 @@ function commitRename() {
 }
 
 function addWorkflow() {
-  const preset = newComfyWorkflow(`工作流 ${settings.comfyui.workflows.length + 1}`);
+  const preset = newComfyWorkflow(`Workflow ${settings.comfyui.workflows.length + 1}`);
   settings.comfyui.workflows.push(preset);
   switchTo(preset);
 }
@@ -103,7 +103,7 @@ function duplicateWorkflow() {
   const preset = {
     ...active.value,
     id: newComfyWorkflow().id,
-    name: `${active.value.name} 副本`,
+    name: `${active.value.name} copy`,
     simple: {
       ...active.value.simple,
       loras: active.value.simple.loras.map(lora => ({ ...lora })),
@@ -129,8 +129,8 @@ function confirmRemoveWorkflow() {
 // 分段开关文案要短(括注会让小药丸挤变形),含义靠下方的表单本身说明;
 // 顺序:默认项 custom 在左(与「存量预设/新预设都是自定义工作流」的口径一致)
 const modeOptions: Array<{ value: ComfyPresetMode; label: string }> = [
-  { value: 'custom', label: '自定义工作流' },
-  { value: 'simple', label: '简易参数' },
+  { value: 'custom', label: 'Custom workflow' },
+  { value: 'simple', label: 'Simple parameters' },
 ];
 
 const templateOptions = COMFY_TEMPLATE_OPTIONS;
@@ -151,14 +151,14 @@ async function onFetchModels(silent = false) {
     if (!silent) {
       toastr.success(
         lists.value.mode === 'server'
-          ? '已拉取模型列表(ST 转发;LoRA/CLIP 需手输文件名)'
-          : '已拉取模型列表',
-        '柏宝绘',
+          ? 'The model list has been pulled (ST forwarded; LoRA/CLIP needs to enter the file name manually)'
+          : 'Pulled model list',
+        'BaiBai Image',
       );
     }
   } catch (error) {
     fetchError.value = errorMessage(error);
-    if (!silent) toastr.error(fetchError.value, '拉取模型列表失败');
+    if (!silent) toastr.error(fetchError.value, 'Failed to pull model list');
   } finally {
     fetching.value = false;
   }
@@ -178,9 +178,9 @@ watch(
 // 状态行只在「有话要说」时出现:直连拉成功是常态,静默(候选已进 datalist);
 // 转发模式要提醒 LoRA/CLIP 拿不到;失败要留原因。手动点按钮的正反馈由 toastr 负责。
 const fetchStatus = computed(() => {
-  if (fetchError.value) return `拉取失败:${fetchError.value}`;
+  if (fetchError.value) return `Pull failed:${fetchError.value}`;
   if (!lists.value || lists.value.mode === 'browser') return '';
-  return 'ST 转发拿不到 LoRA/CLIP 列表,这两项需手输(ComfyUI 加 --enable-cors-header 可直连)';
+  return 'ST forwarding cannot get the LoRA/CLIP list, these two items need to be entered manually (ComfyUI plus --enable-cors-header can be directly connected)';
 });
 
 const modelOptions = computed(() => {
@@ -242,23 +242,23 @@ function removeLora(index: number) {
 const simpleState = computed(() => {
   const invalid = validateSimpleConfig(active.value.simple);
   return invalid
-    ? { tone: 'error', text: '未就绪', detail: invalid }
-    : { tone: 'ok', text: '有效', detail: '' };
+    ? { tone: 'error', text: 'Not ready', detail: invalid }
+    : { tone: 'ok', text: 'valid', detail: '' };
 });
 
 const nlHint = computed(() =>
   active.value.mode === 'simple'
-    ? '额外生成一段自然语言描述;简易模式下优先于 tag 作为正向提示词(Flux/Anima 建议开启)'
-    : '额外生成一段自然语言描述,随 %nl% 注入工作流',
+    ? 'Generate an additional natural language description; in simple mode, it takes precedence over tag as a positive prompt word (Flux/Anima is recommended to be turned on)'
+    : 'Generate an additional natural language description and inject it into the workflow with %nl%',
 );
 
 /** 药丸只显示一个词,具体原因放 title 悬浮提示,不占版面。 */
 const workflowState = computed(() => {
-  if (!active.value.workflow.trim()) return { tone: 'muted', text: '未填写', detail: '' };
+  if (!active.value.workflow.trim()) return { tone: 'muted', text: 'Not filled in', detail: '' };
   try {
     const placeholders = getWorkflowPlaceholders(active.value.workflow);
     if (!placeholders.includes('prompt')) {
-      return { tone: 'error', text: '缺 %prompt%', detail: 'JSON 有效，但缺少必需的 %prompt% 占位符' };
+      return { tone: 'error', text: 'Missing %prompt%', detail: 'JSON is valid but missing the required %prompt% placeholder' };
     }
     const unknown = placeholders.filter(
       name => !['prompt', 'negative_prompt', 'seed', 'nl', 'width', 'height'].includes(name),
@@ -266,22 +266,22 @@ const workflowState = computed(() => {
     if (unknown.length) {
       return {
         tone: 'error',
-        text: '占位符不支持',
-        detail: `暂不支持：${unknown.map(name => `%${name}%`).join('、')}`,
+        text: 'Placeholder is not supported',
+        detail: `Not supported yet:${unknown.map(name => `%${name}%`).join('、')}`,
       };
     }
     return {
       tone: 'ok',
-      text: '有效',
-      detail: `已识别 ${placeholders.map(name => `%${name}%`).join('、')}`,
+      text: 'valid',
+      detail: `Recognized ${placeholders.map(name => `%${name}%`).join('、')}`,
     };
   } catch (error) {
-    return { tone: 'error', text: 'JSON 无效', detail: errorMessage(error) };
+    return { tone: 'error', text: 'JSON is invalid', detail: errorMessage(error) };
   }
 });
 
 function errorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'AbortError') return '操作已取消';
+  if (error instanceof DOMException && error.name === 'AbortError') return 'Operation canceled';
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -290,22 +290,22 @@ async function onTestConnection() {
   testing.value = true;
   try {
     const result = await testComfyConnection(effectiveComfyConn());
-    toastr.success(result.mode === 'server' ? 'ComfyUI 连接正常（ST 后端转发）' : 'ComfyUI 连接正常（浏览器直连）');
+    toastr.success(result.mode === 'server' ? 'ComfyUI connection is normal (ST backend forwarding)' : 'ComfyUI connection is normal (browser direct connection)');
   } catch (error) {
-    toastr.error(errorMessage(error), 'ComfyUI 连接失败');
+    toastr.error(errorMessage(error), 'ComfyUI connection failed');
   } finally {
     testing.value = false;
   }
 }
 
 const purposeLabels: Record<WorkflowBindingPurpose, string> = {
-  positive_tag: '正向 tag',
-  positive_nl: '独立自然语言',
-  positive_combined: '正向 tag + 自然语言共用',
-  negative: '负面提示词',
-  seed: '随机种子',
-  width: '主画布宽度',
-  height: '主画布高度',
+  positive_tag: 'Forward tag',
+  positive_nl: 'independent natural language',
+  positive_combined: 'Forward tag + natural language sharing',
+  negative: 'negative cue words',
+  seed: 'random seed',
+  width: 'Main canvas width',
+  height: 'Main canvas height',
 };
 
 async function onAutoConfigure() {
@@ -315,7 +315,7 @@ async function onAutoConfigure() {
   try {
     const result = await configureWorkflowWithAi(active.value.workflow);
     if (!result.changes.length) {
-      toastr.info('工作流中的动态参数已经配置，无需修改', '柏宝绘');
+      toastr.info('The dynamic parameters in the workflow have been configured and do not need to be modified.', 'BaiBai Image');
       return;
     }
     assistResult.value = result;
@@ -323,7 +323,7 @@ async function onAutoConfigure() {
     assistTargetId.value = targetId;
     assistOpen.value = true;
   } catch (error) {
-    toastr.error(errorMessage(error), 'AI 配置工作流失败');
+    toastr.error(errorMessage(error), 'AI Failed to configure workflow');
   } finally {
     configuring.value = false;
   }
@@ -339,18 +339,18 @@ function closeAssist() {
 function applyAssist() {
   try {
     const target = settings.comfyui.workflows.find(w => w.id === assistTargetId.value);
-    if (!target) throw new Error('目标工作流已被删除，请重新配置');
+    if (!target) throw new Error('The target workflow has been deleted, please reconfigure it');
     const placeholders = getWorkflowPlaceholders(assistDraft.value);
-    if (!placeholders.includes('prompt')) throw new Error('预览工作流缺少 %prompt% 占位符');
+    if (!placeholders.includes('prompt')) throw new Error('Preview workflow is missing %prompt% placeholder');
     target.workflow = assistDraft.value;
     const name = target.name;
     closeAssist();
-    toastr.success(`已应用 AI 配置的工作流（${name}）`, '柏宝绘');
+    toastr.success(`Workflow with AI configuration applied (${name}）`, 'BaiBai Image');
     if (placeholders.includes('nl') && !target.naturalLanguage) {
-      toastr.info('工作流已配置 %nl%；需要时请开启「生成自然语言」', '柏宝绘');
+      toastr.info('Workflow has been configured %nl%; please turn on "Generate Natural Language" if needed', 'BaiBai Image');
     }
   } catch (error) {
-    toastr.error(errorMessage(error), '工作流无法应用');
+    toastr.error(errorMessage(error), 'Workflow cannot be applied');
   }
 }
 </script>
@@ -358,7 +358,7 @@ function applyAssist() {
 <template>
   <div class="panel">
     <div class="bbi-sections">
-      <Collapsible title="配置" :open="false">
+      <Collapsible title="Config" :open="false">
         <div class="api-row">
           <span class="bbi-field-label">URL</span>
           <input
@@ -371,34 +371,34 @@ function applyAssist() {
         </div>
 
         <div class="conn-actions">
-          <span v-if="inUse" class="conn-inuse"><Icon name="check" :size="13" /> 当前出图渠道</span>
+          <span v-if="inUse" class="conn-inuse"><Icon name="check" :size="13" /> Active image backend</span>
           <button
             v-else
             class="bbi-btn conn-use"
             type="button"
             @click="settings.defaultBackend = 'comfyui'"
           >
-            使用此渠道出图
+            Use this channel to publish pictures
           </button>
           <button class="bbi-btn" type="button" :disabled="testing" @click="onTestConnection">
             <Icon name="plug" />
-            {{ testing ? '连接中…' : '测试连接' }}
+            {{ testing ? 'Connecting…' : 'Test connection' }}
           </button>
         </div>
       </Collapsible>
 
-      <Collapsible title="工作流" :open="false">
+      <Collapsible title="Workflow" :open="false">
         <div class="wf-row">
-          <span class="bbi-field-label">当前工作流</span>
+          <span class="bbi-field-label">Current workflow</span>
           <input
             v-if="renaming"
             ref="renameInput"
             class="bbi-input"
             type="text"
             v-model="renameDraft"
-            placeholder="工作流名称"
+            placeholder="Workflow name"
             spellcheck="false"
-            title="Enter 确认，Esc 取消"
+            title="Enter confirmed, Esc canceled"
             @keydown.enter.prevent="commitRename"
             @keydown.esc.stop.prevent="renaming = false"
             @blur="commitRename"
@@ -408,14 +408,14 @@ function applyAssist() {
             class="wf-select"
             v-model="activeId"
             :options="workflowOptions"
-            aria-label="当前工作流"
+            aria-label="Current workflow"
           />
           <span v-if="!renaming" class="wf-ops">
             <button
               class="bbi-icon-btn wf-op"
               type="button"
-              title="重命名当前工作流"
-              aria-label="重命名当前工作流"
+              title="Rename current workflow"
+              aria-label="Rename current workflow"
               @click="startRename"
             >
               <Icon name="edit" :size="14" />
@@ -423,8 +423,8 @@ function applyAssist() {
             <button
               class="bbi-icon-btn wf-op"
               type="button"
-              title="新建一套空工作流"
-              aria-label="新建一套空工作流"
+              title="Create a new empty workflow"
+              aria-label="Create a new empty workflow"
               @click="addWorkflow"
             >
               <Icon name="plus" :size="14" />
@@ -432,8 +432,8 @@ function applyAssist() {
             <button
               class="bbi-icon-btn wf-op"
               type="button"
-              title="复制当前工作流(含开关与尺寸)"
-              aria-label="复制当前工作流"
+              title="Copy current workflow (including switches and dimensions)"
+              aria-label="Copy current workflow"
               @click="duplicateWorkflow"
             >
               <Icon name="copy" :size="14" />
@@ -442,8 +442,8 @@ function applyAssist() {
               class="bbi-icon-btn wf-op wf-remove"
               type="button"
               :disabled="!canRemove"
-              :title="canRemove ? '删除当前工作流' : '至少要保留一套工作流'"
-              aria-label="删除当前工作流"
+              :title="canRemove ? 'Delete current workflow' : 'Keep at least one set of workflows'"
+              aria-label="Delete current workflow"
               @click="confirmDeleteOpen = true"
             >
               <Icon name="trash" :size="14" />
@@ -456,7 +456,7 @@ function applyAssist() {
 
         <!-- 配置方式:分段开关二选一(复用全局 bbi-segmented;两个选项用下拉太重),状态药丸居右 -->
         <div class="wf-mode-bar">
-          <div class="bbi-segmented" role="tablist" aria-label="配置方式">
+          <div class="bbi-segmented" role="tablist" aria-label="Configuration method">
             <button
               v-for="opt in modeOptions"
               :key="opt.value"
@@ -481,13 +481,13 @@ function applyAssist() {
         </div>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">生成自然语言</span>
+          <span class="bbi-field-label">Generate natural language</span>
           <input v-model="active.naturalLanguage" type="checkbox" class="bbi-checkbox" />
         </label>
         <p class="bbi-field-hint wf-switch-hint">{{ nlHint }}</p>
 
         <div class="bbi-num-row">
-          <span class="bbi-field-label">竖屏尺寸(宽×高)</span>
+          <span class="bbi-field-label">Portrait size (width × height)</span>
           <input
             class="bbi-input wf-size"
             type="text"
@@ -497,14 +497,14 @@ function applyAssist() {
             spellcheck="false"
           />
           <datalist id="comfy-portrait-presets">
-            <option value="832×1216">竖版</option>
-            <option value="1024×1536">大竖版</option>
-            <option value="1024×1024">方图</option>
+            <option value="832×1216">vertical version</option>
+            <option value="1024×1536">Large vertical version</option>
+            <option value="1024×1024">square diagram</option>
           </datalist>
         </div>
 
         <div class="bbi-num-row">
-          <span class="bbi-field-label">横屏尺寸(宽×高)</span>
+          <span class="bbi-field-label">Landscape size (width × height)</span>
           <input
             class="bbi-input wf-size"
             type="text"
@@ -514,15 +514,15 @@ function applyAssist() {
             spellcheck="false"
           />
           <datalist id="comfy-landscape-presets">
-            <option value="1216×832">横版</option>
-            <option value="1536×1024">大横版</option>
-            <option value="1024×1024">方图</option>
+            <option value="1216×832">Horizontal version</option>
+            <option value="1536×1024">Large horizontal version</option>
+            <option value="1024×1024">square diagram</option>
           </datalist>
         </div>
 
         <div class="bbi-select-row">
-          <span class="bbi-field-label">画幅方向</span>
-          <div class="bbi-segmented" role="tablist" aria-label="工作流画幅方向">
+          <span class="bbi-field-label">Frame direction</span>
+          <div class="bbi-segmented" role="tablist" aria-label="Workflow frame direction">
             <button
               v-for="opt in ORIENTATION_LOCKS"
               :key="opt.value"
@@ -538,8 +538,8 @@ function applyAssist() {
           </div>
         </div>
         <p class="bbi-field-hint wf-switch-hint">
-          「自动」由自动 tag 按画面判定横竖;锁定后这套工作流每张图都按该方向出,自动 tag 也按这个画幅构图。
-          正文里已记下的方向不会被改写,改回「自动」即恢复。
+          &quot;Automatic&quot; uses the automatic tag to determine the horizontal and vertical orientation according to the screen; after locking, every picture in this workflow will be drawn in this direction, and the automatic tag will also compose the picture according to this frame.
+          The direction already noted in the text will not be overwritten and will be restored by changing it back to &quot;Auto&quot;.
         </p>
 
         <!-- 简易模式:选模型填参数,JSON 由插件按模板组装。
@@ -547,7 +547,7 @@ function applyAssist() {
         <template v-if="active.mode === 'simple'">
           <section class="wf-group">
             <div class="wf-group-head">
-              <span class="bbi-field-label">模型</span>
+              <span class="bbi-field-label">Model</span>
               <span class="wf-group-tools">
                 <span v-if="fetchStatus" class="bbi-field-hint">{{ fetchStatus }}</span>
                 <button
@@ -557,33 +557,33 @@ function applyAssist() {
                   @click="onFetchModels()"
                 >
                   <Icon name="refresh" :size="12" />
-                  {{ fetching ? '拉取中…' : lists ? '刷新列表' : '拉取模型列表' }}
+                  {{ fetching ? 'Retrieving…' : lists ? 'Refresh list' : 'Pull model list' }}
                 </button>
               </span>
             </div>
 
             <div class="wf-field">
-              <span class="wf-field-tag">架构</span>
+              <span class="wf-field-tag">Architecture</span>
               <BbiSelect
                 class="wf-tpl"
                 :model-value="active.simple.template"
                 :options="templateOptions"
-                aria-label="模型架构"
+                aria-label="Model architecture"
                 @update:model-value="onTemplateChange"
               />
             </div>
             <div class="wf-field">
-              <span class="wf-field-tag">模型</span>
+              <span class="wf-field-tag">Model</span>
               <BbiCombo
                 v-model="active.simple.model"
                 :options="modelOptions"
-                placeholder="safetensors / gguf 文件名"
-                aria-label="模型文件"
+                placeholder="safetensors / gguf file name"
+                aria-label="model file"
               />
               <label
                 v-if="meta.modelKind === 'unet'"
                 class="wf-gguf"
-                title="模型是 GGUF 格式(用 UnetLoaderGGUF 加载);从列表选择会自动识别"
+                title="Model is in GGUF format (loaded with UnetLoaderGGUF); selection from list will automatically recognize"
               >
                 <input v-model="active.simple.gguf" type="checkbox" class="bbi-checkbox" />
                 GGUF
@@ -595,7 +595,7 @@ function applyAssist() {
                 v-model="active.simple.vae"
                 :options="vaeOptions"
                 :placeholder="meta.vaePlaceholder"
-                aria-label="VAE 文件"
+                aria-label="VAE file"
               />
             </div>
             <div v-for="clip in meta.clips" :key="clip.key" class="wf-field">
@@ -603,7 +603,7 @@ function applyAssist() {
               <BbiCombo
                 v-model="active.simple[clip.key]"
                 :options="clipOptions"
-                placeholder="clip 文件名"
+                placeholder="clip file name"
                 :aria-label="clip.label"
               />
             </div>
@@ -615,8 +615,8 @@ function applyAssist() {
               <button
                 class="bbi-icon-btn wf-op"
                 type="button"
-                title="添加 LoRA(可多个串联)"
-                aria-label="添加 LoRA"
+                title="Add LoRA (multiple can be connected in series)"
+                aria-label="Add LoRA"
                 @click="addLora"
               >
                 <Icon name="plus" :size="14" />
@@ -626,8 +626,8 @@ function applyAssist() {
               <BbiCombo
                 v-model="lora.name"
                 :options="loraOptions"
-                placeholder="lora 文件名"
-                aria-label="LoRA 文件"
+                placeholder="lora file name"
+                aria-label="LoRA file"
               />
               <input
                 class="bbi-input wf-lora-str"
@@ -636,73 +636,73 @@ function applyAssist() {
                 min="0"
                 max="2"
                 step="0.05"
-                title="强度"
-                aria-label="LoRA 强度"
+                title="intensity"
+                aria-label="LoRA Strength"
               />
               <button
                 class="bbi-icon-btn wf-op wf-remove"
                 type="button"
-                title="删除此 LoRA"
-                aria-label="删除此 LoRA"
+                title="Delete this LoRA"
+                aria-label="Delete this LoRA"
                 @click="removeLora(index)"
               >
                 <Icon name="trash" :size="14" />
               </button>
             </div>
             <p v-if="active.simple.loras.length" class="bbi-field-hint wf-lora-hint">
-              LoRA 的触发词要自己写进固定正面或 tag 里。
+              The trigger words of LoRA should be written into the fixed front or tag by yourself.
             </p>
           </section>
 
           <section class="wf-group">
             <div class="wf-group-head">
-              <span class="bbi-field-label">采样</span>
+              <span class="bbi-field-label">sampling</span>
             </div>
             <div class="wf-params">
               <label class="wf-param">
-                <span>步数</span>
+                <span>number of steps</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.steps" min="1" max="150" />
               </label>
               <label class="wf-param" v-if="active.simple.template !== 'flux'">
                 <span>CFG</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.cfg" min="1" max="30" step="0.5" />
               </label>
-              <label class="wf-param" v-if="active.simple.template === 'flux'" title="FluxGuidance 强度;1 = 不加该节点">
+              <label class="wf-param" v-if="active.simple.template === 'flux'" title="FluxGuidance strength;1 = do not add this node">
                 <span>Guidance</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.guidance" min="1" max="10" step="0.1" />
               </label>
-              <label class="wf-param" v-if="active.simple.template === 'anima'" title="ModelSamplingAuraFlow 的 shift">
+              <label class="wf-param" v-if="active.simple.template === 'anima'" title="ModelSamplingAuraFlow of shift">
                 <span>Shift</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.shift" min="0" max="10" step="0.1" />
               </label>
               <label class="wf-param">
-                <span>采样器</span>
-                <BbiCombo v-model="active.simple.sampler" :options="samplerOptions" placeholder="euler" aria-label="采样器" />
+                <span>sampler</span>
+                <BbiCombo v-model="active.simple.sampler" :options="samplerOptions" placeholder="euler" aria-label="sampler" />
               </label>
               <label class="wf-param">
-                <span>调度器</span>
-                <BbiCombo v-model="active.simple.scheduler" :options="schedulerOptions" placeholder="normal" aria-label="调度器" />
+                <span>scheduler</span>
+                <BbiCombo v-model="active.simple.scheduler" :options="schedulerOptions" placeholder="normal" aria-label="scheduler" />
               </label>
             </div>
           </section>
 
           <section class="wf-group">
             <div class="wf-group-head">
-              <span class="bbi-field-label">提示词</span>
+              <span class="bbi-field-label">prompt word</span>
             </div>
             <div class="wf-prompts">
               <BbiTextarea
                 v-model="active.simple.positive"
                 :rows="2"
                 :max-rows="6"
-                placeholder="固定正面:质量词/风格词等,拼在 AI 生成内容之前"
+                placeholder="Fixed front: quality words/style words, etc., spelled before the content generated by AI"
               />
               <BbiTextarea
                 v-if="meta.supportsNegative"
                 v-model="active.simple.negative"
                 :rows="2"
                 :max-rows="6"
-                placeholder="固定负面:通用负面词;AI 生成的动态负面追加在后"
+                placeholder="Fixed negative: universal negative words; dynamic negative words generated by AI are appended at the end"
               />
             </div>
           </section>
@@ -712,7 +712,7 @@ function applyAssist() {
         <!-- 自定义模式:粘贴 API 格式 JSON -->
         <template v-else>
         <div class="wf-json-head">
-          <span class="bbi-field-label">工作流 JSON</span>
+          <span class="bbi-field-label">Workflow JSON</span>
           <span class="wf-json-tools">
             <span
               class="bbi-prompt-state wf-state"
@@ -725,11 +725,11 @@ function applyAssist() {
               class="bbi-btn bbi-btn-primary bbi-btn-sm"
               type="button"
               :disabled="configuring || !active.workflow.trim()"
-              title="AI 判断节点用途并自动配置占位符；工作流节点、模型名和本地路径会发送给设置页「生成 tag 使用」的 API"
+              title="AI determines the node usage and automatically configures the placeholder; the workflow node, model name and local path will be sent to API in the settings page &quot;Generate tag for use&quot;"
               @click="onAutoConfigure"
             >
               <Icon name="sparkles" :size="12" />
-              {{ configuring ? '分析中…' : 'AI 自动配置' }}
+              {{ configuring ? 'Analyzing…' : 'AI automatic configuration' }}
             </button>
           </span>
         </div>
@@ -741,7 +741,7 @@ function applyAssist() {
           placeholder='{"3": {"class_type": "KSampler", ...}, ...}'
         />
         <p class="bbi-field-hint wf-hint">
-          「Save (API Format)」导出；可用 %prompt% %negative_prompt% %seed% %nl% %width% %height%
+          &quot;Save (API Format)&quot; export; available %prompt% %negative_prompt% %seed% %nl% %width% %height%
         </p>
         </template>
       </Collapsible>
@@ -749,13 +749,13 @@ function applyAssist() {
 
     <ConfirmDialog
       v-model:open="confirmDeleteOpen"
-      title="删除工作流"
-      confirm-text="删除"
+      title="Delete workflow"
+      confirm-text="Delete"
       confirm-icon="trash"
       tone="danger"
       @confirm="confirmRemoveWorkflow"
     >
-      确定删除工作流「{{ active.name || '未命名工作流' }}」？删除后无法恢复。
+      Confirm deletion workflow&quot;{{ active.name || 'Unnamed workflow' }}”? It cannot be restored after deletion.
     </ConfirmDialog>
 
     <ModalMask :open="assistOpen" @close="closeAssist">
@@ -764,16 +764,16 @@ function applyAssist() {
         class="bbi-modal workflow-assist-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="预览 AI 配置的工作流"
+        aria-label="Preview workflow for AI configuration"
       >
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">预览工作流修改</span>
-          <button class="bbi-icon-btn" type="button" aria-label="关闭" @click="closeAssist">
+          <span class="bbi-modal-title">Preview workflow modifications</span>
+          <button class="bbi-icon-btn" type="button" aria-label="Close" @click="closeAssist">
             <Icon name="close" />
           </button>
         </header>
 
-        <p class="bbi-field-hint">原文与宏由本地重建，AI 只返回节点用途；请检查后再应用。</p>
+        <p class="bbi-field-hint">The original text and macros are rebuilt locally, AI only returns node usage; please check before applying.</p>
         <div class="workflow-change-list">
           <div
             v-for="change in assistResult.changes"
@@ -788,18 +788,18 @@ function applyAssist() {
         <BbiTextarea v-model="assistDraft" :rows="10" :max-rows="24" mono />
 
         <p v-if="assistResult.nlMode !== 'none'" class="workflow-detection">
-          自然语言：{{ assistResult.nlMode === 'combined' ? '与正向 tag 共用输入' : '使用独立输入' }}
+          Natural language:{{ assistResult.nlMode === 'combined' ? 'Shared input with forward tag' : 'Use independent input' }}
         </p>
         <p v-if="assistResult.hasNegative" class="workflow-detection">
-          已配置动态负面词；生成 tag 时会按画面输出补充负面 tag。
+          Dynamic negative words have been configured; when generating tag, the supplementary negative tag will be output according to the screen.
         </p>
 
         <footer class="bbi-modal-foot">
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn" type="button" @click="closeAssist">取消</button>
+          <button class="bbi-btn" type="button" @click="closeAssist">Cancel</button>
           <button class="bbi-btn bbi-btn-primary" type="button" @click="applyAssist">
             <Icon name="check" />
-            应用工作流
+            Apply workflow
           </button>
         </footer>
       </div>

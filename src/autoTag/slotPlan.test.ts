@@ -16,9 +16,9 @@ describe('buildSlotTaskNote', () => {
       tag('cat, windowsill'),
     ].join('\n');
     const note = buildSlotTaskNote(source, 1);
-    expect(note).toContain('【本次只重写第 2 张的提示词】');
-    expect(note).toContain('不要另选画面');
-    expect(note).toContain('images 数组必须恰好返回 1 项');
+    expect(note).toContain('【Rewrite only image 2\'s prompt】');
+    expect(note).toContain('Do not choose another scene');
+    expect(note).toContain('The images array must return exactly 1 item');
   });
 
   /**
@@ -26,7 +26,7 @@ describe('buildSlotTaskNote', () => {
    * 所以「换不换画面」完全由这段措辞决定。旧版写的是「另选一个与它们明显不同的
    * 瞬间」,导致按钮写着「重写提示词」、模型收到的却是「换个画面」。
    *
-   * 注意只能锁**祈使**口径:「不要另选画面」是禁令,含「另选」二字却正是我们要的,
+   * 注意只能锁**祈使**口径:「Do not choose another scene」是禁令,含「另选」二字却正是我们要的,
    * 所以不能简单断言不含「另选」。
    */
   it('绝不能出现让模型另选画面的祈使措辞', () => {
@@ -35,13 +35,13 @@ describe('buildSlotTaskNote', () => {
     expect(note).not.toContain('明显不同的瞬间');
     expect(note).not.toContain('重选');
     // 禁令必须在场
-    expect(note).toContain('不要另选画面');
+    expect(note).toContain('Do not choose another scene');
   });
 
   it('把目标槽位当前的提示词原样喂回去当锚点(不截断)', () => {
     const long = `1girl, ${'detail, '.repeat(60)}classroom`;
     const note = buildSlotTaskNote([tag(long), tag('cat')].join('\n'), 0);
-    expect(note).toContain('这一张当前的提示词');
+    expect(note).toContain('Current prompt for this image');
     // 锚点是要模型逐字对照的,必须全文带上——被截断就等于让它猜画面
     expect(note).toContain(long);
   });
@@ -49,25 +49,25 @@ describe('buildSlotTaskNote', () => {
   it('列出其余画面时跳过目标槽位,并说明不要抢它们的画面', () => {
     const source = [tag('1girl, classroom'), tag('1boy, rooftop'), tag('cat, windowsill')].join('\n');
     const note = buildSlotTaskNote(source, 1);
-    expect(note).toContain('第 1 张：1girl, classroom');
-    expect(note).not.toContain('第 2 张：');
-    expect(note).toContain('第 3 张：cat, windowsill');
-    expect(note).toContain('不要把它们的画面抢过来');
+    expect(note).toContain('Image 1: 1girl, classroom');
+    expect(note).not.toContain('Image 2: ');
+    expect(note).toContain('Image 3: cat, windowsill');
+    expect(note).toContain('do not take over their scenes');
   });
 
   it('单张楼只有说明,没有其余画面清单', () => {
     const note = buildSlotTaskNote(tag('1girl, sunset'), 0);
-    expect(note).toContain('【本次只重写第 1 张的提示词】');
-    expect(note).not.toContain('本楼其余画面');
+    expect(note).toContain('【Rewrite only image 1\'s prompt】');
+    expect(note).not.toContain('Other images in this message');
     // 单张楼照样要给锚点
     expect(note).toContain('1girl, sunset');
   });
 
   it('正文里没有 tag 时不抛错,也不编造锚点(边界容忍)', () => {
     const note = buildSlotTaskNote('纯正文', 0);
-    expect(note).toContain('【本次只重写第 1 张的提示词】');
-    expect(note).not.toContain('本楼其余画面');
-    expect(note).not.toContain('这一张当前的提示词');
+    expect(note).toContain('【Rewrite only image 1\'s prompt】');
+    expect(note).not.toContain('Other images in this message');
+    expect(note).not.toContain('Current prompt for this image');
   });
 
   it('其余画面摘要压成单行并截断,避免把整段提示词灌进备注', () => {
@@ -75,7 +75,7 @@ describe('buildSlotTaskNote', () => {
     const source = [tag('aaa'), tag(long)].join('\n');
     // 目标是第 1 张,所以第 2 张走的是「其余画面」摘要口径 → 要截断
     const note = buildSlotTaskNote(source, 0);
-    expect(note).toContain('第 2 张：');
+    expect(note).toContain('Image 2: ');
     expect(note).not.toContain(long);
     expect(note).toContain('…');
     // tag / nl 两段之间不得带换行漏进清单(parseImageTagContent 会把 nl 内部换行折成空格,
@@ -84,6 +84,6 @@ describe('buildSlotTaskNote', () => {
       [tag('aaa'), tag('1girl', 'A girl.\nSecond line.')].join('\n'),
       0,
     );
-    expect(withNl).toContain('第 2 张：1girl / A girl. Second line.');
+    expect(withNl).toContain('Image 2: 1girl / A girl. Second line.');
   });
 });

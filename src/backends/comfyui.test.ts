@@ -49,7 +49,7 @@ describe('parseWorkflowTemplate', () => {
       expect.unreachable('should throw');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      expect(message).toContain('占位符必须写成字符串形式');
+      expect(message).toContain('The placeholder must be written in the form of a string');
       expect(message).toContain('"%seed%"');
     }
   });
@@ -362,7 +362,7 @@ describe('generateComfyImage 简易模式', () => {
       simple: { ...simpleDefaults(), model: '' },
     } as unknown as Parameters<typeof generateComfyImage>[0];
     await expect(generateComfyImage(conn, { prompt: '1girl' })).rejects.toThrow(ComfyUIError);
-    await expect(generateComfyImage(conn, { prompt: '1girl' })).rejects.toThrow('模型');
+    await expect(generateComfyImage(conn, { prompt: '1girl' })).rejects.toThrow("Model");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

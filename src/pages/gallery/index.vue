@@ -174,12 +174,13 @@ async function load(): Promise<void> {
     settled.forEach((result, i) => {
       if (result.status !== 'fulfilled') {
         partialFailed.value++;
-        console.warn('[柏宝绘] 读取图库目录失败', folders[i], result.reason);
+        console.warn('[BaiBai Image] Failed to read the gallery directory', folders[i], result.reason);
         return;
       }
       const { folder, files } = result.value;
       if (!files.length) return; // 删空后的残留目录不占位
-      const name = folder.slice(FOLDER_PREFIX.length) || '未命名角色';
+      const storedName = folder.slice(FOLDER_PREFIX.length);
+      const name = !storedName || storedName === '未命名角色' ? 'Unnamed Character' : storedName;
       next.push({
         folder,
         name,
@@ -426,11 +427,11 @@ async function deleteSelected(): Promise<void> {
   if (!targets.length) return;
 
   const ok = await confirmDialog({
-    title: `删除 ${targets.length} 张图片`,
+    title: `Delete ${targets.length} pictures`,
     text:
-      `将从磁盘删除这 ${targets.length} 张图片及其提示词侧写文件，无法恢复。\n\n` +
-      '聊天记录不会被改动：楼层卡片会显示「图片文件已删除」并退回可重新生成的状态。',
-    confirmText: '删除',
+      `This will be deleted from disk ${targets.length} The picture and its prompt word profile file cannot be restored. \n\n` +
+      'The chat history will not be changed: the floor card will display "Image file deleted" and return to a regenerable state.',
+    confirmText: 'Delete',
     tone: 'danger',
   });
   if (!ok) return;
@@ -446,7 +447,7 @@ async function deleteSelected(): Promise<void> {
         await deleteImageFileOnly(image.key);
         return { key: image.key, ok: true };
       } catch (e) {
-        console.warn('[柏宝绘] 删除图片失败', image.key, e);
+        console.warn('[BaiBai Image] Failed to delete picture', image.key, e);
         return { key: image.key, ok: false };
       }
     });
@@ -469,8 +470,8 @@ async function deleteSelected(): Promise<void> {
     selected.value = new Set([...selected.value].filter(key => !done.has(key)));
     if (!selected.value.size) selecting.value = false;
 
-    if (failed) toastr.error(`${failed} 张删除失败，详情见控制台`, '柏宝绘');
-    else toastr.success(`已删除 ${done.size} 张图片`, '柏宝绘');
+    if (failed) toastr.error(`${failed} images deletion failed, see the console for details`, 'BaiBai Image');
+    else toastr.success(`Deleted ${done.size} pictures`, 'BaiBai Image');
   } finally {
     deleting.value = false;
   }
@@ -504,8 +505,8 @@ async function open(image: GalleryImage): Promise<void> {
 <template>
   <section class="bbi-page">
     <div class="bbi-page-head">
-      <h2 class="bbi-title bbi-title-sub">图库</h2>
-      <button class="gal-icon-btn" type="button" title="重新读取" :disabled="loading" @click="load">
+      <h2 class="bbi-title bbi-title-sub">Gallery</h2>
+      <button class="gal-icon-btn" type="button" title="reread" :disabled="loading" @click="load">
         <Icon name="refresh" />
       </button>
     </div>
@@ -513,20 +514,20 @@ async function open(image: GalleryImage): Promise<void> {
 
     <!-- 工具条:只搜角色名(文件名是哈希,搜了没意义) -->
     <div class="gal-toolbar">
-      <input v-model="query" class="bbi-input gal-search" placeholder="搜索角色名" />
+      <input v-model="query" class="bbi-input gal-search" placeholder="Search character name" />
       <button
         class="bbi-btn bbi-btn-sm gal-select-toggle"
         :class="{ 'is-on': selecting }"
         type="button"
         :disabled="!groups.length"
-        :title="selecting ? '退出选择' : '选择图片以批量删除'"
+        :title="selecting ? 'Opt out' : 'Select images to delete in batches'"
         @click="toggleSelecting"
       >
         <Icon :name="selecting ? 'close' : 'checklist'" />
-        {{ selecting ? '退出选择' : '选择' }}
+        {{ selecting ? 'Opt out' : 'Selected' }}
       </button>
       <span class="gal-count">
-        {{ groups.length }} 位角色 · {{ totalImages }} 张<template v-if="totalSizeText">
+        {{ groups.length }} characters · {{ totalImages }} images<template v-if="totalSizeText">
           · {{ totalSizeText }}<span v-if="measuring" class="gal-measuring">+</span>
         </template>
       </span>
@@ -536,14 +537,14 @@ async function open(image: GalleryImage): Promise<void> {
          放这里而非列表末尾:呼出它的「选择」钮就在上一行,一按就看见(摆到底部的话,
          角色多时按下去屏幕上什么都不动,像没生效);吸顶又保证往下翻多久都还在。 -->
     <div v-if="selecting" class="gal-actionbar">
-      <span class="gal-actionbar-count">已选 {{ selectedCount }} 张</span>
+      <span class="gal-actionbar-count">Selected {{ selectedCount }} images</span>
       <button
         class="bbi-btn bbi-btn-sm"
         type="button"
         :disabled="!selectedCount || deleting"
         @click="selected = new Set()"
       >
-        清空
+        Clear
       </button>
       <button
         class="bbi-btn bbi-btn-sm bbi-btn-danger"
@@ -552,34 +553,34 @@ async function open(image: GalleryImage): Promise<void> {
         @click="deleteSelected"
       >
         <Icon name="trash" />
-        {{ deleting ? '删除中…' : '删除' }}
+        {{ deleting ? 'Deleting…' : 'Delete' }}
       </button>
     </div>
 
     <p v-if="partialFailed" class="gal-warn">
-      有 {{ partialFailed }} 个角色目录读取失败，未在下方列出（详情见控制台）。
+      Yes {{ partialFailed }} Failed to read character directories and are not listed below (see console for details).
     </p>
 
     <!-- 读取中 / 出错 / 空 / 列表 -->
     <div v-if="loading && !groups.length" class="gal-state">
       <Icon name="refresh" :size="26" class="gal-spin" />
-      <p class="gal-state-title">正在读取图库…</p>
+      <p class="gal-state-title">Loading gallery…</p>
     </div>
 
     <div v-else-if="error" class="gal-state">
       <Icon name="gallery" :size="34" />
-      <p class="gal-state-title">读取失败</p>
+      <p class="gal-state-title">Read failed</p>
       <p class="gal-state-hint">{{ error }}</p>
-      <button class="bbi-btn bbi-btn-sm" type="button" @click="load"><Icon name="refresh" /> 重试</button>
+      <button class="bbi-btn bbi-btn-sm" type="button" @click="load"><Icon name="refresh" /> Try again</button>
     </div>
 
     <div v-else-if="!groups.length" class="gal-state">
       <Icon name="gallery" :size="34" />
-      <p class="gal-state-title">还没有图片</p>
-      <p class="gal-state-hint">在聊天里生成图片后，会按角色自动归类到这里。</p>
+      <p class="gal-state-title">No pictures yet</p>
+      <p class="gal-state-hint">After the pictures are generated in the chat, they will be automatically classified here according to roles.</p>
     </div>
 
-    <p v-else-if="!filtered.length" class="gal-state-inline">没有匹配「{{ query }}」的角色。</p>
+    <p v-else-if="!filtered.length" class="gal-state-inline">No match &quot;{{ query }}” role.</p>
 
     <div v-else class="gal-groups">
       <section
@@ -592,13 +593,13 @@ async function open(image: GalleryImage): Promise<void> {
              放整组全选的复选框,而 <button> 里不能嵌 <button>/<input>(HTML 非法且
              点击会双触发)。故折叠触发器单独是一颗按钮,复选框与它并排。 -->
         <div class="gal-fold-head">
-          <label v-if="selecting" class="gal-group-check" :title="`全选${group.name}`">
+          <label v-if="selecting" class="gal-group-check" :title="`Select all${group.name}`">
             <input
               type="checkbox"
               class="bbi-checkbox"
               :checked="groupAllSelected(group)"
               :indeterminate="someSelected(group)"
-              :aria-label="`全选${group.name}`"
+              :aria-label="`Select all${group.name}`"
               @change="toggleGroup(group)"
             />
           </label>
@@ -606,7 +607,7 @@ async function open(image: GalleryImage): Promise<void> {
             class="gal-fold-trigger"
             type="button"
             :aria-expanded="expanded.has(group.folder)"
-            :title="expanded.has(group.folder) ? `收起${group.name}` : `展开${group.name}`"
+            :title="expanded.has(group.folder) ? `Collapse${group.name}` : `Expand${group.name}`"
             @click="toggleFold(group.folder)"
           >
             <Icon name="chevron" class="gal-caret" :class="{ 'is-collapsed': !expanded.has(group.folder) }" />
@@ -633,11 +634,11 @@ async function open(image: GalleryImage): Promise<void> {
                       'is-selected': selecting && selected.has(image.key),
                     }"
                     type="button"
-                    :title="selecting ? image.file : `放大 ${image.file}`"
+                    :title="selecting ? image.file : `Zoom in ${image.file}`"
                     :aria-pressed="selecting ? selected.has(image.key) : undefined"
                     @click="onThumbClick(image)"
                   >
-                    <img class="gal-img" :src="image.src" :alt="`${group.name} 的生成图`" loading="lazy" />
+                    <img class="gal-img" :src="image.src" :alt="`${group.name} The generated graph`" loading="lazy" />
                     <!-- 勾选角标:只在选择态出现,选中时填充主色 -->
                     <span v-if="selecting" class="gal-check" aria-hidden="true">
                       <Icon v-if="selected.has(image.key)" name="check" :size="13" />
@@ -652,7 +653,7 @@ async function open(image: GalleryImage): Promise<void> {
                 @click="showMore(group)"
               >
                 <Icon name="plus" />
-                再显示 {{ Math.min(PREVIEW_COUNT, group.images.length - visibleImages(group).length) }} 张
+                Show again {{ Math.min(PREVIEW_COUNT, group.images.length - visibleImages(group).length) }} images
               </button>
             </div>
           </div>

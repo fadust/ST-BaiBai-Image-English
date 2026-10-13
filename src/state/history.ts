@@ -87,7 +87,7 @@ export interface ImageRecord extends BaseRecord {
 export type HistoryRecord = LlmRecord | ImageRecord;
 
 /** 跟随主 API 时的渠道名占位。 */
-export const FOLLOW_MAIN_API = '跟随主 API';
+export const FOLLOW_MAIN_API = 'Follow main API';
 
 /**
  * 全部记录,**新的在前**(页面直接 v-for,不用每次 reverse)。
@@ -101,7 +101,7 @@ let nextId = 1;
 export function truncate(text: string): string {
   if (typeof text !== 'string') return '';
   if (text.length <= MAX_CONTENT) return text;
-  return `${text.slice(0, MAX_CONTENT)}\n…(已截断，原长 ${text.length} 字符)`;
+  return `${text.slice(0, MAX_CONTENT)}\n…(truncated, original length ${text.length} characters)`;
 }
 
 /** 中日韩表意文字/假名/谚文/全角标点:这些大致 1 字 = 1 token。 */
@@ -302,7 +302,7 @@ export function safeHistory<T>(fn: () => T): T | null {
   try {
     return fn();
   } catch (e) {
-    console.debug('[柏宝绘] 请求历史记录失败(已忽略)', e);
+    console.debug('[BaiBai Image] Failed to request history (ignored)', e);
     return null;
   }
 }

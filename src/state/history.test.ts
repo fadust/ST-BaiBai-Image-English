@@ -79,7 +79,7 @@ describe('截断', () => {
     const out = truncate(long);
     expect(out.length).toBeLessThan(long.length);
     expect(out.startsWith('x'.repeat(100))).toBe(true);
-    expect(out).toContain(`原长 ${MAX_CONTENT + 500} 字符`);
+    expect(out).toContain(`original length ${MAX_CONTENT + 500} characters`);
   });
 
   it('登记时对每条 message 都截断', () => {
@@ -94,7 +94,7 @@ describe('截断', () => {
       ],
     });
     const record = records.find(r => r.id === id) as LlmRecord;
-    expect(record.messages[0].content).toContain('已截断');
+    expect(record.messages[0].content).toContain('truncated');
     expect(record.messages[1].content).toBe('短的');
   });
 
@@ -106,7 +106,7 @@ describe('截断', () => {
       completionTokens: null,
       tokensEstimated: true,
     });
-    expect((records[0] as LlmRecord).response).toContain('已截断');
+    expect((records[0] as LlmRecord).response).toContain('truncated');
   });
 });
 

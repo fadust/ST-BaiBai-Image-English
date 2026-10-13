@@ -46,7 +46,7 @@ describe('ComfyUI 工作流库迁移', () => {
 
     expect(settings.comfyui.workflows).toHaveLength(1);
     const [preset] = settings.comfyui.workflows;
-    expect(preset.name).toBe('默认工作流');
+    expect(preset.name).toBe("Default workflow");
     expect(preset.workflow).toBe('{"3":{"class_type":"KSampler","inputs":{"seed":"%seed%"}}}');
     expect(preset.naturalLanguage).toBe(true);
     expect(preset.portraitSize).toBe('1024×1536');
@@ -110,7 +110,7 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(first.id).toBeTruthy();
     expect(first.name).toBe('no id');
     expect(second.id).toBeTruthy();
-    expect(second.name).toBe('默认工作流');
+    expect(second.name).toBe("Default workflow");
     // 非字符串的 workflow 归空串;空白尺寸回默认值(不能留空,否则 %width% 拿不到值)
     expect(third.workflow).toBe('');
     expect(third.portraitSize).toBe('832×1216');

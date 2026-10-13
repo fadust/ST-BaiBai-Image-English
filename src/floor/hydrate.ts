@@ -147,7 +147,7 @@ export function hydrateMessage(messageId: number, ctx: STContext): void {
         const anchors = [...mesText.querySelectorAll<HTMLElement>(BBI_SLOT_SELECTOR)];
         if (anchors.length !== tags.length) {
           console.warn(
-            `[柏宝绘] 楼层 #${messageId} 锚点 ${anchors.length} 个 ≠ 生图 tag ${tags.length} 个,按少者配对`,
+            `[BaiBai Image] Floor #${messageId} anchor point ${anchors.length} ≠ raw picture tag ${tags.length} , match according to the smallest number`,
           );
         }
         const count = Math.min(anchors.length, tags.length);
@@ -291,9 +291,9 @@ function warnHiddenByHost(host: Element): void {
   if (hiddenWarned.has(id)) return;
   hiddenWarned.add(id);
   console.warn(
-    `[柏宝绘] 楼层 #${floor ?? '?'} 的卡片已挂载但不可见:该楼 .mes_text 被 ST 的 ` +
-      'inline_media 规则整段隐藏(本楼有附件图且 extra.inline_image 为 false)。' +
-      '这是宿主的有意行为,插件不强行解除;如需看到卡片,请让该楼恢复显示正文。',
+    `[BaiBai Image] Floor #${floor ?? '?'} The card is mounted but not visible: The building .mes_text is replaced by ST ` +
+      'The entire section of the inline_media rule is hidden (there is an attached picture in this building and extra.inline_image is false).' +
+      'This is the intentional behavior of the host, and the plug-in will not forcefully cancel it; if you want to see the card, please let the building resume displaying the text.',
   );
 }
 

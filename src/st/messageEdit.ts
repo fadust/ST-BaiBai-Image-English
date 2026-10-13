@@ -128,14 +128,14 @@ export async function applyMessageText(
   }
 
   await emitMessageEvent(context, context.eventTypes.MESSAGE_EDITED, floor).catch(error => {
-    console.warn('[柏宝绘] tag 已保存，但 MESSAGE_EDITED 事件发送失败', error);
+    console.warn('[BaiBai Image] tag has been saved, but the MESSAGE_EDITED event failed to be sent', error);
   });
   if (!settleActiveEditor(floor, message.mes)) {
     await refreshRenderedMessage(context, message, floor).catch(error => {
-      console.warn('[柏宝绘] tag 已保存，但楼层刷新失败', error);
+      console.warn('[BaiBai Image] tag has been saved, but the floor refresh failed', error);
     });
     await emitMessageEvent(context, context.eventTypes.MESSAGE_UPDATED, floor).catch(error => {
-      console.warn('[柏宝绘] tag 已保存，但 MESSAGE_UPDATED 事件发送失败', error);
+      console.warn('[BaiBai Image] tag has been saved, but the MESSAGE_UPDATED event failed to be sent.', error);
     });
   }
   return 'saved';

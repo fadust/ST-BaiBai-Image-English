@@ -68,15 +68,15 @@ const LATE_HYDRATION_MS = 100;
 function failureReason(result: Exclude<ApplyMessageResult, 'saved'>): string {
   switch (result) {
     case 'chat-changed':
-      return '聊天已切换,提示词未保存';
+      return 'The chat has been switched and the prompt words have not been saved.';
     case 'floor-changed':
-      return '楼层已变化,提示词未保存';
+      return 'The floor has changed and the prompt word has not been saved.';
     case 'swipe-changed':
-      return '已切换到别的 swipe,提示词未保存';
+      return 'Switched to another swipe, prompt word not saved';
     case 'build-failed':
-      return '正文里的这条 tag 已被改动,请关闭弹窗后重新编辑';
+      return 'This article tag in the text has been changed, please close the pop-up window and edit it again';
     case 'unavailable':
-      return 'SillyTavern 上下文不可用,提示词未保存';
+      return 'SillyTavern The context is not available and the prompt word is not saved.';
   }
 }
 
@@ -93,12 +93,12 @@ async function writeBack(
 ): Promise<boolean> {
   const context = getContext();
   if (!context) {
-    toastr.error('SillyTavern 上下文不可用', '柏宝绘');
+    toastr.error('SillyTavern context is not available', 'BaiBai Image');
     return false;
   }
   const message = context.chat?.[at.messageId];
   if (!message) {
-    toastr.error('楼层已不存在,提示词未保存', '柏宝绘');
+    toastr.error('The floor no longer exists and the prompt word is not saved.', 'BaiBai Image');
     return false;
   }
 
@@ -127,13 +127,13 @@ async function writeBack(
   } catch (error) {
     // 撤销标记:只取回自己这一枚,不能用 clearAutoGenerateForFloor(会连累同楼兄弟槽位)
     if (regenerate) consumeAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq);
-    toastr.error(error instanceof Error ? error.message : String(error), '柏宝绘');
+    toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
     return false;
   }
 
   if (result !== 'saved') {
     if (regenerate) consumeAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq);
-    toastr.warning(failureReason(result), '柏宝绘');
+    toastr.warning(failureReason(result), 'BaiBai Image');
     return false;
   }
 
@@ -283,9 +283,9 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     }
     asking = true;
     void confirmDialog({
-      title: 'AI 重写提示词',
-      text: '你手改的内容还没有应用。AI 重写完会直接保存，并把这些改动顶掉。',
-      confirmText: '重写',
+      title: 'AI Rewrite prompt word',
+      text: 'The content you modified manually has not been applied yet. AI will be saved directly after rewriting and these changes will be pushed out.',
+      confirmText: 'rewrite',
     }).then(ok => {
       asking = false;
       if (ok) startRewrite();
@@ -313,10 +313,10 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     }
     asking = true;
     void confirmDialog({
-      title: '放弃修改',
-      text: '提示词的改动还没有应用,关闭后会丢失。',
-      confirmText: '放弃',
-      cancelText: '继续编辑',
+      title: 'Abandon changes',
+      text: 'The changes to the prompt word have not been applied and will be lost after closing.',
+      confirmText: 'give up',
+      cancelText: 'Continue editing',
       tone: 'danger',
     }).then(ok => {
       asking = false;

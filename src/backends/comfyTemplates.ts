@@ -100,12 +100,12 @@ export interface ComfyTemplateMeta {
 export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> = {
   checkpoint: {
     id: 'checkpoint',
-    label: 'Checkpoint 系(SD1.5/SDXL/Pony/Illustrious)',
+    label: 'Checkpoint series (SD1.5/SDXL/Pony/Illustrious)',
     modelKind: 'checkpoint',
-    modelLabel: '模型',
+    modelLabel: 'Model',
     vaeRequired: false,
     vaeLabel: 'VAE',
-    vaePlaceholder: '可留空,用模型内置',
+    vaePlaceholder: 'Can be left blank to use model built-in',
     clips: [],
     supportsNegative: true,
     portraitSize: '832×1216',
@@ -114,9 +114,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
   },
   flux: {
     id: 'flux',
-    label: 'Flux 系',
+    label: 'Flux series',
     modelKind: 'unet',
-    modelLabel: '模型',
+    modelLabel: 'Model',
     vaeRequired: true,
     vaeLabel: 'VAE',
     vaePlaceholder: 'ae.safetensors',
@@ -131,9 +131,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
   },
   anima: {
     id: 'anima',
-    label: 'Anima 系(Qwen 链路)',
+    label: 'Anima series (Qwen link)',
     modelKind: 'unet',
-    modelLabel: '模型',
+    modelLabel: 'Model',
     vaeRequired: true,
     vaeLabel: 'VAE',
     vaePlaceholder: 'qwen_image_vae.safetensors',
@@ -224,10 +224,10 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
  */
 export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   const meta = COMFY_TEMPLATES[simple.template] ?? COMFY_TEMPLATES.checkpoint;
-  if (!simple.model.trim()) return `请选择${meta.modelLabel}`;
-  if (meta.vaeRequired && !simple.vae.trim()) return `请选择 ${meta.vaeLabel}`;
+  if (!simple.model.trim()) return `Please select${meta.modelLabel}`;
+  if (meta.vaeRequired && !simple.vae.trim()) return `Please select ${meta.vaeLabel}`;
   for (const clip of meta.clips) {
-    if (!simple[clip.key].trim()) return `请选择 ${clip.label}`;
+    if (!simple[clip.key].trim()) return `Please select ${clip.label}`;
   }
   return null;
 }
@@ -485,7 +485,7 @@ export function buildSimpleWorkflow(simple: ComfySimpleConfig, values: SimpleGen
   const invalid = validateSimpleConfig(simple);
   if (invalid) throw new Error(invalid);
   if (!(values.width > 0) || !(values.height > 0)) {
-    throw new Error('请在 ComfyUI 渠道页填写竖屏与横屏尺寸（如 832×1216）');
+    throw new Error('Please fill in the vertical and horizontal screen dimensions on the ComfyUI channel page (such as 832×1216)');
   }
   switch (simple.template) {
     case 'flux':

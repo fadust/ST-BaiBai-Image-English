@@ -30,8 +30,8 @@ withDefaults(
     topLayer?: boolean;
   }>(),
   {
-    confirmText: '确定',
-    cancelText: '取消',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
     tone: 'primary',
     confirmIcon: '',
     busy: false,

@@ -45,21 +45,21 @@ async function onActivate(button: HTMLElement): Promise<void> {
   const message = Number.isInteger(floor) ? context?.chat?.[floor] : undefined;
   // 点了必须有下文:静默 return 在用户那里就是「按钮点了没反应」,连日志都没有
   if (!context || !message) {
-    console.warn('[柏宝绘] 楼层按钮找不到对应消息', { mesid: button.closest('.mes')?.getAttribute('mesid') });
-    toastr.warning('找不到这一楼的消息，请刷新页面后重试', '柏宝绘');
+    console.warn('[BaiBai Image] The corresponding message cannot be found for the floor button', { mesid: button.closest('.mes')?.getAttribute('mesid') });
+    toastr.warning('No news found on this floor, please refresh the page and try again', 'BaiBai Image');
     return;
   }
   if (!settings.enabled) {
-    toastr.warning('柏宝绘已停用，请先在插件设置里开启', '柏宝绘');
+    toastr.warning('BaiBai Image has been disabled. Please enable it in the plug-in settings first.', 'BaiBai Image');
     return;
   }
 
   const hasTags = hasImageTagTrace(message.mes ?? '');
   if (hasTags) {
     const ok = await confirmDialog({
-      title: '重新生成 tag',
-      text: '本楼已有生图 tag。重新生成会先删除原 tag 再写入新的；已生成的图片保留在卡片历史里，不会丢失。',
-      confirmText: '重新生成',
+      title: 'Rebuild tag',
+      text: 'This building already has a picture of tag. Regeneration will first delete the original tag and then write the new one; the generated pictures will be retained in the card history and will not be lost.',
+      confirmText: 'Regenerate',
     });
     if (!ok) return;
   }
@@ -77,7 +77,7 @@ function createButton(): HTMLDivElement {
   const button = document.createElement('div');
   // mes_button 与 .extraMesButtons 里的 ST 原生扩展按钮同类(menu_button 是通用菜单按钮,样式不同)
   button.className = `mes_button fa-solid ${ICON_CLASS} ${BUTTON_CLASS}`;
-  button.title = '生成生图 tag（已有 tag 时重新生成）';
+  button.title = 'Generate raw image tag (regenerate if tag already exists)';
   button.setAttribute('role', 'button');
   button.setAttribute('tabindex', '0');
 

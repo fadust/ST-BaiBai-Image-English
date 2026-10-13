@@ -24,7 +24,7 @@ function node(workflow: Record<string, SimpleWorkflowNode>, id: string): SimpleW
 
 describe('validateSimpleConfig', () => {
   it('未选模型时报错', () => {
-    expect(validateSimpleConfig(simpleDefaults())).toContain('模型');
+    expect(validateSimpleConfig(simpleDefaults())).toContain("Model");
   });
 
   it('flux/anima 缺 VAE 或 CLIP 时报对应字段;checkpoint 外置 VAE 可留空', () => {
@@ -165,8 +165,8 @@ describe('buildSimpleWorkflow - anima', () => {
 describe('buildSimpleWorkflow - 尺寸', () => {
   it('尺寸无效时报错(简易模式的画布节点是必建的,没有「工作流写死尺寸」的豁免)', () => {
     const simple = config({ model: 'm.safetensors' });
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('尺寸');
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('尺寸');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('dimensions');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('dimensions');
   });
 });
 

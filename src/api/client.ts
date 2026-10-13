@@ -105,7 +105,7 @@ async function estimateTokens(id: number, messages: ChatMsg[], response: string)
       ),
     );
   } catch (e) {
-    console.debug('[柏宝绘] token 估算失败(已忽略)', e);
+    console.debug('[BaiBai Image] token estimation failed (ignored)', e);
   }
 }
 
@@ -139,7 +139,7 @@ async function withTimeout<T>(
   try {
     return await task(ctrl.signal);
   } catch (e) {
-    if (timedOut) throw new ApiError(`${label}超时(>${timeoutSec}秒)`);
+    if (timedOut) throw new ApiError(`${label}Timed out (>${timeoutSec} seconds)`);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -246,8 +246,8 @@ async function requestCompletionAtUrl(
   opts: RequestOptions = {},
 ): Promise<string> {
   const ctx = getContext();
-  if (!ctx) throw new ApiError('SillyTavern 上下文不可用');
-  if (!channel.url || !channel.model) throw new ApiError('副 API 渠道未配置完整(缺 url 或 model)');
+  if (!ctx) throw new ApiError('SillyTavern context is not available');
+  if (!channel.url || !channel.model) throw new ApiError('The auxiliary API channel is not fully configured (missing url or model)');
 
   const stream = channel.stream ?? false;
   const body = buildRequestBody(channel, messages, reverseProxy, stream);
@@ -257,8 +257,8 @@ async function requestCompletionAtUrl(
   // 历史埋点:登记在真正发请求之前,失败/超时也留痕(排查时要看的往往正是失败那次)。
   const historyId = safeHistory(() =>
     beginLlm({
-      source: opts.source || '未标注',
-      channelName: channel.name || channel.model || '(未命名渠道)',
+      source: opts.source || 'Unmarked',
+      channelName: channel.name || channel.model || '(Unnamed channel)',
       model: channel.model,
       stream,
       messages,
@@ -266,7 +266,7 @@ async function requestCompletionAtUrl(
   );
 
   try {
-    const result = await withTimeout(timeoutSec, opts.signal, '副 API 请求', async signal => {
+    const result = await withTimeout(timeoutSec, opts.signal, 'Auxiliary API request', async signal => {
       const resp = await fetch(GENERATE_URL, {
         method: 'POST',
         headers: ctx.getRequestHeaders(),
@@ -276,13 +276,13 @@ async function requestCompletionAtUrl(
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
-        throw new ApiError(`副 API 请求失败 (${resp.status}): ${text.slice(0, 300)}`, resp.status);
+        throw new ApiError(`Auxiliary API request failed (${resp.status}): ${text.slice(0, 300)}`, resp.status);
       }
 
       // 流式:按 SSE 增量拼接;非流式:直接解析 JSON。
       if (stream) {
         const streamed = await readSseContent(resp);
-        if (!streamed) throw new ApiError('副 API 返回空内容');
+        if (!streamed) throw new ApiError('Auxiliary API returned no content');
         // 流式无 usage:ST 构造上游请求体是字段白名单,不含 stream_options,
         // 没法让上游在末尾回 usage chunk。只能事后本地估算。
         return { content: streamed, usage: { prompt: null, completion: null } };
@@ -290,11 +290,11 @@ async function requestCompletionAtUrl(
 
       const data = await resp.json();
       if (data?.error) {
-        throw new ApiError(data.error.message || '副 API 返回错误');
+        throw new ApiError(data.error.message || 'Auxiliary API returned an error');
       }
 
       const parsed = extractContent(data);
-      if (!parsed) throw new ApiError('副 API 返回空内容');
+      if (!parsed) throw new ApiError('Auxiliary API returned no content');
       // ST 代理非流式分支是 response.send(json) 原样透传,故 usage 是上游真值。
       return { content: parsed, usage: readUsage(data) };
     });
@@ -356,7 +356,7 @@ export async function readSseContent(resp: Response): Promise<string> {
       if (payload === '[DONE]') continue;
       try {
         const json = JSON.parse(payload);
-        if (json?.error) throw new ApiError(json.error.message || '副 API 返回错误');
+        if (json?.error) throw new ApiError(json.error.message || 'Auxiliary API returned an error');
         const choice = json?.choices?.[0];
         const src = choice?.delta ?? choice?.message;
         const piece = textOf(src?.content) || textOf(choice?.text);
@@ -431,13 +431,13 @@ export function mainApiAvailable(): boolean {
 export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOptions = {}): Promise<string> {
   const ctx = getContext();
   if (typeof ctx?.generateRaw !== 'function') {
-    throw new ApiError('当前 ST 版本不支持 generateRaw,无法跟随主 API');
+    throw new ApiError('The current ST version does not support generateRaw and cannot follow the main API');
   }
 
   // 历史埋点。跟随主 API 走 ST 内部黑盒,拿不到 usage,token 一律靠估算。
   const historyId = safeHistory(() =>
     beginLlm({
-      source: opts.source || '未标注',
+      source: opts.source || 'Unmarked',
       channelName: FOLLOW_MAIN_API,
       model: '',
       stream: false,
@@ -447,7 +447,7 @@ export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOption
 
   try {
     const content = (await ctx.generateRaw({ prompt: messages, responseLength: MAIN_API_RESPONSE_LENGTH }))?.trim();
-    if (!content) throw new ApiError('主 API 返回空内容');
+    if (!content) throw new ApiError('Main API returned no content');
     // 与副 API 同口径:验收不过记失败,不记「成功」
     opts.validate?.(content);
     if (historyId !== null) {
@@ -477,15 +477,15 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
   try {
     const reply = await requestCompletionAtUrl(
       channel,
-      [{ role: 'user', content: '回复"ok"两个字符即可。' }],
+      [{ role: 'user', content: 'Reply with exactly "ok".' }],
       primaryUrl,
-      { source: '连通性测试' },
+      { source: 'Connectivity test' },
     );
     const changed = channel.url.trim().replace(/\/+$/, '') !== primaryUrl;
     if (changed) channel.url = primaryUrl;
     return {
       ok: true,
-      message: `连通正常${changed ? `,已采用:${primaryUrl}` : ''},返回:${reply.slice(0, 40)}`,
+      message: `Connection successful${changed ? `, using: ${primaryUrl}` : ''}, response: ${reply.slice(0, 40)}`,
     };
   } catch (e) {
     if (!(e instanceof ApiError) || (e.status !== 404 && e.status !== 405)) {
@@ -499,14 +499,14 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
     try {
       const reply = await requestCompletionAtUrl(
         channel,
-        [{ role: 'user', content: '回复"ok"两个字符即可。' }],
+        [{ role: 'user', content: 'Reply with exactly "ok".' }],
         fallbackUrl,
-        { source: '连通性测试(备用地址)' },
+        { source: 'Connectivity test (alternate address)' },
       );
       channel.url = fallbackUrl;
       return {
         ok: true,
-        message: `连通正常,已自动改用:${fallbackUrl},返回:${reply.slice(0, 40)}`,
+        message: `Connection successful; automatically switched to: ${fallbackUrl}, response: ${reply.slice(0, 40)}`,
       };
     } catch {
       // 备用地址也失败时保留首个错误,避免把模型名等真实问题掩盖成路径错误。
@@ -525,8 +525,8 @@ export async function fetchModels(
   channel: Pick<ApiChannel, 'url' | 'key'> & Partial<Pick<ApiChannel, 'timeoutSec'>>,
 ): Promise<string[]> {
   const ctx = getContext();
-  if (!ctx) throw new ApiError('SillyTavern 上下文不可用');
-  if (!channel.url) throw new ApiError('请先填写 API 地址');
+  if (!ctx) throw new ApiError('SillyTavern context is not available');
+  if (!channel.url) throw new ApiError('Please fill in the API URL first');
 
   const body = {
     chat_completion_source: 'openai',
@@ -535,7 +535,7 @@ export async function fetchModels(
   };
 
   const timeoutSec = validTimeoutSec(channel.timeoutSec);
-  return withTimeout(timeoutSec, undefined, '拉取模型', async signal => {
+  return withTimeout(timeoutSec, undefined, 'Fetch models', async signal => {
     const resp = await fetch(STATUS_URL, {
       method: 'POST',
       headers: ctx.getRequestHeaders(),
@@ -545,12 +545,12 @@ export async function fetchModels(
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new ApiError(`拉取模型失败 (${resp.status}): ${text.slice(0, 200)}`);
+      throw new ApiError(`Failed to fetch models (${resp.status}): ${text.slice(0, 200)}`);
     }
 
     const data = await resp.json();
     if (data?.error && !Array.isArray(data?.data)) {
-      throw new ApiError(data?.message || '拉取模型失败');
+      throw new ApiError(data?.message || 'Failed to fetch models');
     }
 
     const list: unknown = data?.data ?? data?.models ?? [];

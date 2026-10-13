@@ -335,7 +335,7 @@ describe('formatPromptText', () => {
         characters: [{ name: '顾晚', tag: 'black hair', nl: 'looking away' }],
       }),
     ).toBe(
-      '1girl, moonlight\n\nShe stands on the roof.\n\n角色: 顾晚\nblack hair\nlooking away\n\nNegative: lowres',
+      "1girl, moonlight\n\nShe stands on the roof.\n\nRole: 顾晚\nblack hair\nlooking away\n\nNegative: lowres",
     );
   });
 
@@ -354,7 +354,7 @@ describe('formatPromptText', () => {
       size: 'portrait',
     });
     expect(formatPromptText(parseImageTagContent(raw))).toBe(
-      '1girl\n\nnight\n\n角色: 顾晚\nblack hair\n\nNegative: blurry',
+      "1girl\n\nnight\n\nRole: 顾晚\nblack hair\n\nNegative: blurry",
     );
   });
 });
@@ -449,7 +449,7 @@ describe('managed bbi image-tag regex registration', () => {  it('registers both
     // 旧单条 hide 规则被原位升级为 promptOnly 版本（不再双开），用户字段保留
     const hide = list.find(s => s.id === IMAGE_TAG_HIDE_REGEX_ID);
     expect(hide).toMatchObject({
-      scriptName: '柏宝绘 · 隐藏生图标签',
+      scriptName: "BaiBai Image · Hidden Picture Tags",
       markdownOnly: false,
       promptOnly: true,
       placement: [1, 2, 3],
@@ -460,7 +460,7 @@ describe('managed bbi image-tag regex registration', () => {  it('registers both
     const slots = list.filter(s => s.id === IMAGE_TAG_SLOT_REGEX_ID);
     expect(slots).toHaveLength(1);
     expect(slots[0]).toMatchObject({
-      scriptName: '柏宝绘 · 生图标签占位',
+      scriptName: "BaiBai Image · Picture label placeholder",
       markdownOnly: true,
       promptOnly: false,
       placement: [1, 2, 3],

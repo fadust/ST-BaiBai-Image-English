@@ -1,29 +1,29 @@
-# 柏宝绘公开接口（API v1）
+# BaiBai Image public interface (API v1)
 
-本文面向 SillyTavern 插件、脚本和预设作者。柏宝绘把两件事开放给外部调用：
+This article is intended for SillyTavern plug-in, script and preset authors. BaiBai Image opens two things to external calls:
 
-1. **读角色库** —— 拿到柏宝绘已记录的角色和可直接出图的 tag
-2. **调生图** —— 让柏宝绘出一张图，**图显示在哪里由你决定**
+1. **Read the character library** - Get the characters recorded by Bai Baohui and the tag that can be directly drawn.
+2. **Tiaosheng Diagram** - Ask Bobo to draw a picture, **it is up to you to decide where the picture is displayed**
 
-入口只有一个 JavaScript 全局对象：`globalThis.STBaiBaiImage`。
+There is only one JavaScript global object at the entrance: `globalThis.STBaiBaiImage`.
 
-## 这个接口解决什么
+## What does this interface solve?
 
-柏宝绘自己的图是画在**楼层正文**里的（消息下方的卡片）。有些插件不想要这种呈现——想画在侧边栏、画在自己的弹窗里、画完直接当立绘用。这个接口给的就是这个：柏宝绘负责出图（后端配置、并发闸门、限流退避、落盘归档全都复用），你负责显示。
+Bai Bao painted his own picture in the **floor text** (the card below the message). Some plug-ins don't want this kind of presentation - they want to draw it on the sidebar, draw it in their own pop-up window, and use it directly as a vertical drawing after drawing. This is what this interface provides: BaiBai Image is responsible for drawing (backend configuration, concurrency gate, current limit backoff, disk placement and archiving are all reused), and you are responsible for displaying.
 
-**生成的图不会进入任何聊天记录。** 它不出现在楼层正文里，不占楼层卡片，也不写 `message.extra`。默认只会存进柏宝绘图库（见 `save`）。
+**The generated picture will not enter any chat history. ** It does not appear in the floor text, does not occupy the floor card, and does not write `message.extra`. By default, it will only be saved to the Bobo drawing library (see `save`).
 
-## 兼容约定
+## Compatibility convention
 
-- `apiVersion` 当前固定为 `1`。它是**公开数据结构**的版本，与插件自身的 `pluginVersion` 分开——后者天天涨，前者不涨。请按 `apiVersion` 判兼容，不要去解析 `pluginVersion` 的语义。
-- 结构只增不改不删：新增可选字段是安全的；改字段含义或删字段一律会升 `apiVersion`。
-- 所有返回值都是**普通可克隆对象**的深拷贝：不含函数、不含 Vue 响应式代理、不含类实例。你怎么改返回值都不会影响柏宝绘。
-- 楼层编号统一使用 SillyTavern 的零基 `mesid`。
-- **错误请按 `error.code` 分支判断**，不要匹配 `message` 文案（中文、会随版本改），也不要用 `instanceof`（跨插件 bundle 边界一律失效）。
+- `apiVersion` is currently fixed to `1`. It is a version of **public data structure**, separate from the `pluginVersion` of the plugin itself - the latter increases every day, while the former does not. Please press `apiVersion` to determine compatibility, and do not parse the semantics of `pluginVersion`.
+- The structure is only added but not modified or deleted: it is safe to add optional fields; changing the meaning of fields or deleting fields will always increase `apiVersion`.
+- All return values are deep copies of **normal cloneable objects**: no functions, no Vue reactive proxies, no class instances. No matter how you change the return value, it will not affect BaiBai Image.
+- Floor numbers uniformly use the zero base `mesid` of SillyTavern.
+- **Please check the `error.code` branch for errors**, do not match the `message` copy (Chinese, will change with the version), and do not use `instanceof` (cross-plugin bundle boundaries will be invalid).
 
-## 等待接口就绪
+## Wait for the interface to be ready
 
-插件加载顺序不固定，两条路都要写：
+The plug-in loading order is not fixed, both ways must be written:
 
 ```js
 function useBaiBaiImage(callback) {
@@ -39,18 +39,18 @@ function useBaiBaiImage(callback) {
 }
 ```
 
-就绪后可检查能力：
+Once ready, capabilities can be checked:
 
 ```js
 const api = globalThis.STBaiBaiImage;
 
 console.log(api.apiVersion);     // 1
-console.log(api.pluginVersion);  // 柏宝绘插件版本
+console.log(api.pluginVersion); // BaiBai Image plug-in version
 console.log(api.capabilities);
 // { globalApi: true, characterLibrary: true, generate: true, saveToGallery: true, events: true }
 ```
 
-## 读角色库
+## Read character library
 
 ```js
 const list = globalThis.STBaiBaiImage.getCharacters();
@@ -60,62 +60,62 @@ for (const character of list.characters) {
 }
 ```
 
-返回结构：
+Return structure:
 
 ```js
 {
   apiVersion: 1,
   pluginVersion: "0.2.5",
-  revision: 7,          // 角色库每变一次 +1，拿它做缓存失效
-  floor: null,          // 快照对应的楼层；null = 当前
+  revision: 7, // Every time the character library changes +1, use it to invalidate the cache
+  floor: null, // The floor corresponding to the snapshot; null = current
   characters: [
     {
-      name: "阿黛尔",
-      // 可直接拿去出图的完整 tag 串 —— 推荐直接用这个
+      name: "Adele",
+      // The complete tag string that can be used directly for drawing - it is recommended to use this directly
       tag: "1girl, short silver hair, blue eyes, pale skin, slender, scar on left eyebrow, black coat",
-      // 分字段版本（要自己挑着用时才需要）
+      //Field-by-field version (required only if you want to choose and use it yourself)
       fields: {
-        fandom: "",     // 同人身份
+        fandom: "", // fan identity
         sex: "1girl",
         hair: "short silver hair",
         eyes: "blue eyes",
         skin: "pale skin",
         body: "slender",
-        extra: "scar on left eyebrow",  // 标志特征
+        extra: "scar on left eyebrow", // Logo features
         outfit: "black coat",
       },
-      nl: "a girl with short silver hair",  // 自然语言外貌（可空）
-      source: "ai",        // 'manual' 用户手写 | 'ai' AI 在剧情里建的档 | 'book' 从柏宝书同步
-      scope: "chat",       // 'chat' 本聊天档案 | 'global' 全局角色库（跨聊天）
-      desc: "银色短发",     // 建档时那句「为什么长这样」（多为空串）
+      nl: "a girl with short silver hair", // Natural language appearance (optional)
+      source: "ai", // 'manual' user handwriting | 'ai' AI file created in the plot | 'book' synchronized from BaiBai Book
+      scope: "chat", // 'chat' this chat file | 'global' global character library (cross-chat)
+      desc: "Silver short hair", // The sentence "Why does it look like this" when creating the file (mostly empty string)
     },
   ],
 }
 ```
 
-`tag` 是按固定顺序（同人身份→性别→头发→眼睛→肤色→体型→标志特征→着装）拼好的，与柏宝绘自己出图用的串**完全一致**。不建议自己从 `fields` 拼——老条目可能只有整串原文，那条回落逻辑在 `tag` 里已经处理过了。
+`tag` is put together in a fixed order (identity → gender → hair → eyes → skin color → body shape → iconic features → clothing), which is exactly the same as the string used by Bai Baohui for his own drawings. It is not recommended to spell it from `fields` - the old entry may only have the entire original text, and the fallback logic has been processed in `tag`.
 
-### 读历史某一楼的角色档案
+### Read the character files of a certain historical floor
 
-角色档案会随剧情演进（AI 在某楼给角色换了发色）。要为**历史某一楼**出图，就得用那一楼当时的档案，否则会把后来的变更也画进去：
+The character profile will evolve with the plot (AI changed the hair color of the character in a certain building). If you want to draw a picture for a certain historical floor, you have to use the archives of that floor at that time, otherwise the subsequent changes will also be drawn:
 
 ```js
-// 第 42 楼**之前**的角色库快照（不含该楼）
+//The character library snapshot before the 42 building** (excluding this building)
 const atFloor = globalThis.STBaiBaiImage.getCharacters({ floor: 42 });
 ```
 
-## 出图前先问后端
+## Ask the backend before publishing the picture
 
 ```js
 const status = globalThis.STBaiBaiImage.getBackendStatus();
 
 if (!status.configured) {
-  toastr.warning(status.reason);   // reason 是人话，可直接展示给用户
+  toastr.warning(status.reason); // reason is human language and can be displayed directly to the user
   return;
 }
 ```
 
-返回结构：
+Return structure:
 
 ```js
 {
@@ -123,17 +123,17 @@ if (!status.configured) {
   pluginVersion: "0.2.5",
   backend: "nai",              // 'nai' | 'comfyui'
   configured: true,
-  model: "nai-diffusion-4-5-full",  // NAI 是模型名；ComfyUI 是当前工作流预设名
-  supportsCharacters: true,    // 当前后端支不支持多角色提示
-  reason: "",                  // configured=false 时的原因；已就绪为空串
+  model: "nai-diffusion-4-5-full", // NAI is the model name; ComfyUI is the current workflow default name
+  supportsCharacters: true, // The current front-end support does not support multi-role prompts
+  reason: "", // The reason when configured=false; ready is an empty string
 }
 ```
 
-> **不含服务地址与 API Key。** 这两样永远不会出现在任何公开返回值里。
+> **Does not include service address and API Key. ** These two will never appear in any public return value.
 
-`supportsCharacters` 只看模型，与配没配齐无关——你可以在用户还没填 Key 时就知道该不该准备 `characters`。**ComfyUI 恒为 `false`**。
+`supportsCharacters` only looks at the model, and has nothing to do with whether it is equipped or not - you can know whether to prepare `characters` before the user fills in Key. **ComfyUI is always `false`**.
 
-## 调生图
+## Tiaosheng Diagram
 
 ```js
 const api = globalThis.STBaiBaiImage;
@@ -144,47 +144,47 @@ const result = await api.generate({
   size: 'portrait',
 });
 
-myPanel.querySelector('img').src = result.dataUrl;   // 想显示在哪就显示在哪
+myPanel.querySelector('img').src = result.dataUrl; // Display it wherever you want.
 ```
 
-### 请求参数
+### Request parameters
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 | --- | --- | --- |
-| `prompt` | `string` | **必填**，正向 danbooru 短 tag。空串抛 `invalid_args` |
-| `nl` | `string?` | 自然语言描述 |
-| `negative` | `string?` | 本画面动态负面。**只对 ComfyUI 生效**；NAI 的负面取用户渠道配置 |
-| `characters` | `PublicCharacterPrompt[]?` | 多角色提示，见下 |
-| `size` | `'portrait' \| 'landscape'?` | 画幅方向，缺省 `'portrait'`。具体像素取用户在渠道页配的尺寸。**用户在渠道里锁定了画幅方向时一律按锁定方向出图**，这里传什么都不算数（0.3.1 起） |
-| `seed` | `number?` | 指定种子（正整数）。省略 = 按用户设置决定 |
-| `save` | `boolean?` | 落盘进柏宝绘图库，**默认 `true`** |
-| `character` | `string?` | 落盘归到哪个角色名下（图库分组名）。省略 = 当前聊天的角色名 |
+| `prompt` | `string` | **Required**, forward danbooru short tag. Empty string throw `invalid_args` |
+| `nl` | `string?` | Natural language description |
+| `negative` | `string?` | This screen is dynamically negative. **Only valid for ComfyUI**; NAI’s negative user channel configuration |
+| `characters` | `PublicCharacterPrompt[]?` | Multi-character tips, see below |
+| `size` | `'portrait' \| 'landscape'?` | Frame direction, default `'portrait'`. The specific pixel is the size configured by the user on the channel page. **When the user locks the frame direction in the channel, the picture will be output in the locked direction**, nothing uploaded here will count (from 0.3.1) |
+| `seed` | `number?` | Specifies the seed (positive integer). Omitted = determined by user settings |
+| `save` | `boolean?` | Place the disk into the Baiba drawing library, **default is `true`** |
+| `character` | `string?` | Which character's name the placement belongs to (gallery group name). Omitted = current chat character name |
 
-### 返回值
+### Return value
 
 ```js
 {
   apiVersion: 1,
   pluginVersion: "0.2.5",
-  dataUrl: "data:image/png;base64,...",   // 可直接 <img src>
+  dataUrl: "data:image/png;base64,...", // can directly <img src>
   format: "png",
-  path: "/user/images/柏宝绘_阿黛尔/bbi_....png",  // 落盘路径；save=false 或落盘失败为 null
-  seed: 3847562910,       // 本次实际使用的种子；想复现就把它填回 seed
+  path: "/user/images/Babao painted _ Adele/bbi_....png", // The placement path; save=false or the placement failure is null
+  seed: 3847562910, // The actual seed used this time; if you want to reproduce it, fill it back in seed
   backend: "nai",
   charactersApplied: true,
 }
 ```
 
-图是 **data URL** 而不是 blob URL：blob 要配对 `revokeObjectURL`，你忘了就泄漏、我们替你 revoke 又会让你的 `<img>` 突然变空白。代价是字符串比较大，用完别长期留在内存里。
+The picture is **data URL** instead of blob URL: blob needs to be paired with `revokeObjectURL`. If you forget it, it will leak. We will replace your revoke and your `<img>` will suddenly become blank. The price is that the string is relatively large and should not remain in memory for a long time after use.
 
-### 关于 `save`
+### About `save`
 
-- `true`（默认）：图存进 `user/images/柏宝绘_<character>/`，并写一份同名侧写 json 记下提示词和种子。于是用户能在**柏宝绘图库页**里按角色分组看到它、连提示词一起。侧写记的是**实际出图的方向**（用户锁定了画幅时与你传的 `size` 不同）。
-- `false`：只返回 `dataUrl`，不碰磁盘。适合「预览一下就丢」。
+- `true` (default): Save the picture into `user/images/柏宝绘_<character>/`, and write a profile of the same name json. Write down the prompt words and seeds. So the user can see it grouped by role on the **Babao Drawing Library Page**, together with the prompt words. The profile records the **actual direction of drawing** (which is different from the `size` you passed when the user locked the frame).
+- `false`: only returns `dataUrl`, without touching the disk. Suitable for "preview and throw away".
 
-落盘**失败不会抛错**——图已经在 `dataUrl` 里了，不能因为存不进图库就让你连图都拿不到。这种情况 `path` 是 `null`。
+There will be no error if the placement **fails** - the picture is already in `dataUrl`. You cannot get the picture just because it cannot be saved in the gallery. In this case `path` is `null`.
 
-### 多角色（NAI 4.5 / V5）
+### Multiple roles (NAI 4.5 / V5)
 
 ```js
 const status = api.getBackendStatus();
@@ -198,13 +198,13 @@ const result = await api.generate({
 });
 
 if (!result.charactersApplied) {
-  console.log('当前后端不支持多角色，这次只用了 prompt');
+  console.log('The current backend does not support multiple roles, this time only prompt was used');
 }
 ```
 
-`charactersApplied` 明说这次到底用上了没有。柏宝绘**刻意不降级**把角色拼进 `prompt`——那会画出多份躯干重叠的图。要画多角色，请先看 `supportsCharacters`。
+`charactersApplied` clearly stated whether it was used this time. Bai Baowei **deliberately not downgraded** the character into `prompt` - that will draw multiple overlapping torsos. To draw multiple characters, please look at `supportsCharacters` first.
 
-### 进度与取消
+### Progress and Cancellation
 
 ```js
 const controller = new AbortController();
@@ -214,68 +214,68 @@ const result = await api.generate(
   {
     signal: controller.signal,
     onProgress: p => {
-      // 'queued' 在柏宝绘的 NAI 并发闸门里排队
-      // 'generating' 请求已发出，后端正在画
-      // 'queued-remote' 在 ComfyUI 服务端队列里（p.ahead 为前面还有几个）
-      // 'retrying' 被限流了，正在退避重试（p.attempt / p.max）
-      // 'saving' 图已拿到，正在落盘
+      // 'queued' is queued in BaiBai Image's NAI concurrent gate
+      // 'generating' request has been sent and the backend is drawing
+      // 'queued-remote' is in the ComfyUI server queue (p.ahead is the first one)
+      // 'retrying' has been limited and is backing off and trying again (p.attempt / p.max)
+      // 'saving' picture has been obtained and is being placed.
       console.log(p.phase, p.ahead, p.attempt, p.max);
     },
   },
 );
 
-// 取消：generate 会抛 code='aborted'
+// Cancel: generate will throw code='aborted'
 controller.abort();
 ```
 
-`onProgress` 抛错只会被记进 console，不影响生成。
+`onProgress` throw error will only be recorded as console and will not affect the generation.
 
-### 错误处理
+### Error handling
 
 ```js
 try {
   await api.generate({ prompt: '1girl' });
 } catch (error) {
   switch (error.code) {
-    case 'aborted':        break;                        // 你自己取消的
-    case 'not_configured': toastr.warning(error.message); break;  // 用户没配好后端
-    case 'invalid_args':   console.error(error.message);  break;  // 你传错了
-    case 'rate_limited':   toastr.warning('被限流了，稍后再试'); break;
+    case 'aborted': break; // You canceled it yourself
+    case 'not_configured': toastr.warning(error.message); break; // The user has not configured the backend properly
+    case 'invalid_args': console.error(error.message); break; // You sent the wrong message
+    case 'rate_limited': toastr.warning('The current is limited, try again later'); break;
     case 'backend_error':  toastr.error(error.message);   break;
   }
 }
 ```
 
-`rate_limited` 与 `backend_error` 分开，是因为处置方式不同：前者该等一会儿再来（柏宝绘的自动退避重试已经用尽了），后者是配置/网络问题，立刻重来也是同样的错。
+`rate_limited` and `backend_error` are separated because of different handling methods: the former should wait for a while (BaiBai Image's automatic backoff retries have been exhausted), the latter is a configuration/network problem, and it will be the same error if you try again immediately.
 
-### 不要绕过这个接口
+### Do not bypass this interface
 
-柏宝绘内部的 NAI 请求全部走一道**并发闸门 + 全局节奏**（429 冷却、相邻请求最小间隔、指数退避重试）。这个接口把闸门包在里面了。如果你绕过它直接打 NAI 的 `generate-image`，用户的账号会吃一串密集 429——而用户只会认为是柏宝绘坏了。
+All NAI requests within BaiBai Image go through the same **concurrency gate + global rhythm** (429 cooling, minimum interval between adjacent requests, exponential backoff retry). This interface wraps the gate inside. If you bypass it and type NAI's `generate-image` directly, the user's account will be flooded with 429 - and the user will only think that Bai Baohui is broken.
 
-## 订阅角色库变更
+## Subscribe to character library changes
 
 ```js
 const unsubscribe = globalThis.STBaiBaiImage.subscribe(notice => {
   console.log(notice.type);      // 'ready' | 'changed'
-  console.log(notice.revision);  // 与 getCharacters().revision 同源
+  console.log(notice.revision); // Same origin as getCharacters().revision
   console.log(notice.chatId);
   refreshMyCharacterPicker();
 });
 
-// 不需要时记得退订
+// Remember to unsubscribe when you don’t need it
 unsubscribe();
 ```
 
-切聊天、删楼、滑动、用户手动改档案、AI 在剧情里建档——凡是角色库变了都会通知。同一批变更会攒成一条，不会刷屏。
+Switch chat, delete buildings, swipe, users manually change files, AI creates files in the story - all changes to the character library will be notified. Changes in the same batch will be collected into one line and the screen will not be refreshed.
 
-也可以直接监听 DOM 事件（内容与 `subscribe` 的回调参数相同）：
+You can also directly listen to the DOM event (the content is the same as the callback parameter of `subscribe`):
 
 ```js
 window.addEventListener('st-baibai-image:ready', e => console.log(e.detail));
 window.addEventListener('st-baibai-image:changed', e => console.log(e.detail));
 ```
 
-## 完整示例
+## Complete example
 
 ```js
 function useBaiBaiImage(callback) {
@@ -286,7 +286,7 @@ function useBaiBaiImage(callback) {
 
 useBaiBaiImage(async api => {
   if (api.apiVersion !== 1) {
-    console.warn('柏宝绘接口版本不匹配', api.apiVersion);
+    console.warn('BaiBai Image interface version does not match', api.apiVersion);
     return;
   }
 
@@ -296,7 +296,7 @@ useBaiBaiImage(async api => {
     return;
   }
 
-  const heroine = api.getCharacters().characters.find(c => c.name === '阿黛尔');
+  const heroine = api.getCharacters().characters.find(c => c.name === 'Adele');
   if (!heroine) return;
 
   try {
@@ -304,16 +304,16 @@ useBaiBaiImage(async api => {
       prompt: `${heroine.tag}, cafe, afternoon light`,
       nl: heroine.nl,
       size: 'landscape',
-      character: heroine.name,   // 落盘归到「柏宝绘_阿黛尔」目录下
+      character: heroine.name, //Place it in the directory of "Babao Painting _ Adele"
     });
     document.querySelector('#my-portrait').src = result.dataUrl;
   } catch (error) {
-    if (error.code !== 'aborted') toastr.error(error.message, '出图失败');
+    if (error.code !== 'aborted') toastr.error(error.message, 'Picture failed');
   }
 });
 ```
 
-## 接口一览
+## Interface List
 
 ```ts
 interface STBaiBaiImageApi {
@@ -327,4 +327,4 @@ interface STBaiBaiImageApi {
 }
 ```
 
-完整类型定义见插件源码 `src/public/types.ts`。
+For the complete type definition, see the plug-in source code `src/public/types.ts`.

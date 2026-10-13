@@ -37,7 +37,7 @@ describe('auto tag position protocol', () => {
         2,
         3,
       ),
-    ).toThrow('少于设置的最少图片数 2');
+    ).toThrow('less than the minimum number of pictures set 2');
   });
 
   it('accepts an empty image list when the configured minimum is zero', () => {
@@ -150,13 +150,13 @@ describe('auto tag position protocol', () => {
   it('rejects positions missing from the target source', () => {
     expect(() =>
       parseImagePlan('{"images":[{"position":"P9","tag":"scene"}]}', segments, 2),
-    ).toThrow('不在目标正文');
+    ).toThrow('Not in target body');
   });
 
   it('rejects malformed position IDs', () => {
     expect(() =>
       parseImagePlan('{"images":[{"position":"第二段","tag":"scene"}]}', segments, 2),
-    ).toThrow('P编号');
+    ).toThrow('P number');
   });
 
   it('rejects nested bbi tags in prompts', () => {
@@ -166,19 +166,19 @@ describe('auto tag position protocol', () => {
         segments,
         1,
       ),
-    ).toThrow('不得包含');
+    ).toThrow('Must not contain');
   });
 
   it('rejects sub-tag literals in the nl part', () => {
     expect(() =>
       parseImagePlan('{"images":[{"position":"P1","tag":"ok","nl":"bad</nl>"}]}', segments, 1),
-    ).toThrow('不得包含');
+    ).toThrow('Must not contain');
   });
 
   it('rejects a fake size sub-tag smuggled into the tag text', () => {
     expect(() =>
       parseImagePlan('{"images":[{"position":"P1","tag":"1girl<size>landscape</size>"}]}', segments, 1),
-    ).toThrow('不得包含');
+    ).toThrow('Must not contain');
   });
 
   it('keeps the optional dynamic negative part and accepts negative_prompt as an alias', () => {
@@ -194,7 +194,7 @@ describe('auto tag position protocol', () => {
         segments,
         1,
       ),
-    ).toThrow('不得包含');
+    ).toThrow('Must not contain');
   });
 
   it('inserts multiple tags after the same line in array order', () => {

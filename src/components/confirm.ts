@@ -25,7 +25,7 @@ export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   if (!root) {
     // 取不到 host 等于弹不出窗,返回 false 会被调用方当成「用户取消了」而静默放弃 ——
     // 至少留一行日志,否则表现是「点了没反应」且无从排查。
-    console.warn('[柏宝绘] 插件 host 不在,确认弹窗无法呼出', { hostId: HOST_ID, title: options.title });
+    console.warn('[BaiBai Image] The plug-in host is not available, and the confirmation pop-up window cannot be called out.', { hostId: HOST_ID, title: options.title });
     return Promise.resolve(false);
   }
 

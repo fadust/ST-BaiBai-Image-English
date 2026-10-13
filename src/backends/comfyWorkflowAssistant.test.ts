@@ -47,7 +47,7 @@ describe('parseWorkflowBindings', () => {
       parseWorkflowBindings(
         '{"bindings":[{"node":"6","input":"text","purpose":"positive_tag"},{"node":"6","input":"text","purpose":"negative"}]}',
       ),
-    ).toThrow('互相冲突');
+    ).toThrow('conflicting');
   });
 });
 
@@ -91,7 +91,7 @@ describe('applyWorkflowBindings', () => {
       applyWorkflowBindings(WORKFLOW, [
         { node: '3', input: 'positive', purpose: 'positive_tag' },
       ]),
-    ).toThrow('不是可直接替换');
+    ).toThrow('Not a directly replaceable');
   });
 
   it('requires a positive prompt binding when the workflow has no existing %prompt%', () => {
@@ -99,7 +99,7 @@ describe('applyWorkflowBindings', () => {
       applyWorkflowBindings(WORKFLOW, [
         { node: '7', input: 'text', purpose: 'negative' },
       ]),
-    ).toThrow('没有找到正向提示词');
+    ).toThrow('No positive prompt');
   });
 
   it('keeps only selected fixed fragments and removes exported sample scene content', () => {
@@ -145,6 +145,6 @@ describe('applyWorkflowBindings', () => {
       applyWorkflowBindings(WORKFLOW, [
         { node: '6', input: 'text', purpose: 'positive_tag', keep: ['F99'] },
       ]),
-    ).toThrow('不存在的片段');
+    ).toThrow('does not exist');
   });
 });

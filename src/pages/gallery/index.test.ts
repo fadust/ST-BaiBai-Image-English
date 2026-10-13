@@ -353,7 +353,7 @@ describe('gallery multi-select delete', () => {
     expect(find(root, '.gal-badge').map(text)).toEqual(['51', '5']);
     // 已显示张数(48)不变,后面的图往前补位——删两张不该让用户重新往下翻
     expect(find(root, 'img')).toHaveLength(48);
-    expect(text(find(root, '.gal-count')[0])).toContain('56 张');
+    expect(text(find(root, '.gal-count')[0])).toContain('56 images');
     // 体积显示已暂时禁用(见 load()):删除后就地渲染的列表里也不该出现任何体积角标
     expect(find(root, '.gal-size')).toHaveLength(0);
     // 楼层卡片据此立刻降级,不必等它自己 404
@@ -375,7 +375,7 @@ describe('gallery multi-select delete', () => {
     expect(vi.mocked(deleteImageFileOnly)).toHaveBeenCalledTimes(53);
     // 删空的分组整组消失
     expect(find(root, '.gal-fold-trigger')).toHaveLength(1);
-    expect(text(find(root, '.gal-count')[0])).toContain('1 位角色');
+    expect(text(find(root, '.gal-count')[0])).toContain('1 characters');
   });
 
   it('keeps the files when the confirmation is declined', async () => {

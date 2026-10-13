@@ -178,12 +178,12 @@ export function resetNaiPacing(): void {
 export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(signal.reason ?? new DOMException('已取消', 'AbortError'));
+      reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
       return;
     }
     const onAbort = () => {
       clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException('已取消', 'AbortError'));
+      reject(signal?.reason ?? new DOMException('Cancelled', 'AbortError'));
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort);
@@ -258,7 +258,7 @@ export async function runNaiWithRetry<T>(
       const waitMs = Math.max(retryDelayMs(attempt, retryAfterMs), naiPacingDelayMs());
       onRetry?.({ attempt, max: maxRetries, waitMs, error });
       console.warn(
-        `[柏宝绘] NAI 请求失败,${Math.round(waitMs / 1000)}s 后重试(第 ${attempt}/${maxRetries} 次):`,
+        `[BaiBai Image] NAI request failed,${Math.round(waitMs / 1000)}Retry after s (No. ${attempt}/${maxRetries} times):`,
         error,
       );
       await delay(waitMs, signal);

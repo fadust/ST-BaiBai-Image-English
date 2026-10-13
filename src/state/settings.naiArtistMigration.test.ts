@@ -146,7 +146,7 @@ describe('NAI 画师串库', () => {
     expect(first.name).toBe('no id');
     // null 条目也补齐成可用的空槽位,名字按序号给
     expect(second.id).toBeTruthy();
-    expect(second.name).toBe('画师串 2');
+    expect(second.name).toBe('Artist Tags 2');
     expect(second.prompt).toBe('');
     // 非字符串 prompt 归空串;有效 id 仍被 activeArtistId 认到
     expect(third.prompt).toBe('');

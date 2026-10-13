@@ -27,7 +27,7 @@ function buildButton(): HTMLElement {
   btn.className = 'drawer';
   btn.innerHTML = `
     <div class="drawer-toggle">
-      <div class="drawer-icon fa-solid fa-palette fa-fw closedIcon" title="柏宝绘"></div>
+      <div class="drawer-icon fa-solid fa-palette fa-fw closedIcon" title="BaiBai Image"></div>
     </div>
   `;
   // 仅打开窗口,不走 ST 的抽屉开合逻辑(故未挂 .drawer-toggle 的 doNavbarIconClick)

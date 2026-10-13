@@ -38,9 +38,9 @@ const filter = ref<Filter>('all');
 const viewing = ref<{ title: string; segment: Segment } | null>(null);
 
 const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'all', label: '全部' },
-  { value: 'llm', label: '副 API' },
-  { value: 'image', label: '生图' },
+  { value: 'all', label: 'All' },
+  { value: 'llm', label: 'Auxiliary API' },
+  { value: 'image', label: 'Image Generation' },
 ];
 
 const shown = computed(() =>
@@ -52,19 +52,19 @@ function time(ts: number): string {
 }
 
 function duration(ms: number | null): string {
-  if (ms === null) return '进行中';
+  if (ms === null) return 'In progress';
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
 function statusLabel(record: HistoryRecord): string {
-  if (record.status === 'running') return '进行中';
-  if (record.status === 'ok') return '成功';
-  if (record.status === 'aborted') return '已取消';
-  return '失败';
+  if (record.status === 'running') return 'In progress';
+  if (record.status === 'ok') return 'Success';
+  if (record.status === 'aborted') return 'Cancelled';
+  return 'Failed';
 }
 
 function title(record: HistoryRecord): string {
-  return record.kind === 'llm' ? record.source : `第 ${record.floor} 楼 · 第 ${record.seq + 1} 张`;
+  return record.kind === 'llm' ? record.source : `No. ${record.floor} Floor · No. ${record.seq + 1} image`;
 }
 
 function subtitle(record: HistoryRecord): string {
@@ -85,26 +85,26 @@ function tokenLabel(record: LlmRecord): string {
 
 function tokenTitle(record: LlmRecord): string {
   return record.tokensEstimated
-    ? '本地估算：用的是 ST 主界面当前模型的分词器，与本渠道模型未必一致，仅供参考'
-    : '上游返回的真实用量（usage）';
+    ? 'Local estimation: The word segmenter of the current model of the ST main interface is used, which may not be consistent with the model of this channel and is for reference only.'
+    : 'Real usage returned by upstream (usage)';
 }
 
 /** 把一条记录摊成「按顺序的若干段」——展开区就是照这个顺序渲染的。 */
 function segments(record: HistoryRecord): Segment[] {
   if (record.kind === 'llm') {
     const out: Segment[] = record.messages.map(m => ({ label: m.role, text: m.content }));
-    if (record.response) out.push({ label: '返回', text: record.response });
+    if (record.response) out.push({ label: 'Return', text: record.response });
     return out;
   }
-  const out: Segment[] = [{ label: '正向提示词', text: record.prompt }];
-  if (record.nl) out.push({ label: '自然语言', text: record.nl });
+  const out: Segment[] = [{ label: 'positive cue words', text: record.prompt }];
+  if (record.nl) out.push({ label: 'Natural Language', text: record.nl });
   for (const character of record.characters ?? []) {
     out.push({
       label: `\u89d2\u8272: ${character.name}`,
       text: [character.tag, character.nl].filter(Boolean).join('\n\n'),
     });
   }
-  if (record.negative) out.push({ label: '负面', text: record.negative });
+  if (record.negative) out.push({ label: 'Negative', text: record.negative });
   return out;
 }
 
@@ -117,14 +117,14 @@ function inline(text: string): string {
 function facts(record: HistoryRecord): string[] {
   const out = [subtitle(record), duration(record.durationMs), new Date(record.startedAt).toLocaleString()];
   if (record.kind === 'llm') {
-    if (record.stream) out.push('流式');
+    if (record.stream) out.push('Stream');
     // 标题行那个数字是提示词 token(标题行地方紧,不带单位);这里补全口径。
-    if (record.promptTokens !== null) out.push(`提示词 ${tokenLabel(record)} token`);
+    if (record.promptTokens !== null) out.push(`prompt word ${tokenLabel(record)} token`);
     if (record.completionTokens !== null) {
-      out.push(`输出 ${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()} token`);
+      out.push(`output ${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()} token`);
     }
   } else {
-    out.push(`种子 ${record.seed}`, record.size);
+    out.push(`seeds ${record.seed}`, record.size);
   }
   return out.filter(Boolean);
 }
@@ -133,28 +133,28 @@ function facts(record: HistoryRecord): string[] {
 function copyAll(record: HistoryRecord): void {
   const head = [
     `【${title(record)}】${subtitle(record)}`,
-    `状态：${statusLabel(record)}  耗时：${duration(record.durationMs)}`,
+    `Status:${statusLabel(record)}  Time consuming:${duration(record.durationMs)}`,
     record.kind === 'llm' && record.promptTokens !== null
-      ? `提示词 token：${tokenLabel(record)}`
+      ? `Prompt word token:${tokenLabel(record)}`
       : '',
-    record.error ? `错误：${record.error}` : '',
+    record.error ? `Error:${record.error}` : '',
   ].filter(Boolean);
   const body = segments(record).map(s => `--- ${s.label} ---\n${s.text}`);
-  void copyText([...head, '', ...body].join('\n'), '记录已复制');
+  void copyText([...head, '', ...body].join('\n'), 'Record copied');
 }
 </script>
 
 <template>
   <section class="bbi-page">
     <div class="bbi-page-head">
-      <h2 class="bbi-title bbi-title-sub">请求历史</h2>
-      <span class="bbi-count" title="本次会话已记录的请求数">{{ records.length }}</span>
+      <h2 class="bbi-title bbi-title-sub">Request History</h2>
+      <span class="bbi-count" title="Number of requests recorded for this session">{{ records.length }}</span>
     </div>
     <hr class="bbi-rule" />
 
     <div class="bbi-hist-bar">
       <div class="bbi-segmented-wrap">
-        <div class="bbi-segmented" role="tablist" aria-label="记录类型">
+        <div class="bbi-segmented" role="tablist" aria-label="record type">
           <button
             v-for="f in FILTERS"
             :key="f.value"
@@ -175,7 +175,7 @@ function copyAll(record: HistoryRecord): void {
         :disabled="!records.length"
         @click="clearHistory"
       >
-        <Icon name="trash" /> 清空
+        <Icon name="trash" /> Clear
       </button>
     </div>
 
@@ -209,8 +209,8 @@ function copyAll(record: HistoryRecord): void {
           v-if="record.kind === 'llm' && record.tokensEstimated && record.promptTokens !== null"
           class="bbi-field-hint"
         >
-          带 ≈ 的 token 数是本地估算：流式与「跟随主 API」拿不到上游用量，
-          这里用 ST 主界面当前模型的分词器估的，与本渠道模型未必一致。
+          The token number with ≈ is a local estimate: streaming and &quot;follow the main API&quot; cannot get the upstream usage.
+          This is estimated using the word segmenter of the current model of the ST main interface, which may not be consistent with the model of this channel.
         </p>
 
         <!-- 按顺序的提示词列表:与设置页「自定义提示词」同款行 -->
@@ -225,7 +225,7 @@ function copyAll(record: HistoryRecord): void {
               <span class="bbi-prompt-preview">{{ inline(seg.text) }}</span>
               <span
                 class="bbi-prompt-len"
-                title="本段 token 粗估（本地按字符估算，仅供段间比较，与标题行的真实用量口径不同）"
+                title="Rough estimate of token for this paragraph (local estimate by character, only for comparison between paragraphs, different from the actual usage caliber of the title line)"
               >≈{{ roughTokens(seg.text).toLocaleString() }}</span>
               <Icon name="eye" class="bbi-prompt-edit" />
             </button>
@@ -234,22 +234,22 @@ function copyAll(record: HistoryRecord): void {
 
         <div class="bbi-hist-foot">
           <button class="bbi-btn bbi-btn-sm" type="button" @click="copyAll(record)">
-            <Icon name="copy" /> 复制整条
+            <Icon name="copy" /> Copy entire
           </button>
         </div>
       </Collapsible>
     </div>
-    <p v-else-if="records.length" class="bbi-field-hint">当前筛选下没有记录。</p>
+    <p v-else-if="records.length" class="bbi-field-hint">There are no records under the current filter.</p>
     <p v-else class="bbi-field-hint">
-      本次会话还没有请求记录。触发一次自动 tag 或生成一张图，这里就会出现条目（刷新页面会清空）。
+      No records have been requested for this session. Trigger an automatic tag or generate a picture, and entries will appear here (refreshing the page will clear them).
     </p>
 
     <!-- ===== 单段全文弹窗 ===== -->
     <ModalMask :open="!!viewing" @close="viewing = null">
-      <div v-if="viewing" class="bbi-modal bbi-modal-wide" role="dialog" aria-modal="true" aria-label="提示词全文">
+      <div v-if="viewing" class="bbi-modal bbi-modal-wide" role="dialog" aria-modal="true" aria-label="Full text of prompt words">
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">{{ viewing.title }}</span>
-          <button class="bbi-icon-mini" type="button" title="关闭" @click="viewing = null">
+          <button class="bbi-icon-mini" type="button" title="Close" @click="viewing = null">
             <Icon name="close" />
           </button>
         </header>
@@ -258,10 +258,10 @@ function copyAll(record: HistoryRecord): void {
 
         <footer class="bbi-modal-foot">
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn" type="button" @click="copyText(viewing!.segment.text, '已复制')">
-            <Icon name="copy" /> 复制
+          <button class="bbi-btn" type="button" @click="copyText(viewing!.segment.text, 'Copied')">
+            <Icon name="copy" /> Copy
           </button>
-          <button class="bbi-btn bbi-btn-primary" type="button" @click="viewing = null">完成</button>
+          <button class="bbi-btn bbi-btn-primary" type="button" @click="viewing = null">Done</button>
         </footer>
       </div>
     </ModalMask>

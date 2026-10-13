@@ -43,7 +43,7 @@ export function formatEntryForPrompt(entry: CharTagEntry, locked = false): strin
   }
   if (!parts.length && entry.raw.trim()) parts.push(`tag=${entry.raw.trim()}`);
   if (entry.nl.trim()) parts.push(`nl=${entry.nl.trim()}`);
-  return `- ${entry.name}${locked ? ' [locked]' : ''}: ${parts.join(', ') || '(未记录字段)'}`;
+  return `- ${entry.name}${locked ? ' [locked]' : ''}: ${parts.join(', ') || '(field not recorded)'}`;
 }
 
 /**
@@ -56,7 +56,7 @@ export function buildLibraryText(entries: CharTagEntry[], lockedNames?: Readonly
   const lockedNote = lockedNames?.size
     ? '; entries marked [locked] are global and immutable: never report changes for them, always copy their fields as-is'
     : '';
-  return `【角色固定外貌库】[system-maintained; copy fields verbatim into character prompts${lockedNote}]\n${lines.join('\n')}`;
+  return `【 character fixed appearance library 】[system-maintained; copy fields verbatim into character prompts${lockedNote}]\n${lines.join('\n')}`;
 }
 
 /** 旧接口兼容:runner 之外仍有调用方依赖锚定文本形态。 */
@@ -66,21 +66,21 @@ export function buildAnchorText(entries: CharTagEntry[], lockedNames?: ReadonlyS
 
 /* ============ 中文外貌 → 结构化字段 的批量转换 ============ */
 
-const CONVERT_SPEC = `你是外貌 tag 转换器。把给出的角色中文外貌描述拆成固定字段的 danbooru 短 tag:英文小写、逗号分隔、多词用空格连接(不要用下划线)。
+const CONVERT_SPEC = `You are looking for tag converter. Split the given Chinese appearance description of the character into fixed fields danbooru short tag: English lowercase, comma separated, multiple words connected with spaces (do not use underscores).
 
-字段与示例:
-- sex(性别):1girl / 1boy / androgynous 等
-- hair(头发):long black hair / short silver hair 等
-- eyes(眼睛):red eyes / blue eyes 等
-- skin(肤色):tan / dark skin 等(没提就留空;白皙是默认肤色,不需要记录)
-- body(体型):petite / tall / slim / small breasts 等
-- extra(标志特征):heterochromia / scar on cheek / pointy ears 等(没提就留空)
+Fields and examples:
+- sex (gender): 1girl / 1boy / androgynous etc.
+- hair (hair): long black hair / short silver hair etc.
+- eyes (eyes): red eyes / blue eyes etc.
+- skin (skin color): tan / dark skin, etc. (leave blank if not mentioned; fair is the default skin color and does not need to be recorded)
+- body (body type): petite / tall / slim / small breasts, etc.
+- extra (logo characteristics): heterochromia / scar on cheek / pointy ears, etc. (leave blank if not mentioned)
 
-规则:
-1. 只提取固定基础特征;服装、饰品、状态、表情、动作、场景一律不写。
-2. hair 与 eyes 是二次元角色身份锚点：描述里只要出现发色、发型/长度或瞳色线索就必须写入对应字段，不得遗漏或塞进 extra；hair 尽量同时保留颜色和长度/发型，eyes 保留颜色。
-3. 描述里没提的细节不要脑补,对应字段留空字符串。
-4. 只返回一个 JSON 对象:{"角色名":{"sex":"...","hair":"...","eyes":"...","skin":"...","body":"...","extra":"..."}},键与输入的角色名完全一致;不要 Markdown 代码块、不要解释。`;
+Rules:
+1. Only fixed basic features are extracted; clothing, accessories, status, expressions, actions, and scenes are not included.
+2. hair and eyes are two-dimensional character identity anchors: as long as hair color, hairstyle/length or eye color clues appear in the description, they must be written in the corresponding fields and must not be left out or stuffed into extra; hair should try to retain both color and length/hairstyle, and eyes should retain the color.
+3. Don’t make up for the details not mentioned in the description, and leave empty strings in the corresponding fields.
+4. Only one JSON is returned Object: {"Character name":{"sex":"...","hair":"...","eyes":"...","skin":"...","body":"...","extra":"..."}}, the key is exactly the same as the entered character name; do not Markdown Code blocks, no explanations.`;
 
 /** 字段值清洗:换行压成空格、剥 bbi_image 系子标签字面量(防止污染注入格式)。 */
 function sanitizeTagValue(value: unknown): string {
@@ -152,8 +152,8 @@ export async function generateCharTags(
   ];
   const channel = getTagGenChannel();
   const raw = channel
-    ? await requestCompletion(channel, messages, { signal, source: '角色外貌转换' })
-    : await requestViaMainApi(messages, { signal, source: '角色外貌转换' });
+    ? await requestCompletion(channel, messages, { signal, source: 'Character appearance transformation' })
+    : await requestViaMainApi(messages, { signal, source: 'Character appearance transformation' });
   const parsed = parseConvertedTags(raw);
   const out: ConvertedChar[] = [];
   for (const c of chars) {

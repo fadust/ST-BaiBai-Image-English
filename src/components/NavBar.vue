@@ -36,7 +36,7 @@ function onNavClick(id: string) {
     >
       <span class="bbi-nav-icon-wrap">
         <Icon :name="p.id" class="bbi-nav-icon" />
-        <span v-if="showUpdateDot(p.id)" class="bbi-nav-dot" aria-label="有可用更新"></span>
+        <span v-if="showUpdateDot(p.id)" class="bbi-nav-dot" aria-label="Updates available"></span>
       </span>
       <!-- 顶部带文字;但窄屏(移动端)顶部也只放图标,否则一排带字胶囊横向放不下,会把后面的项挤出屏幕 -->
       <span v-if="placement === 'top' && !narrow" class="bbi-nav-label">{{ p.label }}</span>

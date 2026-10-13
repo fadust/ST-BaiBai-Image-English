@@ -187,7 +187,7 @@ onBeforeUnmount(() => closeMenu());
         :style="menuStyle"
         @mousedown.prevent="keepFocus"
       >
-        <li v-if="!filtered.length" class="bbi-combo-empty">无匹配项</li>
+        <li v-if="!filtered.length" class="bbi-combo-empty">No match</li>
         <li
           v-for="(option, i) in filtered"
           :key="option"

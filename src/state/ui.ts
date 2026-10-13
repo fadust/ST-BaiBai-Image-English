@@ -28,11 +28,11 @@ export interface ThemeDef {
 }
 
 export const THEMES: ThemeDef[] = [
-  { value: 'day', label: '日间', icon: 'sun' },
-  { value: 'night', label: '夜间', icon: 'moon' },
-  { value: 'pastel', label: '粉彩', icon: 'sparkles' },
-  { value: 'green', label: '木白', icon: 'sparkles' },
-  { value: 'st', label: '跟随ST', icon: 'plug' },
+  { value: 'day', label: 'Light', icon: 'sun' },
+  { value: 'night', label: 'Dark', icon: 'moon' },
+  { value: 'pastel', label: 'Pastel', icon: 'sparkles' },
+  { value: 'green', label: 'Warm white', icon: 'sparkles' },
+  { value: 'st', label: 'Follow SillyTavern', icon: 'plug' },
 ];
 
 interface UiState {
@@ -60,9 +60,9 @@ interface UiState {
 /** 悬浮球形状 */
 export type OrbShape = 'bookmark' | 'circle' | 'square';
 export const ORB_SHAPES: { value: OrbShape; label: string }[] = [
-  { value: 'bookmark', label: '书签' },
-  { value: 'circle', label: '圆形' },
-  { value: 'square', label: '方形' },
+  { value: 'bookmark', label: 'Bookmark' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'square', label: 'Square' },
 ];
 function validOrbShape(s: string): OrbShape {
   return s === 'bookmark' || s === 'circle' || s === 'square' ? s : 'bookmark';

@@ -96,7 +96,7 @@ function toggleSelectAllFiltered() {
 
 /** 新建:入库 + 设为当前 + 直接开编辑弹窗,一步到位。 */
 function addArtist() {
-  const preset = newNaiArtist(`画师串 ${settings.nai.artistPresets.length + 1}`);
+  const preset = newNaiArtist(`Artist Tags ${settings.nai.artistPresets.length + 1}`);
   settings.nai.artistPresets.push(preset);
   settings.nai.activeArtistId = preset.id;
   openEdit({ preset, builtin: false });
@@ -110,13 +110,13 @@ function duplicate(item: ManagerItem) {
   const src = item.preset;
   const preset: NaiArtistPreset = {
     id: newNaiArtist().id,
-    name: `${src.name} 副本`,
+    name: `${src.name} copy`,
     prompt: src.prompt,
     quality: src.quality,
     negative: src.negative,
   };
   settings.nai.artistPresets.push(preset);
-  toastr.success(`已复制为「${preset.name}」`, '画师串');
+  toastr.success(`Copied as "${preset.name}」`, 'Artist Tags');
 }
 
 /* ============ 预览图 ============ */
@@ -162,9 +162,9 @@ async function onPreviewFileChange(event: Event) {
     // 文件名 = 条目 id:换图同名覆盖,不会攒孤儿文件
     target.previewPath = await uploadUserImage(ARTIST_PREVIEW_FOLDER, target.id, base64, 'jpg');
     previewVersions.value = new Map(previewVersions.value).set(target.id, Date.now());
-    toastr.success(`「${target.name || '未命名画师串'}」预览图已更新`, '画师串');
+    toastr.success(`「${target.name || 'Unnamed artist string'}"Preview has been updated`, 'Artist Tags');
   } catch (error) {
-    toastr.error(errorMessage(error), '预览图上传失败');
+    toastr.error(errorMessage(error), 'Preview upload failed');
   } finally {
     uploadingId.value = null;
   }
@@ -178,7 +178,7 @@ async function removePreview(preset: NaiArtistPreset) {
   try {
     await deleteUserImage(path);
   } catch (error) {
-    toastr.warning(`预览图引用已移除,但文件清理失败：${errorMessage(error)}`, '画师串');
+    toastr.warning(`Preview image reference removed, but file cleanup failed:${errorMessage(error)}`, 'Artist Tags');
   }
 }
 
@@ -223,11 +223,11 @@ async function confirmDelete() {
   deleting.value = false;
   if (fileFailures) {
     toastr.warning(
-      `已删除 ${plan.removed.length} 条,但 ${fileFailures} 张预览图文件清理失败`,
-      '画师串',
+      `Deleted ${plan.removed.length} Article, but ${fileFailures} Cleaning of preview image file failed`,
+      'Artist Tags',
     );
   } else {
-    toastr.success(`已删除 ${plan.removed.length} 条画师串`, '画师串');
+    toastr.success(`Deleted ${plan.removed.length} strip artist tags`, 'Artist Tags');
   }
 }
 
@@ -266,10 +266,10 @@ function duplicateFromEdit() {
 
 <template>
   <ModalMask :open="open" @close="close">
-    <div class="bbi-modal am-modal" role="dialog" aria-modal="true" aria-label="画师串库">
+    <div class="bbi-modal am-modal" role="dialog" aria-modal="true" aria-label="Painter library">
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">画师串库</span>
-        <button class="bbi-icon-mini" type="button" title="关闭" aria-label="关闭" @click="close">
+        <span class="bbi-modal-title">Painter library</span>
+        <button class="bbi-icon-mini" type="button" title="Close" aria-label="Close" @click="close">
           <Icon name="close" />
         </button>
       </header>
@@ -279,36 +279,36 @@ function duplicateFromEdit() {
           class="bbi-input am-search"
           type="search"
           v-model="search"
-          placeholder="搜索名称或画师串内容…"
+          placeholder="Search name or artist string content..."
           spellcheck="false"
-          aria-label="搜索画师串"
+          aria-label="Search artist string"
         />
-        <span class="am-count">共 {{ items.length }} 条</span>
+        <span class="am-count">total {{ items.length }} entries</span>
         <button class="bbi-btn bbi-btn-primary" type="button" @click="addArtist">
-          <Icon name="plus" /> 新建
+          <Icon name="plus" /> New
         </button>
       </div>
 
       <div v-if="selected.size" class="am-batch">
-        <span class="am-batch-count">已选 {{ selected.size }} 条</span>
+        <span class="am-batch-count">Selected {{ selected.size }} entries</span>
         <button class="bbi-btn bbi-btn-sm" type="button" @click="toggleSelectAllFiltered">
-          {{ allFilteredSelected ? '取消全选' : `全选当前结果(${selectableFiltered.length})` }}
+          {{ allFilteredSelected ? 'Deselect all' : `Select all current results (${selectableFiltered.length})` }}
         </button>
-        <button class="bbi-btn bbi-btn-sm" type="button" @click="selected = new Set()">清空</button>
+        <button class="bbi-btn bbi-btn-sm" type="button" @click="selected = new Set()">Clear</button>
         <span class="am-batch-spacer"></span>
         <button
           class="bbi-btn bbi-btn-sm am-btn-danger"
           type="button"
           @click="askDeleteSelected"
         >
-          <Icon name="trash" :size="12" /> 删除所选
+          <Icon name="trash" :size="12" /> Delete selected
         </button>
       </div>
 
       <div class="am-scroll">
         <p v-if="!filtered.length" class="am-empty">
-          <template v-if="items.length">没有匹配「{{ search }}」的画师串。</template>
-          <template v-else>还没有画师串,点右上角「新建」开始。</template>
+          <template v-if="items.length">No match &quot;{{ search }}&quot;The painter's string.</template>
+          <template v-else>There is no artist string yet, click &quot;New&quot; in the upper right corner to start.</template>
         </p>
 
         <div v-else class="am-grid">
@@ -320,7 +320,7 @@ function duplicateFromEdit() {
               'is-active': item.preset.id === activeId,
               'is-selected': selected.has(item.preset.id),
             }"
-            :title="item.preset.id === activeId ? '当前画师串,点击停用' : '点击设为当前画师串'"
+            :title="item.preset.id === activeId ? 'Current artist string, click to deactivate' : 'Click to set as current artist string'"
             @click="toggleActive(item)"
           >
             <div class="am-art">
@@ -337,11 +337,11 @@ function duplicateFromEdit() {
                 class="am-art-empty"
                 type="button"
                 :disabled="uploadingId === item.preset.id"
-                title="上传预览图"
+                title="Upload preview image"
                 @click.stop="pickPreview(item.preset)"
               >
                 <Icon name="generate" :size="20" />
-                <span>{{ uploadingId === item.preset.id ? '上传中…' : '添加预览图' }}</span>
+                <span>{{ uploadingId === item.preset.id ? 'Uploading…' : 'Add preview image' }}</span>
               </button>
               <div v-else class="am-art-empty am-art-empty--static">
                 <Icon name="nai" :size="22" />
@@ -350,20 +350,20 @@ function duplicateFromEdit() {
               <label
                 v-if="!item.builtin"
                 class="am-check"
-                title="勾选后可批量删除"
+                title="After checking, you can delete them in batches"
                 @click.stop
               >
                 <input
                   type="checkbox"
                   class="bbi-checkbox"
                   :checked="selected.has(item.preset.id)"
-                  aria-label="选择此画师串"
+                  aria-label="Select this artist string"
                   @change="toggleSelect(item.preset.id)"
                 />
               </label>
 
-              <span v-if="item.preset.id === activeId" class="am-badge is-on">使用中</span>
-              <span v-else-if="item.builtin" class="am-badge">内置</span>
+              <span v-if="item.preset.id === activeId" class="am-badge is-on">In use</span>
+              <span v-else-if="item.builtin" class="am-badge">Built-in</span>
 
               <button
                 v-if="!item.builtin && item.preset.previewPath"
@@ -372,7 +372,7 @@ function duplicateFromEdit() {
                 :disabled="uploadingId === item.preset.id"
                 @click.stop="pickPreview(item.preset)"
               >
-                {{ uploadingId === item.preset.id ? '上传中…' : '更换预览图' }}
+                {{ uploadingId === item.preset.id ? 'Uploading…' : 'Change preview image' }}
               </button>
             </div>
 
@@ -387,18 +387,18 @@ function duplicateFromEdit() {
                   <Icon v-if="item.preset.id === activeId" name="check" :size="9" />
                 </span>
                 <div class="am-name" :title="item.preset.name">
-                  {{ item.preset.name || '未命名画师串' }}
+                  {{ item.preset.name || 'Unnamed artist string' }}
                 </div>
               </div>
               <div class="am-prompt" :title="item.preset.prompt">
-                {{ item.preset.prompt || '(空)' }}
+                {{ item.preset.prompt || '(empty)' }}
               </div>
               <div class="am-ops" @click.stop>
                 <button
                   class="am-op"
                   type="button"
-                  :title="item.builtin ? '查看内容(内置只读)' : '编辑名称与内容'"
-                  :aria-label="item.builtin ? '查看内容' : '编辑'"
+                  :title="item.builtin ? 'View content (built-in read-only)' : 'Edit name and content'"
+                  :aria-label="item.builtin ? 'View content' : 'Edit'"
                   @click="openEdit(item)"
                 >
                   <Icon name="edit" :size="13" />
@@ -406,8 +406,8 @@ function duplicateFromEdit() {
                 <button
                   class="am-op"
                   type="button"
-                  title="复制为我的画师串"
-                  aria-label="复制"
+                  title="Copy as my artist tags"
+                  aria-label="Copy"
                   @click="duplicate(item)"
                 >
                   <Icon name="copy" :size="13" />
@@ -416,8 +416,8 @@ function duplicateFromEdit() {
                   v-if="!item.builtin"
                   class="am-op am-op-danger"
                   type="button"
-                  title="删除"
-                  aria-label="删除"
+                  title="Delete"
+                  aria-label="Delete"
                   @click="askDelete([item.preset])"
                 >
                   <Icon name="trash" :size="13" />
@@ -429,9 +429,9 @@ function duplicateFromEdit() {
       </div>
 
       <footer class="bbi-modal-foot am-foot">
-        <span class="am-foot-hint">点卡片或单选圈启用/停用;勾选左上角方框可批量删除。</span>
+        <span class="am-foot-hint">Click the card or radio button to enable/disable; check the box in the upper left corner to delete in batches.</span>
         <span class="bbi-modal-foot-spacer"></span>
-        <button class="bbi-btn" type="button" @click="close">关闭</button>
+        <button class="bbi-btn" type="button" @click="close">Close</button>
       </footer>
     </div>
   </ModalMask>
@@ -440,18 +440,18 @@ function duplicateFromEdit() {
   <ConfirmDialog
     v-model:open="deleteOpen"
     top-layer
-    title="删除画师串"
-    :confirm-text="deleting ? '删除中…' : '删除'"
+    title="Delete artist string"
+    :confirm-text="deleting ? 'Deleting…' : 'Delete'"
     confirm-icon="trash"
     tone="danger"
     :busy="deleting"
     @confirm="confirmDelete"
   >
     <template v-if="deleteList.length === 1">
-      确定删除画师串「{{ deleteList[0]?.name || '未命名画师串' }}」?删除后无法恢复。
+      Confirm to delete the artist string &quot;{{ deleteList[0]?.name || 'Unnamed artist string' }}&quot;?It cannot be restored after deletion.
     </template>
     <template v-else>
-      确定删除选中的 {{ deleteList.length }} 条画师串?删除后无法恢复。
+      Confirm to delete selected {{ deleteList.length }} The stripe artist string cannot be restored after deletion.
     </template>
   </ConfirmDialog>
 
@@ -462,11 +462,11 @@ function duplicateFromEdit() {
       class="bbi-modal am-edit"
       role="dialog"
       aria-modal="true"
-      :aria-label="editItem.builtin ? '查看画师串' : '编辑画师串'"
+      :aria-label="editItem.builtin ? 'View artist string' : 'Edit artist tags'"
     >
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">{{ editItem.builtin ? '查看画师串(内置)' : '编辑画师串' }}</span>
-        <button class="bbi-icon-mini" type="button" title="关闭" aria-label="关闭" @click="closeEdit">
+        <span class="bbi-modal-title">{{ editItem.builtin ? 'View artist string (built-in)' : 'Edit artist tags' }}</span>
+        <button class="bbi-icon-mini" type="button" title="Close" aria-label="Close" @click="closeEdit">
           <Icon name="close" />
         </button>
       </header>
@@ -487,7 +487,7 @@ function duplicateFromEdit() {
             @click="pickPreview(editItem.preset)"
           >
             <Icon name="upload" :size="12" />
-            {{ uploadingId === editItem.preset.id ? '上传中…' : editItem.preset.previewPath ? '更换预览图' : '上传预览图' }}
+            {{ uploadingId === editItem.preset.id ? 'Uploading…' : editItem.preset.previewPath ? 'Change preview image' : 'Upload preview image' }}
           </button>
           <button
             v-if="editItem.preset.previewPath"
@@ -495,25 +495,25 @@ function duplicateFromEdit() {
             type="button"
             @click="removePreview(editItem.preset)"
           >
-            <Icon name="trash" :size="12" /> 移除预览图
+            <Icon name="trash" :size="12" /> Remove preview
           </button>
         </div>
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">名称</span>
+        <span class="bbi-modal-label">Name</span>
         <input
           class="bbi-input"
           type="text"
           v-model="editName"
           :readonly="editItem.builtin"
-          placeholder="画师串名称"
+          placeholder="Artist Tags name"
           spellcheck="false"
         />
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">画师串(拼在正向提示词最前面)</span>
+        <span class="bbi-modal-label">Painter string (spelled at the front of the positive prompt word)</span>
         <BbiTextarea
           v-model="editPrompt"
           :rows="4"
@@ -525,26 +525,26 @@ function duplicateFromEdit() {
       </div>
 
       <p class="bbi-modal-label">
-        绑定的正面质量词「{{ editItem.preset.quality.trim() ? '已设置' : '未设置' }}」、负面提示词「{{
-          editItem.preset.negative.trim() ? '已设置' : '未设置'
-        }}」;要改它们,先在面板里把这条设为当前画师串,再点提示词区的对应行。
+        Bound positive quality words &quot;{{ editItem.preset.quality.trim() ? 'Already set' : 'not set' }}”, negative prompt words “{{
+          editItem.preset.negative.trim() ? 'Already set' : 'not set'
+        }}&quot;; To change them, first set this as the current artist string in the panel, and then click the corresponding line in the prompt area.
       </p>
 
       <footer class="bbi-modal-foot">
         <button class="bbi-btn" type="button" @click="toggleActive(editItem)">
-          {{ editItem.preset.id === activeId ? '停用这条' : '设为当前画师串' }}
+          {{ editItem.preset.id === activeId ? 'Disable this' : 'Set as current artist tags' }}
         </button>
         <template v-if="editItem.builtin">
           <button class="bbi-btn" type="button" @click="duplicateFromEdit">
-            <Icon name="copy" /> 复制为我的画师串
+            <Icon name="copy" /> Copy as my artist tags
           </button>
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn bbi-btn-primary" type="button" @click="closeEdit">关闭</button>
+          <button class="bbi-btn bbi-btn-primary" type="button" @click="closeEdit">Close</button>
         </template>
         <template v-else>
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn" type="button" @click="closeEdit">取消</button>
-          <button class="bbi-btn bbi-btn-primary" type="button" @click="saveEdit">完成</button>
+          <button class="bbi-btn" type="button" @click="closeEdit">Cancel</button>
+          <button class="bbi-btn bbi-btn-primary" type="button" @click="saveEdit">Done</button>
         </template>
       </footer>
     </div>

@@ -10,13 +10,13 @@ const hiresFix = ref(false);
 
 <template>
   <div class="panel">
-    <p class="bbi-page-intro">Stable Diffusion WebUI(A1111 / Forge / reForge),走其 /sdapi/v1 接口。</p>
+    <p class="bbi-page-intro">Stable Diffusion WebUI (A1111 / Forge / reForge), use its /sdapi/v1 interface.</p>
 
     <div class="bbi-sections">
-      <Collapsible title="配置" :open="false">
+      <Collapsible title="Config" :open="false">
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">服务地址</span>
+            <span class="bbi-field-label">Service address</span>
           </div>
           <input
             class="bbi-input"
@@ -29,7 +29,7 @@ const hiresFix = ref(false);
 
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">正面质量词</span>
+            <span class="bbi-field-label">positive quality words</span>
           </div>
           <input
             class="bbi-input"
@@ -38,12 +38,12 @@ const hiresFix = ref(false);
             placeholder="masterpiece, best quality, ..."
             spellcheck="false"
           />
-          <p class="bbi-field-hint">生成时自动拼到正向提示词前面</p>
+          <p class="bbi-field-hint">When generated, it is automatically spelled in front of the positive prompt word.</p>
         </div>
 
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">负面提示词</span>
+            <span class="bbi-field-label">negative cue words</span>
           </div>
           <input
             class="bbi-input"
@@ -56,46 +56,46 @@ const hiresFix = ref(false);
 
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">分辨率</span>
+            <span class="bbi-field-label">resolution</span>
           </div>
           <input
             class="bbi-input"
             type="text"
             v-model="settings.webui.resolution"
-            placeholder="如 832×1216"
+            placeholder="Such as 832×1216"
             spellcheck="false"
           />
         </div>
 
         <div class="conn-actions">
-          <button class="bbi-btn" type="button" disabled title="功能开发中">
+          <button class="bbi-btn" type="button" disabled title="Function under development">
             <Icon name="plug" />
-            测试连接
+            Test connection
           </button>
         </div>
       </Collapsible>
 
-      <Collapsible title="默认参数" :open="true">
+      <Collapsible title="Default parameters" :open="true">
         <div class="be-grid">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">模型(Checkpoint)</span>
+              <span class="bbi-field-label">Model(Checkpoint)</span>
             </div>
             <select class="bbi-input bbi-select" disabled>
-              <option>(连接后自动拉取)</option>
+              <option>(Automatically pulled after connection)</option>
             </select>
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">采样器</span>
+              <span class="bbi-field-label">sampler</span>
             </div>
             <select class="bbi-input bbi-select" disabled>
-              <option>(连接后自动拉取)</option>
+              <option>(Automatically pulled after connection)</option>
             </select>
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">步数</span>
+              <span class="bbi-field-label">number of steps</span>
             </div>
             <input class="bbi-input" type="number" placeholder="28" disabled />
           </div>
@@ -107,22 +107,22 @@ const hiresFix = ref(false);
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">宽</span>
+              <span class="bbi-field-label">wide</span>
             </div>
             <input class="bbi-input" type="number" placeholder="832" disabled />
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">高</span>
+              <span class="bbi-field-label">high</span>
             </div>
             <input class="bbi-input" type="number" placeholder="1216" disabled />
           </div>
         </div>
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Hires. fix(高清修复)</span>
+          <span class="bbi-field-label">Hires. fix (HD restoration)</span>
           <input v-model="hiresFix" type="checkbox" class="bbi-checkbox" disabled />
         </label>
-        <p class="bbi-field-hint">参数功能开发中,当前仅展示。</p>
+        <p class="bbi-field-hint">The parameter function is under development and is currently only displayed.</p>
       </Collapsible>
     </div>
   </div>

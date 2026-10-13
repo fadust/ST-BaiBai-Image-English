@@ -78,7 +78,7 @@ const testing = ref(false);
 const showKey = ref(false);
 
 function errorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === 'AbortError') return '操作已取消';
+  if (error instanceof DOMException && error.name === 'AbortError') return 'Operation canceled';
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -88,9 +88,9 @@ async function onTestConnection() {
   try {
     // 测当前选中那条接入点(而非渠道级存量 url/key),与出图同一份连接
     const result = await testNaiConnection(effectiveNai());
-    toastr.success(result.message, `NAI 连接 · ${endpoint.value.name}`);
+    toastr.success(result.message, `NAI connection · ${endpoint.value.name}`);
   } catch (error) {
-    toastr.error(errorMessage(error), `NAI 连接失败 · ${endpoint.value.name}`);
+    toastr.error(errorMessage(error), `NAI connection failed · ${endpoint.value.name}`);
   } finally {
     testing.value = false;
   }
@@ -108,7 +108,7 @@ const endpoint = computed<NaiEndpoint>(() => activeNaiEndpoint());
 const isOfficialEndpoint = computed(() => isOfficialNaiEndpoint(endpoint.value.id));
 
 const endpointOptions = computed(() =>
-  settings.nai.endpoints.map(e => ({ value: e.id, label: e.name || '未命名接入点' })),
+  settings.nai.endpoints.map(e => ({ value: e.id, label: e.name || 'Unnamed access point' })),
 );
 
 /** 下拉取「实际生效的那条」而非存的 id:悬空时 activeNaiEndpoint 回落首条,下拉要跟着显示。 */
@@ -141,7 +141,7 @@ function commitRenameEndpoint() {
 }
 
 function addEndpoint() {
-  const preset = newNaiEndpoint(`接入点 ${settings.nai.endpoints.length + 1}`);
+  const preset = newNaiEndpoint(`access point ${settings.nai.endpoints.length + 1}`);
   settings.nai.endpoints.push(preset);
   settings.nai.activeEndpointId = preset.id;
 }
@@ -149,7 +149,7 @@ function addEndpoint() {
 function duplicateEndpoint() {
   // 官方条也走这里:复制出来的是普通条目,地址可改 —— 这是「照着官方改个镜像」的捷径
   const src = endpoint.value;
-  const preset: NaiEndpoint = { ...newNaiEndpoint(), name: `${src.name} 副本`, url: src.url, key: src.key };
+  const preset: NaiEndpoint = { ...newNaiEndpoint(), name: `${src.name} copy`, url: src.url, key: src.key };
   settings.nai.endpoints.push(preset);
   settings.nai.activeEndpointId = preset.id;
 }
@@ -181,11 +181,11 @@ const isV5Model = computed(() => isNai5(settings.nai.model));
 const NO_ARTIST = '';
 
 const artistOptions = computed(() => [
-  { value: NO_ARTIST, label: '不使用' },
+  { value: NO_ARTIST, label: 'Not used' },
   // 内置配方排用户库前面:新用户默认选中的是内置条,放在「不使用」旁边最顺;
   // 名称后括注内置,与用户自建的同名条目区分开
-  ...BUILTIN_NAI_ARTISTS.map(a => ({ value: a.id, label: `${a.name}(内置)` })),
-  ...settings.nai.artistPresets.map(a => ({ value: a.id, label: a.name || '未命名画师串' })),
+  ...BUILTIN_NAI_ARTISTS.map(a => ({ value: a.id, label: `${a.name}(built-in)` })),
+  ...settings.nai.artistPresets.map(a => ({ value: a.id, label: a.name || 'Unnamed artist string' })),
 ]);
 
 /**
@@ -229,7 +229,7 @@ function commitRenameArtist() {
 }
 
 function addArtist() {
-  const preset = newNaiArtist(`画师串 ${settings.nai.artistPresets.length + 1}`);
+  const preset = newNaiArtist(`Artist Tags ${settings.nai.artistPresets.length + 1}`);
   settings.nai.artistPresets.push(preset);
   settings.nai.activeArtistId = preset.id;
 }
@@ -242,7 +242,7 @@ function duplicateArtist() {
   // 显式逐字段拷贝,不带 previewPath:预览文件随原条目删除,共指一个路径会让副本日后破图。
   const preset: NaiArtistPreset = {
     id: newNaiArtist().id,
-    name: `${src.name} 副本`,
+    name: `${src.name} copy`,
     prompt: src.prompt,
     quality: src.quality,
     negative: src.negative,
@@ -262,7 +262,7 @@ async function confirmRemoveArtist() {
     try {
       await deleteUserImage(previewPath);
     } catch (error) {
-      toastr.warning(`条目已删除,但预览图文件清理失败：${errorMessage(error)}`, '画师串');
+      toastr.warning(`The entry was deleted, but the preview file cleanup failed:${errorMessage(error)}`, 'Artist Tags');
     }
   }
   list.splice(index, 1);
@@ -320,13 +320,13 @@ function runArtistImport() {
   if (switchActiveArtist.value && result.activeArtistId) {
     settings.nai.activeArtistId = result.activeArtistId;
   }
-  const parts = [`新增 ${result.imported} 个`];
-  if (result.overwritten) parts.push(`覆盖更新 ${result.overwritten} 个`);
-  if (result.duplicates) parts.push(`相同跳过 ${result.duplicates}`);
+  const parts = [`New ${result.imported} items`];
+  if (result.overwritten) parts.push(`Overwrite updates ${result.overwritten} items`);
+  if (result.duplicates) parts.push(`same skip ${result.duplicates}`);
   if (switchActiveArtist.value && result.activeArtistId) {
-    parts.push('已切换为智绘姬当前使用的预设');
+    parts.push('Switched to the default currently used by Tomoehime');
   }
-  toastr.success(parts.join(', '), '从智绘姬导入');
+  toastr.success(parts.join(', '), 'Imported from Chiehime');
   artistImportResult.value = null;
 }
 
@@ -357,16 +357,16 @@ interface NaiPromptTarget {
 const CHANNEL_PROMPT_TARGETS: NaiPromptTarget[] = [
   {
     key: 'quality',
-    label: '正面质量词',
-    hint: '拼在画面 tag 之后(整体顺序:画师串 → 画面 tag → 质量词)。画师串里设置了质量词时,会用画师串那份,这里的不生效。',
+    label: 'positive quality words',
+    hint: 'After the picture tag (the overall sequence: artist string → picture tag → quality word). When the quality word is set in the artist string, the artist string will be used, and the one here will not take effect.',
     fallback: () => naiDefaultQualityTags(settings.nai.model),
     read: () => settings.nai.qualityTags,
     write: v => (settings.nai.qualityTags = v),
   },
   {
     key: 'negative',
-    label: '负面提示词',
-    hint: '留空 = 按模型取官方负面词;要额外排除什么,直接往这一份里接。画师串里设置了负面词时,会用画师串那份,这里的不生效。',
+    label: 'negative cue words',
+    hint: 'Leave blank = get the official negative words according to the model; if you want to exclude anything else, add it directly to this one. When negative words are set in the artist string, the artist string will be used, and the one here will not take effect.',
     fallback: () => naiDefaultUndesired(settings.nai.model),
     read: () => settings.nai.undesiredContent,
     write: v => (settings.nai.undesiredContent = v),
@@ -384,22 +384,22 @@ const artistBoundTargets = computed<NaiPromptTarget[]>(() => {
   return [
     {
       key: 'quality',
-      label: '正面质量词',
+      label: 'positive quality words',
       readonly,
       hint: readonly
-        ? '内置画师串的绑定位随插件版本更新,不可改;复制为我的画师串后可自定义。留空 = 用渠道级设置(渠道级也留空,则按模型取官方词)。'
-        : '这份质量词随当前画师串一起切换。留空 = 用渠道级设置(渠道级也留空,则按模型取官方词)。',
+        ? 'The binding bit of the built-in artist tags is updated with the plug-in version and cannot be changed; it can be customized after copying it to my artist tags. Leave it blank = use channel level settings (if the channel level is also left blank, the official word will be taken according to the model).'
+        : 'This quality word switches with the current artist string. Leave it blank = use channel level settings (if the channel level is also left blank, the official word will be taken according to the model).',
       fallback: () => settings.nai.qualityTags.trim() || naiDefaultQualityTags(settings.nai.model),
       read: () => a.quality,
       write: v => (a.quality = v),
     },
     {
       key: 'negative',
-      label: '负面提示词',
+      label: 'negative cue words',
       readonly,
       hint: readonly
-        ? '内置画师串的绑定位随插件版本更新,不可改;复制为我的画师串后可自定义。留空 = 用渠道级设置(渠道级也留空,则按模型取官方负面词)。'
-        : '这份负面词随当前画师串一起切换。留空 = 用渠道级设置(渠道级也留空,则按模型取官方负面词)。',
+        ? 'The binding bit of the built-in artist tags is updated with the plug-in version and cannot be changed; it can be customized after copying it to my artist tags. Leave blank = use channel level settings (if channel level is also left blank, official negative words will be taken according to the model).'
+        : 'This negative word switches with the current artist string. Leave blank = use channel level settings (if channel level is also left blank, official negative words will be taken according to the model).',
       fallback: () =>
         settings.nai.undesiredContent.trim() || naiDefaultUndesired(settings.nai.model),
       read: () => a.negative,
@@ -505,7 +505,7 @@ async function onVibeFileChange(event: Event) {
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('读取图片失败'));
+      reader.onerror = () => reject(new Error('Failed to read image'));
       reader.readAsDataURL(file);
     });
     const imageBase64 = dataUrl.split(',')[1] ?? '';
@@ -529,9 +529,9 @@ async function onVibeFileChange(event: Event) {
         true,
       ),
     );
-    toastr.success(`已按 ${settings.nai.model} 编码并加入 Vibe 库`, 'Vibe');
+    toastr.success(`Pressed ${settings.nai.model} Coding and adding to Vibe library`, 'Vibe');
   } catch (error) {
-    toastr.error(errorMessage(error), 'Vibe 编码失败');
+    toastr.error(errorMessage(error), 'Vibe encoding failed');
   } finally {
     vibeEncoding.value = false;
   }
@@ -543,7 +543,7 @@ async function reencodeVibe(vibe: NaiVibe) {
   vibeEncoding.value = true;
   try {
     const data = await loadVibeData(vibe);
-    if (!data.image) throw new Error('该 Vibe 没有参考原图');
+    if (!data.image) throw new Error('The Vibe does not refer to the original image');
     const encoding = await encodeVibeGated(data.image);
     data.encodings[currentVibeKey.value] = { encoding, infoExtracted: 1 };
     const paths = await saveVibeFiles(data, vibe, vibe.id);
@@ -551,9 +551,9 @@ async function reencodeVibe(vibe: NaiVibe) {
     vibe.thumbnailPath = paths.thumbnailPath;
     vibe.modelKeys = Object.keys(data.encodings);
     vibe.fingerprint = vibeFingerprint(data.encodings);
-    toastr.success(`「${vibe.name}」已补 ${settings.nai.model} 编码`, 'Vibe');
+    toastr.success(`「${vibe.name}"Complemented ${settings.nai.model} encoding`, 'Vibe');
   } catch (error) {
-    toastr.error(errorMessage(error), 'Vibe 编码失败');
+    toastr.error(errorMessage(error), 'Vibe encoding failed');
   } finally {
     vibeEncoding.value = false;
   }
@@ -585,9 +585,9 @@ const groupNames = computed(() => {
 
 /** 单条 vibe 的「所属分组」下拉项:未分组 + 已有组 + 新建(组名装箱,避免与哨兵撞名)。 */
 const groupOptions = computed(() => [
-  { value: UNGROUPED, label: '未分组' },
+  { value: UNGROUPED, label: 'Ungrouped' },
   ...groupNames.value.map(name => ({ value: `${GROUP_PREFIX}${name}`, label: name })),
-  { value: NEW_GROUP, label: '＋ 新建分组…' },
+  { value: NEW_GROUP, label: '+ Create new group…' },
 ]);
 
 /** 选「新建分组」时就地问一个名字;取消或空名则维持原值(下拉是受控的,得回写)。 */
@@ -600,7 +600,7 @@ function onGroupPick(vibe: NaiVibe, value: string) {
     vibe.group = value.slice(GROUP_PREFIX.length);
     return;
   }
-  const name = window.prompt('新分组名称')?.trim();
+  const name = window.prompt('New group name')?.trim();
   if (name) vibe.group = name;
 }
 
@@ -638,7 +638,7 @@ function groupEnabledCount(group: VibeGroup): number {
 /** 重命名整组:对成员 group 字段批量赋值,不存在悬空引用。 */
 function renameGroup(group: VibeGroup) {
   if (!group.name) return;
-  const name = window.prompt('重命名分组', group.name)?.trim();
+  const name = window.prompt('Rename group', group.name)?.trim();
   if (!name || name === group.name) return;
   for (const vibe of settings.nai.vibes) {
     if (vibe.group.trim() === group.name) vibe.group = name;
@@ -679,7 +679,7 @@ function applyPrefixGroups() {
     vibe.name = plan.name;
   }
   const groups = new Set(plans.map(p => p.group)).size;
-  toastr.success(`已把 ${plans.length} 个 Vibe 整理进 ${groups} 个分组`, 'Vibe');
+  toastr.success(`Already put ${plans.length} Vibe sorted into ${groups} groups`, 'Vibe');
 }
 
 /* ============ 从智绘姬迁移 ============ */
@@ -706,19 +706,19 @@ async function runMigrate() {
   try {
     const result = await importVibesFromChatu8(settings.nai.vibes, {
       onProgress: (current, total) => {
-        migrateMsg.value = `正在迁移 ${current}/${total}…`;
+        migrateMsg.value = `Migrating ${current}/${total}…`;
       },
     });
     settings.nai.vibes.push(...result.vibes);
-    const parts = [`新增 ${result.imported} 个`];
-    if (result.duplicates) parts.push(`重复跳过 ${result.duplicates}`);
-    if (result.failed) parts.push(`失败 ${result.failed}`);
-    migrateMsg.value = `迁移完成：${parts.join(' / ')}。`;
-    if (result.imported) migrateMsg.value += '新迁移的 Vibe 默认未启用，请按需开启。';
-    if (result.failed) migrateMsg.value += '失败项可能不在本机浏览器，或保存文件时出错。';
-    toastr.success(migrateMsg.value, '从智绘姬迁移');
+    const parts = [`New ${result.imported} items`];
+    if (result.duplicates) parts.push(`Repeat skip ${result.duplicates}`);
+    if (result.failed) parts.push(`Failed ${result.failed}`);
+    migrateMsg.value = `Migration completed:${parts.join(' / ')}。`;
+    if (result.imported) migrateMsg.value += 'The newly migrated Vibe is not enabled by default, please enable it as needed.';
+    if (result.failed) migrateMsg.value += 'The failed item may not be in the native browser, or there may be an error while saving the file.';
+    toastr.success(migrateMsg.value, 'Migrate from Chiehime');
   } catch (error) {
-    migrateMsg.value = `迁移失败：${errorMessage(error)}`;
+    migrateMsg.value = `Migration failed:${errorMessage(error)}`;
   } finally {
     migrating.value = false;
   }
@@ -737,9 +737,9 @@ async function onVibeImportChange(event: Event) {
     settings.nai.vibes.push(
       vibeMetaFromData(id, parsed.name, paths.dataPath, paths.thumbnailPath, data, parsed.strength, true),
     );
-    toastr.success(`已导入「${parsed.name}」`, 'Vibe');
+    toastr.success(`Imported "${parsed.name}」`, 'Vibe');
   } catch (error) {
-    toastr.error(errorMessage(error), 'Vibe 导入失败');
+    toastr.error(errorMessage(error), 'Vibe import failed');
   }
 }
 
@@ -754,7 +754,7 @@ async function exportVibe(vibe: NaiVibe) {
     a.click();
     URL.revokeObjectURL(url);
   } catch (error) {
-    toastr.error(errorMessage(error), 'Vibe 导出失败');
+    toastr.error(errorMessage(error), 'Vibe export failed');
   }
 }
 
@@ -787,31 +787,31 @@ async function removeVibe(vibe: NaiVibe) {
   }
   const index = settings.nai.vibes.indexOf(vibe);
   if (index >= 0) settings.nai.vibes.splice(index, 1);
-  if (deleteError) toastr.warning(`索引已删除，但文件清理失败：${errorMessage(deleteError)}`, 'Vibe');
+  if (deleteError) toastr.warning(`Index deleted, but file cleanup failed:${errorMessage(deleteError)}`, 'Vibe');
 }
 </script>
 
 <template>
   <div class="panel">
     <p class="bbi-page-intro">
-      NovelAI 生图接口。地址默认为官方,填第三方兼容站(镜像/转发)即走第三方,协议一致。
+      NovelAI image generation interface. The default address is official. Fill in the third-party compatible site (mirroring/forwarding) and go to the third party. The agreement is consistent.
     </p>
 
     <div class="bbi-sections">
-      <Collapsible title="配置" :open="false">
+      <Collapsible title="Config" :open="false">
         <!-- 接入点库:公益站换着用的人不止一个出口,但换站只换地址+密钥,
              模型/采样器/尺寸等出图参数一概留在下面,渠道级共用,切站不用重配 -->
         <div class="art-row">
-          <span class="bbi-field-label">接入点</span>
+          <span class="bbi-field-label">access point</span>
           <input
             v-if="renamingEndpoint"
             ref="endpointNameInput"
             class="bbi-input"
             type="text"
             v-model="endpointNameDraft"
-            placeholder="接入点名称"
+            placeholder="access point name"
             spellcheck="false"
-            title="Enter 确认，Esc 取消"
+            title="Enter confirmed, Esc canceled"
             @keydown.enter.prevent="commitRenameEndpoint"
             @keydown.esc.stop.prevent="renamingEndpoint = false"
             @blur="commitRenameEndpoint"
@@ -821,15 +821,15 @@ async function removeVibe(vibe: NaiVibe) {
             class="art-select"
             v-model="activeEndpointId"
             :options="endpointOptions"
-            aria-label="当前接入点"
+            aria-label="Current access point"
           />
           <span v-if="!renamingEndpoint" class="art-ops">
             <button
               class="bbi-icon-btn art-op"
               type="button"
               :disabled="isOfficialEndpoint"
-              :title="isOfficialEndpoint ? '官方接入点不可改名' : '重命名当前接入点'"
-              aria-label="重命名当前接入点"
+              :title="isOfficialEndpoint ? 'Official access points cannot be renamed' : 'Rename current access point'"
+              aria-label="Rename current access point"
               @click="startRenameEndpoint"
             >
               <Icon name="edit" :size="14" />
@@ -837,8 +837,8 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="新建一条空接入点"
-              aria-label="新建一条空接入点"
+              title="Create a new empty access point"
+              aria-label="Create a new empty access point"
               @click="addEndpoint"
             >
               <Icon name="plus" :size="14" />
@@ -848,10 +848,10 @@ async function removeVibe(vibe: NaiVibe) {
               type="button"
               :title="
                 isOfficialEndpoint
-                  ? '照官方复制一条,复制出来的地址可以改'
-                  : '复制当前接入点(含地址与密钥)'
+                  ? 'Copy the official one, and the copied address can be changed.'
+                  : 'Copy the current access point (including address and key)'
               "
-              aria-label="复制当前接入点"
+              aria-label="Copy current access point"
               @click="duplicateEndpoint"
             >
               <Icon name="copy" :size="14" />
@@ -860,8 +860,8 @@ async function removeVibe(vibe: NaiVibe) {
               class="bbi-icon-btn art-op art-remove"
               type="button"
               :disabled="isOfficialEndpoint"
-              :title="isOfficialEndpoint ? '官方接入点不可删除' : '删除当前接入点'"
-              aria-label="删除当前接入点"
+              :title="isOfficialEndpoint ? 'Official access points cannot be deleted' : 'Delete current access point'"
+              aria-label="Delete current access point"
               @click="endpointDeleteOpen = true"
             >
               <Icon name="trash" :size="14" />
@@ -871,7 +871,7 @@ async function removeVibe(vibe: NaiVibe) {
 
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">接口地址</span>
+            <span class="bbi-field-label">interface address</span>
           </div>
           <input
             class="bbi-input"
@@ -880,13 +880,13 @@ async function removeVibe(vibe: NaiVibe) {
             :readonly="isOfficialEndpoint"
             :placeholder="NAI_OFFICIAL_URL"
             spellcheck="false"
-            :title="isOfficialEndpoint ? '官方接入点地址固定,不可修改' : ''"
+            :title="isOfficialEndpoint ? 'The official access point address is fixed and cannot be modified.' : ''"
           />
           <p class="bbi-field-hint">
             {{
               isOfficialEndpoint
-                ? '官方接入点,地址固定;要用第三方站请点上方「+」新建一条。'
-                : '第三方站填域名即可,自动补全 /ai 端点。'
+                ? 'The official access point has a fixed address; if you want to use a third-party site, please click "+" above to create a new one.'
+                : 'Just fill in the domain name for the third-party website, and the /ai endpoint will be automatically completed.'
             }}
           </p>
         </div>
@@ -906,7 +906,7 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-btn"
               type="button"
-              :title="showKey ? '隐藏' : '显示'"
+              :title="showKey ? 'hide' : 'show'"
               @click="showKey = !showKey"
             >
               <Icon :name="showKey ? 'eye-off' : 'eye'" />
@@ -916,43 +916,43 @@ async function removeVibe(vibe: NaiVibe) {
           <p class="bbi-field-hint">
             {{
               isOfficialEndpoint
-                ? '在 NovelAI 设置页生成。每条接入点各存各的 key。'
-                : '该站自己的 key;每条接入点各存各的,切回官方不会串。'
+                ? 'Generated in NovelAI settings page. Each access point stores its own key.'
+                : 'The station\'s own key; each access point stores its own, and switching back to the official one will not cause confusion.'
             }}
           </p>
         </div>
 
         <div class="conn-actions">
-          <span v-if="inUse" class="conn-inuse"><Icon name="check" :size="13" /> 当前出图渠道</span>
+          <span v-if="inUse" class="conn-inuse"><Icon name="check" :size="13" /> Active image backend</span>
           <button
             v-else
             class="bbi-btn conn-use"
             type="button"
-            title="tag 书写规范会切到 NAI"
+            title="tag writing specification will switch to NAI"
             @click="settings.defaultBackend = 'nai'"
           >
-            使用此渠道出图
+            Use this channel to publish pictures
           </button>
           <button class="bbi-btn" type="button" :disabled="testing" @click="onTestConnection">
             <Icon name="plug" />
-            {{ testing ? '连接中…' : '测试连接' }}
+            {{ testing ? 'Connecting…' : 'Test connection' }}
           </button>
         </div>
       </Collapsible>
 
-      <Collapsible title="提示词" :open="false">
+      <Collapsible title="prompt word" :open="false">
         <!-- 画师串库:形制与 ComfyUI 工作流库一致,多一个「不使用」选项 -->
         <div class="art-row">
-          <span class="bbi-field-label">画师串</span>
+          <span class="bbi-field-label">Artist Tags</span>
           <input
             v-if="renamingArtist"
             ref="artistNameInput"
             class="bbi-input"
             type="text"
             v-model="artistNameDraft"
-            placeholder="画师串名称"
+            placeholder="Artist Tags name"
             spellcheck="false"
-            title="Enter 确认，Esc 取消"
+            title="Enter confirmed, Esc canceled"
             @keydown.enter.prevent="commitRenameArtist"
             @keydown.esc.stop.prevent="renamingArtist = false"
             @blur="commitRenameArtist"
@@ -962,14 +962,14 @@ async function removeVibe(vibe: NaiVibe) {
             class="art-select"
             v-model="activeArtistId"
             :options="artistOptions"
-            aria-label="当前画师串"
+            aria-label="Current artist string"
           />
           <span v-if="!renamingArtist" class="art-ops">
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="管理画师串库:搜索、预览图、批量删除"
-              aria-label="管理画师串库"
+              title="Manage artist string library: search, preview images, batch deletion"
+              aria-label="Manage artist library"
               @click="artistManagerOpen = true"
             >
               <Icon name="grid" :size="14" />
@@ -980,12 +980,12 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist || isBuiltinArtist"
               :title="
                 !hasArtist
-                  ? '未选中画师串'
+                  ? 'Unselected artist string'
                   : isBuiltinArtist
-                    ? '内置画师串不可改名,点复制建一条自己的'
-                    : '重命名当前画师串'
+                    ? 'The built-in artist string cannot be renamed, click copy to create your own'
+                    : 'Rename the current artist tags'
               "
-              aria-label="重命名当前画师串"
+              aria-label="Rename the current artist tags"
               @click="startRenameArtist"
             >
               <Icon name="edit" :size="14" />
@@ -993,8 +993,8 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="新建一条空画师串"
-              aria-label="新建一条空画师串"
+              title="Create a new empty artist tags"
+              aria-label="Create a new empty artist tags"
               @click="addArtist"
             >
               <Icon name="plus" :size="14" />
@@ -1005,12 +1005,12 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist"
               :title="
                 !hasArtist
-                  ? '未选中画师串'
+                  ? 'Unselected artist string'
                   : isBuiltinArtist
-                    ? '复制为我的画师串,复制出来的可以随便改'
-                    : '复制当前画师串'
+                    ? 'Copy it as my artist tags. You can change it as you like.'
+                    : 'Copy current artist tags'
               "
-              aria-label="复制当前画师串"
+              aria-label="Copy current artist tags"
               @click="duplicateArtist"
             >
               <Icon name="copy" :size="14" />
@@ -1021,12 +1021,12 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist || isBuiltinArtist"
               :title="
                 !hasArtist
-                  ? '未选中画师串'
+                  ? 'Unselected artist string'
                   : isBuiltinArtist
-                    ? '内置画师串不可删除,它会随插件版本更新'
-                    : '删除当前画师串'
+                    ? 'The built-in artist tags cannot be deleted and will be updated with the plug-in version.'
+                    : 'Delete the current artist string'
               "
-              aria-label="删除当前画师串"
+              aria-label="Delete the current artist string"
               @click="artistDeleteOpen = true"
             >
               <Icon name="trash" :size="14" />
@@ -1047,11 +1047,11 @@ async function removeVibe(vibe: NaiVibe) {
             placeholder="artist:xxx, artist:yyy"
           />
           <p v-if="isBuiltinArtist" class="bbi-field-hint art-hint">
-            内置画师串随插件版本更新,不可直接改;点上方复制按钮建一条自己的再改。
+            The built-in artist string is updated with the plug-in version and cannot be modified directly; click the copy button above to create your own string and then modify it.
           </p>
           <!-- 仅 V5 模型下提醒:V5 与 4.5 的画师串响应差异大,4.5 及以下不需要这条噪音 -->
           <p v-if="isV5Model" class="bbi-field-hint art-hint art-hint-warn">
-            NAI 5 对画师串的响应与 4.5 差异很大,旧画师串直接套用效果可能跑偏,建议重新调试。
+            The response of NAI 5 to the artist tags is very different from that of 4.5. The effect of direct application of the old artist tags may go wrong. It is recommended to re-debug.
           </p>
 
           <!-- 随画师串一起切换的正/负面词:设置了覆盖下面渠道级,没设置就用下面的 -->
@@ -1060,14 +1060,14 @@ async function removeVibe(vibe: NaiVibe) {
               <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
                 <span class="bbi-prompt-name">{{ t.label }}</span>
                 <span class="bbi-prompt-state" :class="{ 'is-custom': isTargetCustom(t) }">
-                  {{ isTargetCustom(t) ? '已设置' : '未设置' }}
+                  {{ isTargetCustom(t) ? 'Already set' : 'not set' }}
                 </span>
                 <Icon name="edit" class="bbi-prompt-edit" />
               </button>
             </li>
           </ul>
           <p class="bbi-field-hint art-hint">
-            这里设置的提示词会覆盖下面的，随画师串一起切换;这里没设置，就会用下面的。
+            The prompt words set here will overwrite the ones below and switch with the artist string; if there is no setting here, the ones below will be used.
           </p>
         </template>
         <!-- 不选画师串时无提示:下拉里「不使用」已自明 -->
@@ -1080,49 +1080,49 @@ async function removeVibe(vibe: NaiVibe) {
             <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
               <span class="bbi-prompt-name">{{ t.label }}</span>
               <span v-if="isShadowedByArtist(t.key)" class="bbi-prompt-state is-shadowed">
-                已被画师串覆盖
+                Already covered by artist tags
               </span>
               <span v-else class="bbi-prompt-state" :class="{ 'is-custom': isTargetCustom(t) }">
-                {{ isTargetCustom(t) ? '已自定义' : '默认' }}
+                {{ isTargetCustom(t) ? 'Customized' : 'Default' }}
               </span>
               <Icon name="edit" class="bbi-prompt-edit" />
             </button>
           </li>
         </ul>
         <p class="bbi-field-hint art-hint">
-          画师串里没设置正/负面词时，就会用这里的;这里也留空，则按模型取官方词。
+          When there are no positive/negative words set in the artist string, the ones here will be used; if this is also left blank, the official words will be taken according to the model.
         </p>
       </Collapsible>
 
-      <Collapsible title="默认参数" :open="false">
+      <Collapsible title="Default parameters" :open="false">
         <!-- 语义配对紧凑行:双字段行两列、数字参数行四列;说明统一收进行下的一行 hint -->
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">模型</span>
+            <span class="bbi-field-label">Model</span>
           </div>
           <BbiSelect
             class="be-select"
             v-model="modelSel"
             :options="NAI_MODELS"
-            aria-label="NAI 模型"
+            aria-label="NAI model"
           />
         </div>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">生成自然语言</span>
+          <span class="bbi-field-label">Generate natural language</span>
           <input v-model="settings.nai.naturalLanguage" type="checkbox" class="bbi-checkbox" />
         </label>
         <p class="bbi-field-hint">
-          开:自动 tag 为画面与每个角色额外写一段英文描述;关:只写 tag。4.5 的提示词上限约 512 token
-          (画面与所有角色共用),自然语言最占篇幅,超了会被截断、画面走样,可以关掉试试。
-          只影响之后新写的提示词:正文里已有的自然语言照常发送,想对比可在「编辑提示词」里点「AI 重写提示词」。
-          多角色提示照常按角色拆分,只是每个角色同样只写 tag。
+          On: Automatically write an additional English description for the screen and each character; Off: Only write tag. The upper limit of prompt words for 4.5 is approximately 512 token
+          (The screen is shared with all characters). Natural language takes up the most space. If it exceeds the limit, it will be truncated and the screen will be distorted. You can try turning it off.
+          Only the newly written prompt words will be affected: the natural language already in the text will be sent as usual. If you want to compare, click &quot;AI Rewrite Prompt Word&quot; in &quot;Edit Prompt Word&quot;.
+          Multi-character prompts are split by character as usual, except that each character also only writes tag.
         </p>
 
         <div class="be-row">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">竖屏尺寸(宽×高)</span>
+              <span class="bbi-field-label">Portrait size (width × height)</span>
             </div>
             <input
               class="bbi-input"
@@ -1133,14 +1133,14 @@ async function removeVibe(vibe: NaiVibe) {
               spellcheck="false"
             />
             <datalist id="nai-portrait-presets">
-              <option value="832×1216">竖版</option>
-              <option value="1024×1536">大竖版</option>
-              <option value="1024×1024">方图</option>
+              <option value="832×1216">vertical version</option>
+              <option value="1024×1536">Large vertical version</option>
+              <option value="1024×1024">square diagram</option>
             </datalist>
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">横屏尺寸(宽×高)</span>
+              <span class="bbi-field-label">Landscape size (width × height)</span>
             </div>
             <input
               class="bbi-input"
@@ -1151,15 +1151,15 @@ async function removeVibe(vibe: NaiVibe) {
               spellcheck="false"
             />
             <datalist id="nai-landscape-presets">
-              <option value="1216×832">横版</option>
-              <option value="1536×1024">大横版</option>
-              <option value="1024×1024">方图</option>
+              <option value="1216×832">Horizontal version</option>
+              <option value="1536×1024">Large horizontal version</option>
+              <option value="1024×1024">square diagram</option>
             </datalist>
           </div>
         </div>
         <div class="bbi-select-row">
-          <span class="bbi-field-label">画幅方向</span>
-          <div class="bbi-segmented" role="tablist" aria-label="NAI 画幅方向">
+          <span class="bbi-field-label">Frame direction</span>
+          <div class="bbi-segmented" role="tablist" aria-label="NAI frame direction">
             <button
               v-for="opt in ORIENTATION_LOCKS"
               :key="opt.value"
@@ -1175,31 +1175,31 @@ async function removeVibe(vibe: NaiVibe) {
           </div>
         </div>
         <p class="bbi-field-hint">
-          竖屏用于单人、特写、立绘;横屏用于群像、远景、全景。「自动」由自动 tag 按画面判定;
-          锁定后每张图都按该方向出,自动 tag 也按这个画幅构图。正文里已记下的方向不会被改写,改回「自动」即恢复。
+          The vertical screen is used for single people, close-ups, and vertical paintings; the horizontal screen is used for group portraits, distant views, and panoramas. &quot;Auto&quot; is determined by automatic tag according to the screen;
+          After locking, each picture will be taken out in this direction, and the automatic tag will also compose the picture according to this frame. The direction already noted in the text will not be overwritten and will be restored by changing it back to &quot;Auto&quot;.
         </p>
 
         <div class="be-row">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">采样器</span>
+              <span class="bbi-field-label">sampler</span>
             </div>
             <BbiSelect
               class="be-select"
               v-model="settings.nai.sampler"
               :options="samplerOptions"
-              aria-label="采样器"
+              aria-label="sampler"
             />
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">噪声表</span>
+              <span class="bbi-field-label">Noise table</span>
             </div>
             <BbiSelect
               class="be-select"
               v-model="settings.nai.noiseSchedule"
               :options="NAI_NOISE_SCHEDULES"
-              aria-label="噪声表"
+              aria-label="Noise table"
             />
           </div>
         </div>
@@ -1207,7 +1207,7 @@ async function removeVibe(vibe: NaiVibe) {
         <div class="be-row be-row--nums">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">步数</span>
+              <span class="bbi-field-label">number of steps</span>
             </div>
             <input class="bbi-input" type="number" v-model.number="settings.nai.steps" min="1" max="50" />
           </div>
@@ -1239,20 +1239,20 @@ async function removeVibe(vibe: NaiVibe) {
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">种子</span>
+              <span class="bbi-field-label">seeds</span>
             </div>
             <input class="bbi-input" type="number" v-model.number="settings.nai.seed" min="0" />
           </div>
         </div>
-        <p class="bbi-field-hint">Scale = 提示词相关性;Rescale = 相关性调整;种子 0 = 随机。</p>
+        <p class="bbi-field-hint">Scale = prompt word relevance; Rescale = relevance adjustment; seed 0 = random.</p>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Variety Boost(画面多样性,按尺寸自动计算)</span>
+          <span class="bbi-field-label">Variety Boost (Screen diversity, automatically calculated according to size)</span>
           <input v-model="settings.nai.varietyBoost" type="checkbox" class="bbi-checkbox" />
         </label>
 
         <div class="bbi-num-row">
-          <span class="bbi-field-label">同时出图数</span>
+          <span class="bbi-field-label">Number of images produced simultaneously</span>
           <input
             class="bbi-input bbi-num"
             type="number"
@@ -1262,14 +1262,14 @@ async function removeVibe(vibe: NaiVibe) {
           />
         </div>
         <p class="bbi-field-hint">
-          NAI 服务端不排队,并发高容易被限流(429),建议保持 1;超出的请求自动排队等待。
-          被限流时会自动退避重试(最多 3 次),并让所有排队任务一起冷却,不会连着撞上去。
+          NAI server does not queue, and high concurrency is easily limited (429). It is recommended to keep 1; excess requests will be automatically queued and waited.
+          When the current is limited, it will automatically back off and retry (up to 3 times), and let all queued tasks cool down together without running into them.
         </p>
       </Collapsible>
 
-      <Collapsible title="Vibe 库(氛围转移)" :open="false">
+      <Collapsible title="Vibe library (ambience transfer)" :open="false">
         <p v-if="vibesSupported" class="bbi-field-hint vibe-hint">
-          上传参考图,生成时叠加其风格/氛围;编码按当前选中的模型进行,会消耗一次接口调用。
+          Upload the reference image and superimpose its style/atmosphere when generating it; coding is performed according to the currently selected model, which will consume one interface call.
         </p>
         <p v-else class="bbi-field-hint vibe-hint">
           Current model does not support Vibe Transfer.
@@ -1278,21 +1278,21 @@ async function removeVibe(vibe: NaiVibe) {
         <div class="vibe-actions">
           <button class="bbi-btn" type="button" :disabled="vibeEncoding || !vibesSupported" @click="vibeFileInput?.click()">
             <Icon name="plus" />
-            {{ vibeEncoding ? '编码中…' : '上传图片编码' }}
+            {{ vibeEncoding ? 'Encoding…' : 'Upload image encoding' }}
           </button>
           <button class="bbi-btn" type="button" @click="vibeImportInput?.click()">
             <Icon name="download" />
-            导入 .naiv4vibe
+            Import .naiv4vibe
           </button>
           <label class="bbi-switch-row vibe-normalize">
-            <span class="bbi-field-label">强度归一化</span>
+            <span class="bbi-field-label">intensity normalization</span>
             <input v-model="settings.nai.normalizeRefStrength" type="checkbox" class="bbi-checkbox" :disabled="!vibesSupported" />
           </label>
           <input ref="vibeFileInput" type="file" accept="image/*" hidden @change="onVibeFileChange" />
           <input ref="vibeImportInput" type="file" accept=".naiv4vibe" hidden @change="onVibeImportChange" />
         </div>
 
-        <p v-if="!settings.nai.vibes.length" class="bbi-field-hint">还没有 vibe;上传一张参考图开始。</p>
+        <p v-if="!settings.nai.vibes.length" class="bbi-field-hint">Not yet vibe; upload a reference image to get started.</p>
 
         <template v-else>
           <div class="vibe-toolbar">
@@ -1300,26 +1300,26 @@ async function removeVibe(vibe: NaiVibe) {
               class="bbi-input vibe-search"
               type="search"
               v-model="vibeSearch"
-              placeholder="搜索名称或分组…"
+              placeholder="Search for a name or group…"
               spellcheck="false"
-              aria-label="搜索 Vibe"
+              aria-label="Search Vibe"
             />
             <span class="vibe-count">
-              共 {{ settings.nai.vibes.length }} 个 · 已启用 {{ enabledCount }}
+              total {{ settings.nai.vibes.length }} · Enabled {{ enabledCount }}
             </span>
             <button
               v-if="prefixGroupPlans.length"
               class="bbi-btn bbi-btn-sm"
               type="button"
-              title="旧版迁移把组名拼进了名字,点此还原成真正的分组"
+              title="The old version of migration spelled the group name into the name. Click here to restore it to the real group."
               @click="applyPrefixGroups"
             >
               <Icon name="checklist" :size="12" />
-              按名称整理分组({{ prefixGroupPlans.length }})
+              Organize into groups by name ({{ prefixGroupPlans.length }})
             </button>
           </div>
 
-          <p v-if="!matchedCount" class="bbi-field-hint">没有匹配「{{ vibeSearch }}」的 Vibe。</p>
+          <p v-if="!matchedCount" class="bbi-field-hint">No match &quot;{{ vibeSearch }}&quot;Vibe.</p>
 
           <div v-for="group in vibeGroups" :key="group.key" class="vibe-group">
             <div class="vibe-group-head">
@@ -1339,44 +1339,44 @@ async function removeVibe(vibe: NaiVibe) {
                 <span class="vibe-group-meta">
                   {{ groupEnabledCount(group) }}/{{ group.all.length }}
                   <template v-if="group.items.length !== group.all.length">
-                    · 显示 {{ group.items.length }}
+                    · Display {{ group.items.length }}
                   </template>
                 </span>
                 <span v-if="groupActive(group)" class="bbi-prompt-state vibe-group-active">
-                  生效中
+                  Taking effect
                 </span>
               </button>
               <span class="vibe-group-ops">
                 <button
                   class="bbi-btn bbi-btn-sm bbi-btn-primary"
                   type="button"
-                  title="只叠加这一组:关掉组外全部勾选,开启本组"
+                  title="Only superimpose this group: turn off all check boxes outside the group and turn on this group"
                   @click="soloGroup(group)"
                 >
-                  只开这组
+                  Only open this group
                 </button>
                 <button
                   class="bbi-btn bbi-btn-sm"
                   type="button"
-                  title="开启本组,不影响其它组(用来叠加多组)"
+                  title="Open this group without affecting other groups (used to superimpose multiple groups)"
                   @click="setGroupEnabled(group, true)"
                 >
-                  全开
+                  Fully open
                 </button>
                 <button
                   class="bbi-btn bbi-btn-sm"
                   type="button"
-                  title="关闭本组"
+                  title="Close this group"
                   @click="setGroupEnabled(group, false)"
                 >
-                  全关
+                  Completely closed
                 </button>
                 <button
                   v-if="group.name"
                   class="bbi-icon-mini"
                   type="button"
-                  title="重命名分组"
-                  aria-label="重命名分组"
+                  title="Rename group"
+                  aria-label="Rename group"
                   @click="renameGroup(group)"
                 >
                   <Icon name="edit" :size="12" />
@@ -1385,8 +1385,8 @@ async function removeVibe(vibe: NaiVibe) {
                   v-if="group.name"
                   class="bbi-icon-mini"
                   type="button"
-                  title="解散分组(只取消归类,不删除 Vibe)"
-                  aria-label="解散分组"
+                  title="Disband the group (only cancel the classification, do not delete Vibe)"
+                  aria-label="Disband group"
                   @click="dissolveGroup(group)"
                 >
                   <Icon name="close" :size="12" />
@@ -1408,13 +1408,13 @@ async function removeVibe(vibe: NaiVibe) {
                 <div class="vibe-main">
                   <div class="vibe-head">
                     <input class="bbi-input vibe-name" type="text" v-model="vibe.name" spellcheck="false" />
-                    <label class="vibe-enable" title="生成时叠加此 vibe">
+                    <label class="vibe-enable" title="Overlay this vibe when generated">
                       <input v-model="vibe.enabled" type="checkbox" class="bbi-checkbox" />
-                      启用
+                      Enable
                     </label>
                   </div>
                   <div class="vibe-strength">
-                    <span class="vibe-strength-label">强度</span>
+                    <span class="vibe-strength-label">intensity</span>
                     <input
                       class="bbi-range"
                       type="range"
@@ -1422,7 +1422,7 @@ async function removeVibe(vibe: NaiVibe) {
                       max="1"
                       step="0.01"
                       :value="vibe.strength"
-                      aria-label="强度"
+                      aria-label="intensity"
                       @input="setVibeStrength(vibe, ($event.target as HTMLInputElement).value)"
                     />
                     <input
@@ -1432,7 +1432,7 @@ async function removeVibe(vibe: NaiVibe) {
                       max="1"
                       step="any"
                       :value="vibe.strength"
-                      aria-label="强度数值"
+                      aria-label="Strength value"
                       @change="commitVibeStrength(vibe, $event)"
                     />
                   </div>
@@ -1441,7 +1441,7 @@ async function removeVibe(vibe: NaiVibe) {
                       class="vibe-group-select"
                       :model-value="groupKey(vibe.group)"
                       :options="groupOptions"
-                      aria-label="所属分组"
+                      aria-label="Group to which it belongs"
                       @update:model-value="onGroupPick(vibe, $event)"
                     />
                     <button
@@ -1449,27 +1449,27 @@ async function removeVibe(vibe: NaiVibe) {
                       class="bbi-btn bbi-btn-sm"
                       type="button"
                       :disabled="vibeEncoding"
-                      title="该 vibe 缺当前模型的编码,生成时会被跳过;点击按当前模型补编码"
+                      title="The vibe lacks the code of the current model and will be skipped when generating; click to fill in the code according to the current model"
                       @click="reencodeVibe(vibe)"
                     >
-                      <Icon name="refresh" :size="12" /> 补当前模型编码
+                      <Icon name="refresh" :size="12" /> Complement the current model encoding
                     </button>
                     <span v-else-if="!vibesSupported" class="vibe-missing">
-                      当前模型暂不支持 Vibe
+                      The current model does not support Vibe yet
                     </span>
                     <span v-else-if="!vibe.modelKeys.includes(currentVibeKey)" class="vibe-missing">
-                      缺当前模型编码且无原图,无法使用
+                      The current model code is missing and there is no original image, so it cannot be used.
                     </span>
                     <button
                       class="bbi-btn bbi-btn-sm"
                       type="button"
-                      title="导出 .naiv4vibe"
+                      title="Export .naiv4vibe"
                       @click="exportVibe(vibe)"
                     >
-                      <Icon name="upload" :size="12" /> 导出
+                      <Icon name="upload" :size="12" /> Export
                     </button>
-                    <button class="bbi-btn bbi-btn-sm" type="button" title="删除" @click="removeVibe(vibe)">
-                      <Icon name="trash" :size="12" /> 删除
+                    <button class="bbi-btn bbi-btn-sm" type="button" title="Delete" @click="removeVibe(vibe)">
+                      <Icon name="trash" :size="12" /> Delete
                     </button>
                   </div>
                 </div>
@@ -1479,16 +1479,16 @@ async function removeVibe(vibe: NaiVibe) {
         </template>
       </Collapsible>
 
-      <Collapsible title="从智绘姬迁移" :open="false">
+      <Collapsible title="Migrate from Chiehime" :open="false">
         <p class="bbi-field-hint vibe-hint">
-          复制智绘姬(st-chatu8)的 vibe 到本库:只建副本、不改源数据,重复的自动跳过。
+          Copy vibe of Tomoehime (st-chatu8) to this library: only create a copy, do not change the source data, and duplicates will be automatically skipped.
         </p>
         <p class="bbi-field-hint">
-          <template v-if="!chatu8Detect.found">未检测到智绘姬（插件未安装或未启用）。</template>
-          <template v-else-if="!chatu8Detect.total">智绘姬里没有找到 vibe。</template>
+          <template v-if="!chatu8Detect.found">Chiehime is not detected (plugin is not installed or enabled).</template>
+          <template v-else-if="!chatu8Detect.total">Chie Kiri did not find vibe.</template>
           <template v-else>
-            检测到智绘姬有 {{ chatu8Detect.total }} 个 vibe（预设 {{ chatu8Detect.presets }} 个 / 组内
-            {{ chatu8Detect.groups }} 个）。
+            Chiehime has been detected {{ chatu8Detect.total }} vibe (default {{ chatu8Detect.presets }} individuals/group
+            {{ chatu8Detect.groups }} ).
           </template>
         </p>
         <div class="migrate-actions">
@@ -1499,7 +1499,7 @@ async function removeVibe(vibe: NaiVibe) {
             @click="migrateConfirmOpen = true"
           >
             <Icon name="download" />
-            {{ migrating ? '迁移中…' : '迁移智绘姬的 vibe' }}
+            {{ migrating ? 'Migrating…' : 'Migrate Chiehime\'s vibe' }}
           </button>
         </div>
         <p v-if="migrateMsg" class="bbi-field-hint">{{ migrateMsg }}</p>
@@ -1508,12 +1508,12 @@ async function removeVibe(vibe: NaiVibe) {
 
         <!-- 提示词预设导入:与 vibe 同区同级;有没有新预设不在这里报,点开弹窗看预览 -->
         <p class="bbi-field-hint vibe-hint">
-          提示词预设同理:前置固定正向 → 画师串，后置固定正向 → 正面质量词，固定负向 → 负面提示词（自动带上当前模型官方基线）。
+          The prompt word preset is the same: fixed positive in the front → artist tags, fixed positive in the back → positive quality word, fixed negative → negative prompt word (automatically brought with the official baseline of the current model).
         </p>
         <p class="bbi-field-hint">
-          <template v-if="!chatu8ArtistDetect.found">未检测到智绘姬（插件未安装或未启用）。</template>
-          <template v-else-if="!chatu8ArtistDetect.total">智绘姬里没有找到提示词预设。</template>
-          <template v-else>检测到智绘姬有 {{ chatu8ArtistDetect.total }} 个提示词预设。</template>
+          <template v-if="!chatu8ArtistDetect.found">Chiehime is not detected (plugin is not installed or enabled).</template>
+          <template v-else-if="!chatu8ArtistDetect.total">Chie Kiri No prompt word preset found.</template>
+          <template v-else>Chiehime has been detected {{ chatu8ArtistDetect.total }} prompt word defaults.</template>
         </p>
         <div class="migrate-actions">
           <button
@@ -1523,67 +1523,67 @@ async function removeVibe(vibe: NaiVibe) {
             @click="openArtistImport"
           >
             <Icon name="download" />
-            导入智绘姬的提示词预设
+            Import Chiehime’s prompt word presets
           </button>
         </div>
       </Collapsible>
     </div>
 
     <ModalMask :open="migrateConfirmOpen" @close="migrateConfirmOpen = false">
-      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="从智绘姬迁移">
+      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Migrate from Chiehime">
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">从智绘姬迁移 vibe</span>
-          <button class="bbi-icon-mini" type="button" title="关闭" @click="migrateConfirmOpen = false">
+          <span class="bbi-modal-title">Migrated from Chiehime vibe</span>
+          <button class="bbi-icon-mini" type="button" title="Close" @click="migrateConfirmOpen = false">
             <Icon name="close" />
           </button>
         </header>
         <p class="bbi-modal-label">
-          将把智绘姬的 {{ chatu8Detect.total }} 个 vibe 复制到柏宝绘 Vibe
-          库，只是创建副本，不会改动智绘姬的数据。内容相同的会自动跳过，重复迁移不会产生重复条目。
+          I will take Chiehime’s {{ chatu8Detect.total }} vibe copied to BaiBai Image Vibe
+          The library only creates a copy and will not change Chiehime's data. Those with the same content will be automatically skipped, and repeated migration will not produce duplicate entries.
         </p>
         <p class="bbi-modal-label">
-          注意：智绘姬未开「酒馆储存」时 vibe 存在浏览器本地存储里，只有本设备本浏览器读得到。
+          Note: When Chiehime does not open &quot;Tavern Storage&quot;, vibe is stored in the browser's local storage and can only be read by this device and this browser.
         </p>
         <footer class="bbi-modal-foot">
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn" type="button" @click="migrateConfirmOpen = false">取消</button>
-          <button class="bbi-btn bbi-btn-primary" type="button" @click="runMigrate">开始迁移</button>
+          <button class="bbi-btn" type="button" @click="migrateConfirmOpen = false">Cancel</button>
+          <button class="bbi-btn bbi-btn-primary" type="button" @click="runMigrate">Start migration</button>
         </footer>
       </div>
     </ModalMask>
 
     <!-- ===== 从智绘姬导入提示词预设:预览 + 确认(打开时算一次结果,纯函数不落盘) ===== -->
     <ModalMask :open="artistImportOpen" @close="artistImportOpen = false">
-      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="从智绘姬导入提示词预设">
+      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Import prompt word presets from Tomoehime">
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">从智绘姬导入提示词预设</span>
-          <button class="bbi-icon-mini" type="button" title="关闭" @click="artistImportOpen = false">
+          <span class="bbi-modal-title">Import prompt word presets from Tomoehime</span>
+          <button class="bbi-icon-mini" type="button" title="Close" @click="artistImportOpen = false">
             <Icon name="close" />
           </button>
         </header>
         <p class="bbi-modal-label">
-          把智绘姬的全部 {{ artistImportResult?.plans.length ?? 0 }} 个提示词预设复制到柏宝绘，只建副本、不改动智绘姬的数据。
-          映射：前置固定正向 → 画师串，后置固定正向 → 正面质量词，固定负向 → 负面提示词（前面自动拼上当前模型的官方基线）。
-          同名条目会覆盖更新（之前导入过的可直接重新导入修复），内容完全相同的自动跳过。
+          Take all of Chiehime {{ artistImportResult?.plans.length ?? 0 }} The prompt words are copied to BaiBai Image by default. Only a copy is created and Chihuiji's data is not changed.
+          Mapping: front fixed positive direction → artist tags, rear fixed positive direction → positive quality word, fixed negative direction → negative prompt word (the official baseline of the current model is automatically spelled in front).
+          Entries with the same name will be overwritten and updated (previously imported entries can be directly re-imported for repair), and entries with identical content will be automatically skipped.
         </p>
         <ul class="art-import-list">
           <li v-for="(plan, i) in artistImportResult?.plans ?? []" :key="i" class="art-import-item">
             <div class="art-import-head">
-              <span class="art-import-name" :title="plan.source">{{ plan.source || '(未命名)' }}</span>
+              <span class="art-import-name" :title="plan.source">{{ plan.source || '(unnamed)' }}</span>
               <span class="art-import-badge" :class="`is-${plan.state}`">
-                {{ plan.state === 'import' ? '将导入' : plan.state === 'overwrite' ? '将覆盖' : '已存在' }}
+                {{ plan.state === 'import' ? 'will import' : plan.state === 'overwrite' ? 'will overwrite' : 'Already exists' }}
               </span>
-              <span v-if="plan.active" class="art-import-badge is-active">当前使用中</span>
+              <span v-if="plan.active" class="art-import-badge is-active">Currently in use</span>
             </div>
             <div class="art-import-fields">
               <code class="art-import-line" :title="plan.prompt"
-                ><span class="art-import-key">画师串</span>{{ plan.prompt || '(空)' }}</code
+                ><span class="art-import-key">Artist Tags</span>{{ plan.prompt || '(empty)' }}</code
               >
               <code class="art-import-line" :title="plan.quality"
-                ><span class="art-import-key">正向</span>{{ plan.quality || '(空)' }}</code
+                ><span class="art-import-key">forward</span>{{ plan.quality || '(empty)' }}</code
               >
               <code class="art-import-line" :title="plan.negative"
-                ><span class="art-import-key">负向</span>{{ plan.negative || '(空)' }}</code
+                ><span class="art-import-key">Negative</span>{{ plan.negative || '(empty)' }}</code
               >
             </div>
           </li>
@@ -1591,20 +1591,20 @@ async function removeVibe(vibe: NaiVibe) {
         <label v-if="chatu8ActiveRef" class="art-import-switch">
           <input type="checkbox" v-model="switchActiveArtist" />
           <span>
-            导入后切换到智绘姬当前使用的预设
+            After importing, switch to the preset currently used by Tomoehime.
             <code>{{ chatu8ActiveRef.source }}</code>
           </span>
         </label>
         <footer class="bbi-modal-foot">
           <span class="bbi-modal-foot-spacer"></span>
-          <button class="bbi-btn" type="button" @click="artistImportOpen = false">取消</button>
+          <button class="bbi-btn" type="button" @click="artistImportOpen = false">Cancel</button>
           <button
             class="bbi-btn bbi-btn-primary"
             type="button"
             :disabled="!artistImportResult || artistImportResult.imported + artistImportResult.overwritten === 0"
             @click="runArtistImport"
           >
-            {{ artistImportResult && artistImportResult.imported + artistImportResult.overwritten === 0 ? '全部相同' : '开始导入' }}
+            {{ artistImportResult && artistImportResult.imported + artistImportResult.overwritten === 0 ? 'all the same' : 'Start importing' }}
           </button>
         </footer>
       </div>
@@ -1615,24 +1615,24 @@ async function removeVibe(vibe: NaiVibe) {
 
     <ConfirmDialog
       v-model:open="endpointDeleteOpen"
-      title="删除接入点"
-      confirm-text="删除"
+      title="Delete access point"
+      confirm-text="Delete"
       confirm-icon="trash"
       tone="danger"
       @confirm="confirmRemoveEndpoint"
     >
-      确定删除接入点「{{ endpoint.name || '未命名接入点' }}」？地址与 API Key 会一并删除。
+      Confirm to delete access point&quot;{{ endpoint.name || 'Unnamed access point' }}”? The address and API Key will be deleted together.
     </ConfirmDialog>
 
     <ConfirmDialog
       v-model:open="artistDeleteOpen"
-      title="删除画师串"
-      confirm-text="删除"
+      title="Delete artist string"
+      confirm-text="Delete"
       confirm-icon="trash"
       tone="danger"
       @confirm="confirmRemoveArtist"
     >
-      确定删除画师串「{{ artist?.name || '未命名画师串' }}」？删除后无法恢复。
+      Confirm to delete the artist string &quot;{{ artist?.name || 'Unnamed artist string' }}”? It cannot be restored after deletion.
     </ConfirmDialog>
 
     <!-- ===== 质量词 / 负面词编辑弹窗(与设置页自定义提示词同款) ===== -->
@@ -1642,13 +1642,13 @@ async function removeVibe(vibe: NaiVibe) {
         class="bbi-modal bbi-modal-wide"
         role="dialog"
         aria-modal="true"
-        :aria-label="`编辑${editingNaiPrompt.label}`"
+        :aria-label="`Edit${editingNaiPrompt.label}`"
       >
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">
-            {{ editingNaiPrompt.readonly ? '查看' : '编辑' }}{{ editingNaiPrompt.label }}
+            {{ editingNaiPrompt.readonly ? 'View' : 'Edit' }}{{ editingNaiPrompt.label }}
           </span>
-          <button class="bbi-icon-mini" type="button" title="关闭" @click="closeNaiPrompt">
+          <button class="bbi-icon-mini" type="button" title="Close" @click="closeNaiPrompt">
             <Icon name="close" />
           </button>
         </header>
@@ -1667,15 +1667,15 @@ async function removeVibe(vibe: NaiVibe) {
         <footer class="bbi-modal-foot">
           <template v-if="!editingNaiPrompt.readonly">
             <button class="bbi-btn bbi-btn-danger" type="button" @click="resetNaiPromptDraft">
-              <Icon name="refresh" /> 恢复默认
+              <Icon name="refresh" /> Restore Default
             </button>
             <span class="bbi-modal-foot-spacer"></span>
-            <button class="bbi-btn" type="button" @click="closeNaiPrompt">取消</button>
-            <button class="bbi-btn bbi-btn-primary" type="button" @click="saveNaiPrompt">完成</button>
+            <button class="bbi-btn" type="button" @click="closeNaiPrompt">Cancel</button>
+            <button class="bbi-btn bbi-btn-primary" type="button" @click="saveNaiPrompt">Done</button>
           </template>
           <template v-else>
             <span class="bbi-modal-foot-spacer"></span>
-            <button class="bbi-btn bbi-btn-primary" type="button" @click="closeNaiPrompt">关闭</button>
+            <button class="bbi-btn bbi-btn-primary" type="button" @click="closeNaiPrompt">Close</button>
           </template>
         </footer>
       </div>

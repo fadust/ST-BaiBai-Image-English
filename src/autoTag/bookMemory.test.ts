@@ -48,13 +48,13 @@ describe('book memory', () => {
     expect(memory).not.toBeNull();
     expect(memory!.timing).toBe('before_latest');
     const text = memory!.text;
-    expect(text).toContain('主角:性别:女；年龄:22；身份:剑士；外貌:黑色长发；着装:红斗篷；状态:左臂缠着绷带');
-    expect(text).toContain('阿黛尔(女·28·归雁客栈掌柜) —— 与主角:挚友 〔外貌:银色短发;着装:青衫;状态:脸色苍白;在:归雁客栈二楼〕');
-    expect(text).toContain('铁匠老周(男·铁匠) 〔外貌:络腮胡;着装:皮围裙〕');
+    expect(text).toContain("Protagonist:Gender:女；Age:22；Identity:剑士；Appearance:黑色长发；Outfit:红斗篷；Condition:左臂缠着绷带");
+    expect(text).toContain("阿黛尔(女·28·归雁客栈掌柜) ——With the protagonist:挚友 〔Appearance:银色短发;Outfit:青衫;Condition:脸色苍白;In:归雁客栈二楼〕");
+    expect(text).toContain("铁匠老周(男·铁匠) 〔Appearance:络腮胡;Outfit:皮围裙〕");
     expect(text).not.toContain('路人甲');
     // 与画面无关的内容一律不注入
     expect(text).not.toContain('当前时间');
-    expect(text).not.toContain('当前地点');
+    expect(text).not.toContain("Current location");
     expect(text).not.toContain('三日后决斗');
     expect(text).not.toContain('历史剧情');
     expect(text).not.toContain('私密简报');
@@ -81,7 +81,7 @@ describe('book memory', () => {
 
     const memory = readBookMemory(5, '');
     expect(memory!.timing).toBe('after_latest');
-    expect(memory!.text).toContain('主角:性别:男；外貌:金发；着装:铠甲');
+    expect(memory!.text).toContain("Protagonist:Gender:男；Appearance:金发；Outfit:铠甲");
   });
 
   it('falls back to getFloor/getSnapshot on older public API', () => {
@@ -97,7 +97,7 @@ describe('book memory', () => {
 
     const memory = readBookMemory(2, '');
     expect(memory!.timing).toBe('before_latest');
-    expect(memory!.text).toContain('主角:外貌:红瞳；着装:黑衣');
+    expect(memory!.text).toContain("Protagonist:Appearance:红瞳；Outfit:黑衣");
   });
 
   it('returns null without the book api', () => {

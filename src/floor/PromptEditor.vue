@@ -134,18 +134,18 @@ const dirty = computed(() => {
 /** 校验:tag 必填 + 全字段禁含子标签字面量(口径与 AI 侧同一份)。 */
 const error = computed(() => {
   const next = draft.value;
-  if (!next.tag) return '画面 tag 不能为空';
+  if (!next.tag) return 'Screen tag cannot be empty';
   const fields: Array<[string, string]> = [
-    ['画面 tag', next.tag],
-    ['自然语言', next.nl],
-    ['负面提示词', next.negative],
+    ['Screen tag', next.tag],
+    ['Natural Language', next.nl],
+    ['negative cue words', next.negative],
   ];
   for (const character of next.characters) {
-    fields.push([`角色「${character.name}」`, `${character.name} ${character.tag} ${character.nl}`]);
+    fields.push([`role "${character.name}」`, `${character.name} ${character.tag} ${character.nl}`]);
   }
   for (const [label, value] of fields) {
     if (value && containsTagMarkup(value)) {
-      return `${label}不能包含 <bbi_image> / <tag> / <nl> / <negative> / <characters> / <size> 标签`;
+      return `${label}Cannot contain <bbi_image> / <tag> / <nl> / <negative> / <characters> / <size> tags`;
     }
   }
   return '';
@@ -236,11 +236,11 @@ onBeforeUnmount(() => {
       class="bbi-modal bbi-modal-wide"
       role="dialog"
       aria-modal="true"
-      aria-label="编辑提示词"
+      aria-label="Edit prompt"
     >
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">编辑提示词</span>
-        <button class="bbi-icon-mini" type="button" title="关闭" @click="requestClose">
+        <span class="bbi-modal-title">Edit prompt</span>
+        <button class="bbi-icon-mini" type="button" title="Close" @click="requestClose">
           <Icon name="close" />
         </button>
       </header>
@@ -255,35 +255,35 @@ onBeforeUnmount(() => {
           :disabled="busy || !configured"
           :title="
             configured
-              ? '让 AI 重读本楼正文，把这一张的提示词重写一遍'
-              : '请先在柏宝绘「渠道」页完成配置'
+              ? 'Let AI reread the text of this article and rewrite the prompt words in this page'
+              : 'Please complete the configuration on the &quot;Backend&quot; page of BaiBai Image first.'
           "
           @click="rewrite"
         >
-          <Icon name="sparkles" /> AI 重写提示词
+          <Icon name="sparkles" /> AI Rewrite prompt word
         </button>
         <template v-else>
           <span class="bbi-rewrite-busy">
             <span class="bbi-rewrite-spin" />
-            AI 正在重写提示词…
+            AI is rewriting the prompt word...
           </span>
           <button class="bbi-btn bbi-btn-sm" type="button" @click="emit('cancel-rewrite')">
-            取消重写
+            Cancel rewrite
           </button>
         </template>
       </div>
       <p v-if="rewriting" class="bbi-editor-note">
-        重写完成后会直接保存并按新提示词出图，结果填回下面的输入框。
-        现在关掉这个窗口也不会中断，回头再打开还能看到进度。
+        After the rewriting is completed, it will be saved directly and the picture will be output according to the new prompt word, and the result will be filled back in the input box below.
+        Closing this window now will not interrupt it, and you can still see the progress when you open it again.
       </p>
       <!-- 已落盘却没关窗:下面的输入框与「用户自己打了一半」长得一样,不说清哪份已生效,
            用户会以为还得再点一次「应用」(或反过来以为草稿也存了)。 -->
       <p v-else-if="rewritten" class="bbi-editor-note">
-        AI 重写完成，新提示词已保存并开始出图，下面填的就是它。还想再调整就直接改，改完点「应用」。
+        AI The rewriting is completed, the new prompt word has been saved and the drawing has started. It is filled in below. If you still want to make adjustments, just make the changes directly and click &quot;Apply&quot; after making the changes.
       </p>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">画面 tag(danbooru 短 tag,逗号分隔)</span>
+        <span class="bbi-modal-label">Screen tag (danbooru short tag, comma separated)</span>
         <BbiTextarea
           v-model="tag"
           class="bbi-prompt-area"
@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">自然语言(可留空;部分后端/模型用得到)</span>
+        <span class="bbi-modal-label">Natural language (can be left blank; used by some backends/models)</span>
         <BbiTextarea
           v-model="nl"
           class="bbi-prompt-area"
@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">本画面负面提示词(可留空;与渠道级负面词叠加)</span>
+        <span class="bbi-modal-label">Negative prompt words on this screen (can be left blank; superimposed with channel-level negative words)</span>
         <BbiTextarea
           v-model="negative"
           class="bbi-prompt-area"
@@ -318,8 +318,8 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">画幅方向(具体像素在「渠道」页配置)</span>
-        <div class="bbi-segmented" role="tablist" aria-label="画幅方向">
+        <span class="bbi-modal-label">Frame orientation (specific pixels are configured on the &quot;Backend&quot; page)</span>
+        <div class="bbi-segmented" role="tablist" aria-label="Frame direction">
           <button
             class="bbi-seg"
             :class="{ 'is-on': (lockedSize ?? size) === 'portrait' }"
@@ -329,7 +329,7 @@ onBeforeUnmount(() => {
             :disabled="!!lockedSize"
             @click="size = 'portrait'"
           >
-            竖屏
+            Portrait
           </button>
           <button
             class="bbi-seg"
@@ -340,76 +340,76 @@ onBeforeUnmount(() => {
             :disabled="!!lockedSize"
             @click="size = 'landscape'"
           >
-            横屏
+            Landscape
           </button>
         </div>
         <span v-if="lockedSize" class="bbi-field-hint">
-          当前渠道已锁定{{ lockedSize === 'portrait' ? '竖屏' : '横屏' }},出图一律按此方向;
-          想按每张图各自的方向出,到「渠道」页尺寸旁改回「自动」。
+          The current channel is locked{{ lockedSize === 'portrait' ? 'Portrait' : 'Landscape' }}, always follow this direction when drawing;
+          If you want to export each picture in its own direction, go to the &quot;Backend&quot; page size and change it back to &quot;Auto&quot;.
         </span>
       </div>
 
       <div class="bbi-modal-field">
         <span class="bbi-modal-label">
-          角色提示词(多角色;仅 NAI 后端发送)
+          Role prompt words (multiple roles; only sent by NAI backend)
         </span>
         <div v-for="(character, index) in characters" :key="index" class="bbi-char-row">
           <input
             v-model="character.name"
             class="bbi-input bbi-char-name"
             type="text"
-            placeholder="角色名"
+            placeholder="Character name"
           />
           <input
             v-model="character.tag"
             class="bbi-input bbi-char-tag"
             type="text"
-            placeholder="tag(如 girl, black hair)"
+            placeholder="tag (such as girl, black hair)"
           />
           <input
             v-model="character.nl"
             class="bbi-input bbi-char-nl"
             type="text"
-            placeholder="自然语言(可空)"
+            placeholder="Natural language (optional)"
           />
           <button
             class="bbi-icon-mini"
             type="button"
-            title="删除这个角色"
+            title="Delete this role"
             @click="removeCharacter(index)"
           >
             <Icon name="trash" />
           </button>
         </div>
         <button class="bbi-btn bbi-btn-sm bbi-char-add" type="button" @click="addCharacter">
-          <Icon name="plus" /> 添加角色
+          <Icon name="plus" /> Add role
         </button>
-        <span class="bbi-field-hint">角色名与 tag 都填了才会生效,留空的行保存时自动丢弃。</span>
+        <span class="bbi-field-hint">It will take effect only when the character name and tag are both filled in. Blank lines will be automatically discarded when saving.</span>
       </div>
 
       <!-- 改提示词会换 promptHash 桶,而 stale 态只显示最新一张、翻页器不出现。
            这是既有存储设计,但手动改提示词会让它从边角情况变成日常,故明确告知。 -->
       <p v-if="historyCount > 1" class="bbi-editor-note">
-        当前提示词下已有 {{ historyCount }} 张图。修改后只显示最新一张(图片没有被删除,
-        把提示词改回原样即可全部找回)。
+        There are already items under the current prompt word {{ historyCount }} Picture. After modification, only the latest one will be displayed (the picture has not been deleted,
+        Change the prompt word back to its original form to retrieve them all).
       </p>
 
       <p v-if="error" class="bbi-editor-error">{{ error }}</p>
 
       <footer class="bbi-modal-foot">
         <span class="bbi-modal-foot-spacer"></span>
-        <button class="bbi-btn" type="button" :disabled="busy" @click="requestClose">取消</button>
+        <button class="bbi-btn" type="button" :disabled="busy" @click="requestClose">Cancel</button>
         <button class="bbi-btn" type="button" :disabled="!canApply" @click="apply(false)">
-          应用
+          Apply
         </button>
         <button
           class="bbi-btn bbi-btn-primary"
           type="button"
           :disabled="!canApply || !configured"
-          :title="configured ? '保存提示词并立即出图' : '请先在柏宝绘「渠道」页完成配置'"
+          :title="configured ? 'Save the prompt and generate an image' : 'Please complete the configuration on the &quot;Backend&quot; page of BaiBai Image first.'"
           @click="apply(true)"
         >
-          <Icon name="palette" /> 应用并重新生成
+          <Icon name="palette" /> Apply and regenerate
         </button>
       </footer>
     </div>

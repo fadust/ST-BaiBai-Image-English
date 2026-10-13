@@ -227,7 +227,7 @@ export async function mutateStore(
     await ctx.saveChat();
     return true;
   }
-  console.warn('[柏宝绘] extra 写入重试耗尽，放弃本次写入');
+  console.warn('[BaiBai Image] extra Exhausted write retries, give up this write');
   return false;
 }
 
@@ -241,7 +241,7 @@ async function resultToBase64(result: ComfyImageResult): Promise<string> {
   }
   // browser 直连模式：blob URL → blob → base64（分块拼接防栈溢出）
   const response = await fetch(result.url);
-  if (!response.ok) throw new Error(`读取图片失败 (${response.status})`);
+  if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
   const blob = await response.blob();
   const buffer = await blob.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -265,12 +265,12 @@ function blobToBase64(blob: Blob): Promise<string> {
       const dataUrl = String(buffer.result ?? '');
       const comma = dataUrl.indexOf(',');
       if (comma < 0) {
-        reject(new Error('转码后图片格式无效'));
+        reject(new Error('The image format is invalid after transcoding'));
         return;
       }
       resolve(dataUrl.slice(comma + 1));
     };
-    buffer.onerror = () => reject(new Error('转码后图片读取失败'));
+    buffer.onerror = () => reject(new Error('Image reading failed after transcoding'));
     buffer.readAsDataURL(blob);
   });
 }
@@ -290,14 +290,14 @@ async function reencodeAsJpeg(source: Blob): Promise<Blob> {
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('canvas 2D 上下文不可用');
+    if (!ctx) throw new Error('canvas 2D context not available');
     // JPG 无 alpha 通道：先铺白底再绘图，否则透明区域被压成黑色
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0);
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
-        blob => (blob ? resolve(blob) : reject(new Error('JPG 编码失败'))),
+        blob => (blob ? resolve(blob) : reject(new Error('JPG encoding failed'))),
         'image/jpeg',
         JPEG_QUALITY,
       );
@@ -319,7 +319,7 @@ export async function prepareImageForStorage(result: ComfyImageResult): Promise<
     try {
       // data URL/blob URL 都能被 fetch 成 Blob
       const response = await fetch(result.url);
-      if (!response.ok) throw new Error(`读取图片失败 (${response.status})`);
+      if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
       const original = await response.blob();
       // 本就是 JPG(webp 等不可再压)时直接跳过重编码，避免二次有损
       if (result.format !== 'jpg' && result.format !== 'jpeg') {
@@ -328,7 +328,7 @@ export async function prepareImageForStorage(result: ComfyImageResult): Promise<
       }
       return { base64: await blobToBase64(original), format: result.format };
     } catch (error) {
-      console.warn('[柏宝绘] JPG 转码失败，本次回退保存原格式', error);
+      console.warn('[BaiBai Image] JPG transcoding failed, this time it will fall back and save the original format.', error);
     }
   }
   return { base64: await resultToBase64(result), format: result.format };
@@ -376,7 +376,7 @@ async function uploadImageWithSidecar(
   try {
     await uploadBase64File(sidecarFileName(imageFile), utf8ToBase64(JSON.stringify(sidecar)));
   } catch (error) {
-    console.warn('[柏宝绘] 侧写元数据写入失败（不影响图片）', error);
+    console.warn('[BaiBai Image] Failed to write profile metadata (does not affect pictures)', error);
   }
 
   return { path, genId, createdAt, imageFile };
@@ -420,9 +420,9 @@ export async function saveImageResult(
   meta?: GenerationMeta,
 ): Promise<BbiImageEntry> {
   const ctx = getContext();
-  if (!ctx?.saveChat) throw new Error('SillyTavern 上下文不可用');
+  if (!ctx?.saveChat) throw new Error('SillyTavern context is not available');
   const chatId = ctx.getCurrentChatId();
-  if (!chatId) throw new Error('当前聊天不可用');
+  if (!chatId) throw new Error('The current chat is unavailable');
 
   const hash = promptHash(tag);
   const characterName = ctx.chat[messageId]?.name?.trim() || ctx.name2?.trim() || '未命名角色';
@@ -450,8 +450,8 @@ export async function saveImageResult(
 
   const saved = await mutateStore(ctx, messageId, store => appendEntry(store, swipeId, hash, entry));
   if (!saved) {
-    console.warn('[柏宝绘] 图片已上传但 extra 写入失败，文件留作孤儿', path);
-    throw new Error('图片已上传，但聊天记录保存失败');
+    console.warn('[BaiBai Image] The picture has been uploaded but extra failed to write, and the file is left as an orphan.', path);
+    throw new Error('The picture has been uploaded, but the chat history failed to be saved.');
   }
   return entry;
 }
@@ -482,7 +482,7 @@ export async function deleteImageFileOnly(path: string): Promise<void> {
   try {
     await deleteUploadedFile(sidecar);
   } catch (error) {
-    console.warn('[柏宝绘] 删除侧写元数据失败（留作孤儿）', error);
+    console.warn('[BaiBai Image] Failed to delete profile metadata (left as an orphan)', error);
   }
 }
 
@@ -523,7 +523,7 @@ export async function deleteImageResult(
     try {
       await deleteUserImage(pathToDelete);
     } catch (error) {
-      console.warn('[柏宝绘] 删除图片文件失败（留作孤儿）', error);
+      console.warn('[BaiBai Image] Failed to delete picture files (left as orphans)', error);
     }
     // 侧写跟着走。deleteUploadedFile 对 404 返回 false 不抛（老图本就没有侧写，属正常）
     const sidecar = sidecarPathFor(pathToDelete);
@@ -531,7 +531,7 @@ export async function deleteImageResult(
       try {
         await deleteUploadedFile(sidecar);
       } catch (error) {
-        console.warn('[柏宝绘] 删除侧写元数据失败（留作孤儿）', error);
+        console.warn('[BaiBai Image] Failed to delete profile metadata (left as an orphan)', error);
       }
     }
   }

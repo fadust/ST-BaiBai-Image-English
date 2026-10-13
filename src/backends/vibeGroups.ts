@@ -58,7 +58,7 @@ export function groupVibes(vibes: readonly NaiVibe[], query = ''): VibeGroup[] {
     const key = groupKey(name);
     let group = map.get(key);
     if (!group) {
-      group = { key, label: name || '未分组', name, items: [], all: [] };
+      group = { key, label: name || 'Ungrouped', name, items: [], all: [] };
       map.set(key, group);
     }
     group.items.push(vibe);

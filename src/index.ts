@@ -16,6 +16,7 @@ import { versionedAssetUrl } from '@/version';
 // 这两行让 Vite 把全局样式打进 dist/index.css(随后注入 shadow root)
 import '@/styles/base.css';
 import '@/styles/theme.css';
+import '@/styles/english.css';
 import { createApp, watch } from 'vue';
 
 const HOST_ID = 'bbi-app-host';
@@ -108,9 +109,9 @@ async function hydrateWhenReady(attempt = 0) {
       // ready 事件里的 revision 已经对应真实角色库。
       registerPublicInterface();
       void checkForUpdate();
-      console.log(`[柏宝绘] 已加载 v${__BBI_VERSION__},设置已同步`);
+      console.log(`[BaiBai Image] Loaded v${__BBI_VERSION__}, settings synchronized`);
     } catch (e) {
-      console.error('[柏宝绘] 设置载入失败', e);
+      console.error('[BaiBai Image] Settings failed to load', e);
     }
     return;
   }

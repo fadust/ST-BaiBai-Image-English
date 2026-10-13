@@ -22,7 +22,7 @@ function legacyCopy(text: string): boolean {
   }
 }
 
-export async function copyText(text: string, okMessage = '已复制'): Promise<boolean> {
+export async function copyText(text: string, okMessage = 'Copied'): Promise<boolean> {
   if (!text) return false;
 
   try {
@@ -36,10 +36,10 @@ export async function copyText(text: string, okMessage = '已复制'): Promise<b
       throw new Error('Clipboard copy failed');
     }
 
-    toastr.success(okMessage, '柏宝绘');
+    toastr.success(okMessage, 'BaiBai Image');
     return true;
   } catch {
-    toastr.error('复制失败，请手动选择文本', '柏宝绘');
+    toastr.error('Copy failed, please select text manually', 'BaiBai Image');
     return false;
   }
 }

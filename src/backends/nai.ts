@@ -60,7 +60,7 @@ export const NAI_SAMPLERS: { value: string; label: string }[] = [
 ];
 
 export const NAI_NOISE_SCHEDULES: { value: string; label: string }[] = [
-  { value: 'karras', label: 'Karras(推荐)' },
+  { value: 'karras', label: 'Karras(recommended)' },
   { value: 'native', label: 'Native' },
   { value: 'exponential', label: 'Exponential' },
   { value: 'polyexponential', label: 'Polyexponential' },
@@ -179,7 +179,7 @@ export function skipCfgAboveSigma(width: number, height: number, model: string, 
  */
 export function naiEndpoint(url: string, path: string): string {
   const base = url.trim().replace(/\/+$/, '');
-  if (!base) throw new NaiError('请先填写 NAI 接口地址');
+  if (!base) throw new NaiError('Please fill in the NAI interface address first');
   const seg = path.replace(/^\/+/, '');
   if (base.endsWith(`/ai/${seg}`) || base.endsWith(`/${seg}`)) return base;
   return `${base}/ai/${seg}`;
@@ -193,13 +193,13 @@ export interface NaiSize {
 /** 解析「832×1216 / 832x1216」;宽高须为 64 的倍数、256–2048。 */
 export function parseResolution(text: string): NaiSize {
   const size = parseSize(text);
-  if (!size) throw new NaiError(`分辨率格式无效:${text || '(空)'};应如 832×1216`);
+  if (!size) throw new NaiError(`Invalid resolution format:${text || '(empty)'};should be like 832×1216`);
   const { width, height } = size;
   if (width % 64 !== 0 || height % 64 !== 0) {
-    throw new NaiError(`分辨率 ${width}×${height} 不是 64 的倍数,NAI 要求宽高均为 64 的倍数`);
+    throw new NaiError(`resolution ${width}×${height} Not a multiple of 64, NAI requires both width and height to be multiples of 64`);
   }
   if (width < 256 || height < 256 || width > 2048 || height > 2048) {
-    throw new NaiError(`分辨率 ${width}×${height} 超出 NAI 允许范围(256–2048)`);
+    throw new NaiError(`resolution ${width}×${height} Out of NAI allowable range (256–2048)`);
   }
   return { width, height };
 }
@@ -263,7 +263,7 @@ export interface NaiGenerateValues {
 export const BUILTIN_NAI_ARTISTS: readonly NaiArtistPreset[] = [
   {
     id: 'bi_default',
-    name: '默认画师串',
+    name: 'Default artist tags',
     prompt:
       '0.8::nnmbpx::,0.8::artist:yalmyu::,0.1::smilesmile1312,::,  artist:sh_(shinh), 0.4::chen bin::,0.4::dayama::,healthyman,bacheally,',
     quality: '',
@@ -554,14 +554,14 @@ async function naiHttpError(resp: Response, label: string): Promise<NaiError> {
   const retryAfterMs = parseRetryAfter(resp.headers?.get('Retry-After'));
   switch (resp.status) {
     case 400:
-      return new NaiError(`${label}:请求校验失败:${detail.slice(0, 300)}`, resp.status, retryAfterMs);
+      return new NaiError(`${label}:Request verification failed:${detail.slice(0, 300)}`, resp.status, retryAfterMs);
     case 401:
-      return new NaiError(`${label}:API Key 错误或无效`, resp.status, retryAfterMs);
+      return new NaiError(`${label}:API Key Wrong or invalid`, resp.status, retryAfterMs);
     case 402:
-      return new NaiError(`${label}:需要有效订阅(402)`, resp.status, retryAfterMs);
+      return new NaiError(`${label}:Requires valid subscription (402)`, resp.status, retryAfterMs);
     case 429:
       return new NaiError(
-        `${label}:请求过于频繁(429),已自动退避重试;仍失败请调低「同时出图数」或稍后再试`,
+        `${label}: The request is too frequent (429), and it has automatically backed off and tried again; if it still fails, please lower the "Number of simultaneous images" or try again later.`,
         resp.status,
         retryAfterMs,
       );
@@ -575,15 +575,15 @@ export async function testNaiConnection(
   nai: Pick<NaiSettings, 'url' | 'key'>,
   signal?: AbortSignal,
 ): Promise<{ message: string }> {
-  if (!nai.key.trim()) throw new NaiError('请先填写 API Key');
+  if (!nai.key.trim()) throw new NaiError('Please fill in API Key first');
   const resp = await fetch(naiEndpoint(nai.url, 'user/subscription'), {
     headers: { Authorization: `Bearer ${nai.key.trim()}` },
     signal,
   });
   if (resp.status === 404) {
-    return { message: '地址可达,但无订阅接口(第三方站);请以实际生图验证' };
+    return { message: 'The address is reachable, but there is no subscription interface (third-party site); please verify with actual pictures' };
   }
-  if (!resp.ok) throw await naiHttpError(resp, '连接 NAI 失败');
+  if (!resp.ok) throw await naiHttpError(resp, 'Failed to connect to NAI');
   const data = (await resp.json().catch(() => null)) as {
     tier?: number;
     active?: boolean;
@@ -593,7 +593,7 @@ export async function testNaiConnection(
   const active = data?.subscription?.active ?? data?.active;
   const tierName = ['Free', 'Tablet', 'Scroll', 'Opus'][Number(tier)] ?? `Tier ${tier}`;
   return {
-    message: `连接正常:${tierName}${active === false ? '(订阅未激活)' : ''}`,
+    message: `The connection is OK:${tierName}${active === false ? '(Subscription is not activated)' : ''}`,
   };
 }
 
@@ -603,10 +603,10 @@ export function unzipNaiImage(buffer: ArrayBuffer): { base64: string; filename: 
   try {
     files = unzipSync(new Uint8Array(buffer));
   } catch {
-    throw new NaiError('响应不是有效的 zip 包(第三方站可能返回了其他格式)');
+    throw new NaiError('The response is not a valid zip packet (the third party site may have returned a different format)');
   }
   const name = Object.keys(files).find(n => /\.(png|jpe?g|webp)$/i.test(n)) ?? Object.keys(files)[0];
-  if (!name) throw new NaiError('zip 包内没有图片文件');
+  if (!name) throw new NaiError('zip There is no image file in the package');
   return { base64: uint8ToBase64(files[name]), filename: name };
 }
 
@@ -630,8 +630,8 @@ export async function generateNaiImage(
   signal?: AbortSignal,
   opts: { onRetry?: (info: NaiRetryInfo) => void } = {},
 ): Promise<NaiImageOutput> {
-  if (!nai.key.trim()) throw new NaiError('请先填写 NAI API Key');
-  if (!values.prompt.trim()) throw new NaiError('正向提示词不能为空');
+  if (!nai.key.trim()) throw new NaiError('Please fill in first NAI API Key');
+  if (!values.prompt.trim()) throw new NaiError('Positive prompt word cannot be empty');
 
   // 画师串在发请求时解析一次，快照下来随图落盘：事后配方被删/改名也不丢。
   const artist = naiArtistUsage(nai);
@@ -652,14 +652,14 @@ export async function generateNaiImage(
             },
       );
     } catch (error) {
-      console.warn(`[柏宝绘] 读取 vibe「${vibe.name}」失败:`, error);
+      console.warn(`[BaiBai Image] Read vibe "${vibe.name}"Failure:`, error);
     }
   }
   const { applied, skipped } = applyVibes(params, nai, loaded);
   if (skipped.length) {
-    const reason = naiSupportsVibes(nai.model) ? '缺当前模型编码' : '当前模型不支持 Vibe Transfer';
-    console.warn(`[柏宝绘] 以下 vibe 因${reason}被跳过:`, skipped);
-    toastr.warning(`vibe「${skipped.join('、')}」${reason},已跳过`, '柏宝绘');
+    const reason = naiSupportsVibes(nai.model) ? 'Missing current model encoding' : 'Current model does not support Vibe Transfer';
+    console.warn(`[BaiBai Image] The following vibe is due to${reason}Skipped:`, skipped);
+    toastr.warning(`vibe「${skipped.join('、')}」${reason}, skipped`, 'BaiBai Image');
   }
 
   const body = {
@@ -682,7 +682,7 @@ export async function generateNaiImage(
         body: JSON.stringify(body),
         signal,
       });
-      if (!resp.ok) throw await naiHttpError(resp, 'NAI 生图失败');
+      if (!resp.ok) throw await naiHttpError(resp, 'NAI Picture generation failed');
 
       const { base64, filename } = unzipNaiImage(await resp.arrayBuffer());
       const format = filename.split('.').pop()?.toLowerCase() || 'png';
@@ -745,7 +745,7 @@ export async function encodeVibeImage(
   signal?: AbortSignal,
   opts: { onRetry?: (info: NaiRetryInfo) => void } = {},
 ): Promise<string> {
-  if (!nai.key.trim()) throw new NaiError('请先填写 NAI API Key');
+  if (!nai.key.trim()) throw new NaiError('Please fill in first NAI API Key');
   return runNaiWithRetry(
     async () => {
       const resp = await fetch(naiEndpoint(nai.url, 'encode-vibe'), {
@@ -757,10 +757,10 @@ export async function encodeVibeImage(
         body: JSON.stringify({ image: imageBase64, information_extracted: infoExtracted, model }),
         signal,
       });
-      if (!resp.ok) throw await naiHttpError(resp, 'vibe 编码失败');
+      if (!resp.ok) throw await naiHttpError(resp, 'vibe encoding failed');
       const bytes = new Uint8Array(await resp.arrayBuffer());
       if (bytes.length < 100) {
-        throw new NaiError(`vibe 编码数据异常(仅 ${bytes.length} 字节),接口可能返回了错误响应`);
+        throw new NaiError(`vibe encoding data abnormality (only ${bytes.length} bytes), the interface may have returned an error response`);
       }
       return uint8ToBase64(bytes);
     },
@@ -782,10 +782,10 @@ export function parseNaiv4vibe(text: string): ImportedVibe {
   try {
     json = JSON.parse(text);
   } catch {
-    throw new NaiError('不是有效的 .naiv4vibe 文件(JSON 解析失败)');
+    throw new NaiError('Not a valid .naiv4vibe file (JSON parsing failed)');
   }
   if (json?.identifier !== 'novelai-vibe-transfer') {
-    throw new NaiError('不是 NovelAI vibe 文件(缺少 novelai-vibe-transfer 标识)');
+    throw new NaiError('Not a NovelAI vibe file (missing novelai-vibe-transfer identifier)');
   }
   const encodings: NaiVibeEncodings = {};
   for (const [modelKey, group] of Object.entries(json.encodings ?? {})) {
@@ -800,9 +800,9 @@ export function parseNaiv4vibe(text: string): ImportedVibe {
       };
     }
   }
-  if (!Object.keys(encodings).length) throw new NaiError('vibe 文件里没有可用的编码数据');
+  if (!Object.keys(encodings).length) throw new NaiError('vibe No encoding data available in file');
   return {
-    name: typeof json.name === 'string' && json.name ? json.name : '导入的 Vibe',
+    name: typeof json.name === 'string' && json.name ? json.name : 'Imported Vibe',
     image: typeof json.image === 'string' ? json.image : '',
     thumbnail: typeof json.thumbnail === 'string' ? json.thumbnail : '',
     encodings,

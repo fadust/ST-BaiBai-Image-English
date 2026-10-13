@@ -1,0 +1,13 @@
+/* English labels and names need room without shrinking controls. */
+.bbi-btn { white-space: normal; text-align: center; line-height: 1.35; }
+.bbi-field-label, .bbi-field-hint, .bbi-char-name, .bbi-char-history-reason {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.bbi-channel-row > *, .bbi-char-grid > *, .bbi-char-form > * { min-width: 0; }
+.bbi-window .art-row { grid-template-columns: minmax(8.5em, 12em) minmax(0, 1fr) auto; }
+.bbi-char-section-head { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .bbi-channel-row { grid-template-columns: minmax(0, 1fr) !important; }
+  .bbi-window .art-row { grid-template-columns: minmax(0, 1fr) auto; }
+}

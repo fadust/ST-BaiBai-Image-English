@@ -69,13 +69,13 @@ describe('backendStatus', () => {
     activeNaiEndpoint().key = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: '当前 NAI 接入点未填写 API Key',
+      reason: "Current NAI access point is not filled in API Key",
     });
 
     activeNaiEndpoint().url = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: '当前 NAI 接入点未填写服务地址',
+      reason: "The current NAI access point has no service address filled in",
     });
   });
 
@@ -99,7 +99,7 @@ describe('backendStatus', () => {
     settings.nai.activeEndpointId = blank.id;
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: '当前 NAI 接入点未填写服务地址',
+      reason: "The current NAI access point has no service address filled in",
     });
   });
 
@@ -137,7 +137,7 @@ describe('backendStatus', () => {
     settings.comfyui.workflows[0].workflow = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: '当前工作流预设未填写工作流 JSON',
+      reason: "The current workflow preset does not fill in the workflow JSON",
     });
   });
 });
@@ -213,7 +213,7 @@ describe('generateImage', () => {
   it('refuses to fire a doomed request when the backend is not configured', async () => {
     naiReady();
     activeNaiEndpoint().key = '';
-    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow('未填写 API Key');
+    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow('API Key');
     expect(vi.mocked(generateNaiImage)).not.toHaveBeenCalled();
   });
 

@@ -64,14 +64,14 @@ const confirmRollbackOpen = ref(false);
 const pendingRollback = ref<{ name: string; record: CharTagChangeRecord } | null>(null);
 
 const FIELD_PLACEHOLDERS: Record<CharTagField, string> = {
-  fandom: '同人角色填: character name (copyright name), 不带转义括号; 原创留空',
-  sex: '如 1girl / 1boy',
-  hair: '如 long black hair',
-  eyes: '如 red eyes',
-  skin: '如 pale skin(可不填)',
-  body: '如 petite, small breasts',
-  extra: '如 heterochromia(可不填)',
-  outfit: '固定着装,可不填',
+  fandom: 'Fill in the fan character: character name (copyright name), without escaping brackets; leave blank for original',
+  sex: 'Such as 1girl / 1boy',
+  hair: 'Such as long black hair',
+  eyes: 'Such as red eyes',
+  skin: 'Such as pale skin (optional)',
+  body: 'Such as petite, small breasts',
+  extra: 'Such as heterochromia (optional)',
+  outfit: 'Fixed attire, optional',
 };
 
 /** 全局库名字集(响应式),用于分区与「覆盖」徽标。 */
@@ -191,11 +191,11 @@ function confirmEntry() {
   if (!d) return;
   const name = d.name.trim();
   if (!name) {
-    toastr.warning('角色名不能为空', '柏宝绘');
+    toastr.warning('Role name cannot be empty', 'BaiBai Image');
     return;
   }
   if (!previewTag.value) {
-    toastr.warning('至少填一个外貌字段(或整串 tag)', '柏宝绘');
+    toastr.warning('Fill in at least one Appearance fields (or the entire string tag)', 'BaiBai Image');
     return;
   }
   const entryData: CharTagEntry = {
@@ -236,7 +236,7 @@ function confirmPromote() {
   confirmPromoteOpen.value = false;
   if (!editingName.value) return;
   if (promoteCharTagToGlobal(editingName.value)) {
-    toastr.success(`「${editingName.value}」已提升为全局角色,所有聊天生效`, '柏宝绘');
+    toastr.success(`「${editingName.value}"Has been promoted to global character, all chats take effect`, 'BaiBai Image');
   }
   closeEntry();
 }
@@ -245,7 +245,7 @@ function copyToChat() {
   if (!editingName.value) return;
   const name = editingName.value;
   if (copyGlobalCharTagToChat(name)) {
-    toastr.success(`已把「${name}」复制到本聊天,之后本聊天以副本为准`, '柏宝绘');
+    toastr.success(`Already put "${name}"Copy to this chat, and then this chat will be subject to the copy.`, 'BaiBai Image');
   }
   closeEntry();
 }
@@ -256,13 +256,13 @@ async function regenerateFromBook() {
   if (!d) return;
   const name = d.name.trim();
   if (!name) {
-    toastr.warning('先填写角色名', '柏宝绘');
+    toastr.warning('Fill in the character name first', 'BaiBai Image');
     return;
   }
   const ctx = getContext();
   const floor = (ctx?.chat.length ?? 0) - 1;
   if (!ctx || floor < 0) {
-    toastr.info('当前没有打开的聊天', '柏宝绘');
+    toastr.info('There are currently no open chats', 'BaiBai Image');
     return;
   }
   regenerating.value = true;
@@ -270,12 +270,12 @@ async function regenerateFromBook() {
     const memory = readBookMemory(floor, ctx.chat[floor]?.mes ?? '', ctx.name1);
     const role = memory?.roles.find(r => r.name === name);
     if (!role?.desc) {
-      toastr.info('柏宝书最新状态里没有该角色的外貌记录,可手动填写', '柏宝绘');
+      toastr.info('There is no appearance record of this character in the latest status of BaiBai Book. It can be filled in manually.', 'BaiBai Image');
       return;
     }
     const [result] = await generateCharTags([{ name, desc: role.desc }]);
     if (!result) {
-      toastr.warning('模型没有返回该角色的 tag,请重试或手动填写', '柏宝绘');
+      toastr.warning('The model did not return tag for this character, please try again or fill it in manually.', 'BaiBai Image');
       return;
     }
     const fields = { ...emptyCharFields(), ...result.fields };
@@ -283,9 +283,9 @@ async function regenerateFromBook() {
     d.raw = '';
     draftSource.value = 'book';
     draftDesc.value = role.desc;
-    toastr.success('已按柏宝书最新外貌生成,点「完成」保存', '柏宝绘');
+    toastr.success('The latest appearance of BaiBai Book has been generated. Click "Finish" to save.', 'BaiBai Image');
   } catch (error) {
-    toastr.error(error instanceof Error ? error.message : String(error), '柏宝绘');
+    toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
   } finally {
     regenerating.value = false;
   }
@@ -293,9 +293,9 @@ async function regenerateFromBook() {
 
 /* —— 历史展示与回滚(仅本聊天条目) —— */
 function fieldLabel(field: CharTagChangeRecord['field']): string {
-  if (field === 'new') return '建档';
-  if (field === 'raw') return '整串';
-  if (field === 'nl') return '自然语言';
+  if (field === 'new') return 'Create a file';
+  if (field === 'raw') return 'whole string';
+  if (field === 'nl') return 'Natural Language';
   return CHAR_TAG_FIELD_LABELS[field];
 }
 
@@ -311,26 +311,26 @@ function confirmRollback() {
   pendingRollback.value = null;
   if (!p) return;
   if (rollbackCharTag(p.name, p.record)) {
-    toastr.success(`已回滚「${p.name}」的${fieldLabel(p.record.field)}变更`, '柏宝绘');
+    toastr.success(`Rolled back"${p.name}" of${fieldLabel(p.record.field)}Changed`, 'BaiBai Image');
   } else {
-    toastr.warning('回滚失败:条目可能已删除', '柏宝绘');
+    toastr.warning('Rollback failed: entry may have been deleted', 'BaiBai Image');
   }
 }
 
 function sourceLabel(entry: CharTagEntry): string {
-  return entry.source === 'book' ? '柏宝书' : entry.source === 'ai' ? 'AI 维护' : '手动';
+  return entry.source === 'book' ? 'BaiBai Book' : entry.source === 'ai' ? 'AI Maintenance' : 'Manual';
 }
 </script>
 
 <template>
   <section class="bbi-page">
     <div class="bbi-page-head">
-      <h2 class="bbi-title bbi-title-sub">角色管理</h2>
+      <h2 class="bbi-title bbi-title-sub">Characters</h2>
     </div>
     <hr class="bbi-rule" />
 
     <p class="bbi-field-hint">
-      角色固定外貌库:生成 tag 时 AI 照抄库中字段,@角色名 占位符也会被替换为库中最新外貌,稳定不漂移。
+      The appearance library keeps characters consistent. Image planning copies their saved features; legacy @name references use the latest saved appearance.
     </p>
 
     <!-- ===== 全局角色库 ===== -->
@@ -342,14 +342,14 @@ function sourceLabel(entry: CharTagEntry): string {
           :class="{ 'is-static': !globalFoldable }"
           :disabled="!globalFoldable"
           :aria-expanded="globalShown"
-          :title="globalFoldable ? (globalShown ? '收起全局角色库' : '展开全局角色库') : ''"
+          :title="globalFoldable ? (globalShown ? 'Collapse global character library' : 'Expand global character library') : ''"
           @click="toggleFold('global')"
         >
           <Icon v-if="globalFoldable" name="chevron" class="bbi-fold-caret" :class="{ 'is-collapsed': !globalShown }" />
-          <span class="bbi-field-label">全局角色库</span>
+          <span class="bbi-field-label">Global character library</span>
           <span v-if="globalFoldable" class="bbi-count">{{ globalCharTagLib.entries.length }}</span>
         </button>
-        <button class="bbi-add-mini" type="button" title="添加全局角色" @click="addEntry('global')">
+        <button class="bbi-add-mini" type="button" title="Add global character" @click="addEntry('global')">
           <Icon name="plus" />
         </button>
       </div>
@@ -357,7 +357,7 @@ function sourceLabel(entry: CharTagEntry): string {
       <div class="bbi-fold-wrap" :class="{ 'is-collapsed': !globalShown }">
         <div class="bbi-fold-inner">
           <p class="bbi-field-hint">
-            所有聊天生效,仅手动维护——AI 不会修改全局角色,适合玩家角色等固定形象。本聊天有同名角色时以本聊天为准。
+            All chats are in effect, only manual maintenance - AI will not modify the global character and is suitable for fixed images such as player roles. When this chat has a character with the same name, this chat shall prevail.
           </p>
           <ul v-if="globalCharTagLib.entries.length" class="bbi-char-grid">
           <li v-for="entry in globalCharTagLib.entries" :key="entry.name" class="bbi-char-card">
@@ -365,9 +365,9 @@ function sourceLabel(entry: CharTagEntry): string {
               <span class="bbi-char-card-head">
                 <span class="bbi-char-name">{{ entry.name }}</span>
                 <span class="bbi-char-pills">
-                  <span class="bbi-char-pill is-global">全局</span>
-                  <span v-if="charTagBaseNames.has(entry.name)" class="bbi-char-pill is-override" title="本聊天有同名角色,当前聊天以本聊天的为准">
-                    本聊天已覆盖
+                  <span class="bbi-char-pill is-global">Global</span>
+                  <span v-if="charTagBaseNames.has(entry.name)" class="bbi-char-pill is-override" title="This chat has a character with the same name. The current chat is based on this chat.">
+                    This chat has been covered
                   </span>
                 </span>
               </span>
@@ -381,7 +381,7 @@ function sourceLabel(entry: CharTagEntry): string {
           </li>
           </ul>
           <p v-else class="bbi-char-empty">
-            还没有全局角色。在本聊天角色的编辑弹窗里点「提升为全局」,或点右上角「+」添加。
+            There is no global character yet. Click &quot;Promote to global&quot; in the editing pop-up window of chat character, or click &quot;+&quot; in the upper right corner to add.
           </p>
         </div>
       </div>
@@ -396,21 +396,21 @@ function sourceLabel(entry: CharTagEntry): string {
           :class="{ 'is-static': !chatFoldable }"
           :disabled="!chatFoldable"
           :aria-expanded="chatShown"
-          :title="chatFoldable ? (chatShown ? '收起本聊天角色' : '展开本聊天角色') : ''"
+          :title="chatFoldable ? (chatShown ? 'Close chat character' : 'Expand chat character') : ''"
           @click="toggleFold('chat')"
         >
           <Icon v-if="chatFoldable" name="chevron" class="bbi-fold-caret" :class="{ 'is-collapsed': !chatShown }" />
-          <span class="bbi-field-label">本聊天角色</span>
+          <span class="bbi-field-label">Chat characters</span>
           <span v-if="chatFoldable" class="bbi-count">{{ chatEntries.length }}</span>
         </button>
-        <button class="bbi-add-mini" type="button" title="添加本聊天角色" @click="addEntry('chat')">
+        <button class="bbi-add-mini" type="button" title="Add chat character" @click="addEntry('chat')">
           <Icon name="plus" />
         </button>
       </div>
       <div class="bbi-fold-wrap" :class="{ 'is-collapsed': !chatShown }">
         <div class="bbi-fold-inner">
           <p class="bbi-field-hint">
-            仅当前聊天生效:柏宝书角色自动建档,AI 随剧情报告永久变化;可查看历史并回滚。
+            Only the current chat is effective: BaiBai Book characters are automatically archived, and AI changes permanently with the plot report; the history can be viewed and rolled back.
           </p>
           <ul v-if="chatEntries.length" class="bbi-char-grid">
           <li v-for="entry in chatEntries" :key="entry.name" class="bbi-char-card">
@@ -424,13 +424,13 @@ function sourceLabel(entry: CharTagEntry): string {
                   >
                     {{ sourceLabel(entry) }}
                   </span>
-                  <span v-if="globalNameSet.has(entry.name)" class="bbi-char-pill is-override" title="与全局库同名,当前聊天以本条为准">
-                    覆盖全局
+                  <span v-if="globalNameSet.has(entry.name)" class="bbi-char-pill is-override" title="The same name as the global library, the current chat is subject to this article">
+                    Cover the whole world
                   </span>
                   <span
                     v-if="entry.history.length"
                     class="bbi-char-history-badge"
-                    :title="`${entry.history.length} 条变更记录,点卡片查看`"
+                    :title="`${entry.history.length} Change records, click on the card to view`"
                   >
                     <Icon name="history" />{{ entry.history.length }}
                   </span>
@@ -446,7 +446,7 @@ function sourceLabel(entry: CharTagEntry): string {
           </li>
           </ul>
           <p v-else class="bbi-char-empty">
-            本聊天还没有角色。生成 tag 时柏宝书角色会自动建档,也可点右上角「+」手动补。
+            This chat has no characters yet. When tag is generated, the BaiBai Book character will be automatically created. You can also click the &quot;+&quot; in the upper right corner to manually add it.
           </p>
         </div>
       </div>
@@ -454,20 +454,20 @@ function sourceLabel(entry: CharTagEntry): string {
 
     <!-- ===== 角色编辑弹窗 ===== -->
     <ModalMask :open="!!draft" @close="closeEntry">
-      <div v-if="draft" class="bbi-modal bbi-char-modal" role="dialog" aria-modal="true" aria-label="编辑角色">
+      <div v-if="draft" class="bbi-modal bbi-char-modal" role="dialog" aria-modal="true" aria-label="Edit character">
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">
-            {{ editingName ? '编辑角色' : '添加角色' }}
+            {{ editingName ? 'Edit character' : 'Add role' }}
             <span v-if="editingName" class="bbi-char-pill" :class="editingScope === 'global' ? 'is-global' : 'is-chat'">
-              {{ editingScope === 'global' ? '全局' : '本聊天' }}
+              {{ editingScope === 'global' ? 'Global' : 'This chat' }}
             </span>
           </span>
-          <button class="bbi-icon-mini" type="button" title="关闭" @click="closeEntry"><Icon name="close" /></button>
+          <button class="bbi-icon-mini" type="button" title="Close" @click="closeEntry"><Icon name="close" /></button>
         </header>
 
         <!-- 作用域:仅新建时可选;已有条目换层用底部「提升为全局 / 复制到本聊天」 -->
         <div v-if="!editingName" class="bbi-modal-field">
-          <span class="bbi-modal-label">保存到</span>
+          <span class="bbi-modal-label">save to</span>
           <div class="bbi-segmented">
             <button
               class="bbi-seg"
@@ -475,7 +475,7 @@ function sourceLabel(entry: CharTagEntry): string {
               type="button"
               @click="draftScope = 'chat'"
             >
-              本聊天
+              This chat
             </button>
             <button
               class="bbi-seg"
@@ -483,22 +483,22 @@ function sourceLabel(entry: CharTagEntry): string {
               type="button"
               @click="draftScope = 'global'"
             >
-              全局
+              Global
             </button>
           </div>
           <span class="bbi-field-hint">
-            {{ draftScope === 'global' ? '全局:所有聊天生效,AI 不会修改,tag 有问题需手动改。' : '本聊天:仅当前聊天,AI 可随剧情自动变更。' }}
+            {{ draftScope === 'global' ? 'Global: All chats take effect, AI will not be modified, tag needs to be modified manually if there is any problem.' : 'This chat: Only the current chat, AI can automatically change with the plot.' }}
           </span>
         </div>
 
         <label class="bbi-modal-field">
-          <span class="bbi-modal-label">角色名</span>
-          <input v-model="draft.name" class="bbi-input" placeholder="与正文/柏宝书中的名字一致" @input="markManual" />
+          <span class="bbi-modal-label">Character name</span>
+          <input v-model="draft.name" class="bbi-input" placeholder="The name is consistent with the name in the main text/BaiBai Book" @input="markManual" />
         </label>
-        <span class="bbi-field-hint">按这个名字去正文和柏宝书角色参考里匹配;AI 引用时也用它(@角色名)。改名不会自动跟随。</span>
+        <span class="bbi-field-hint">Use the exact name from the story or BaiBai Book. Names are matched verbatim; renaming an entry does not update earlier references.</span>
 
         <div class="bbi-modal-field">
-          <span class="bbi-modal-label">外貌字段</span>
+          <span class="bbi-modal-label">Appearance fields</span>
           <div class="bbi-char-form">
             <label
               v-for="f in CHAR_TAG_FIELDS"
@@ -516,43 +516,43 @@ function sourceLabel(entry: CharTagEntry): string {
             </label>
           </div>
         </div>
-        <span class="bbi-field-hint">只写固定基础特征;服装、表情、动作不入库,每次按剧情生成。</span>
+        <span class="bbi-field-hint">Save permanent features and signature outfits here. Temporary clothing, expressions, and actions come from the current scene.</span>
 
         <label class="bbi-modal-field">
-          <span class="bbi-modal-label">整串模式(可选)</span>
+          <span class="bbi-modal-label">Custom tag string (optional)</span>
           <BbiTextarea
             v-model="draft.raw"
             :rows="2"
             :max-rows="6"
             mono
-            placeholder="留空则用上面的字段拼接;填了整串且字段全空时,以整串为准(旧数据格式)"
+            placeholder="If left blank, the above fields will be used to splice it; when the entire string is filled in and the fields are all empty, the entire string will prevail (old data format)"
             @input="markManual"
           />
         </label>
 
         <label class="bbi-modal-field">
-          <span class="bbi-modal-label">自然语言外貌(可选)</span>
+          <span class="bbi-modal-label">Natural language appearance (optional)</span>
           <BbiTextarea
             v-model="draft.nl"
             :rows="2"
             :max-rows="4"
             mono
-            placeholder="一句连贯英文外貌描述,自然语言模式下替换 nl 里的 @角色名 用;留空则用 tag 串替换"
+            placeholder="A coherent description of appearance in English. Use it to replace @character name in nl in natural language mode; if left blank, use tag string to replace it."
             @input="markManual"
           />
         </label>
 
         <div class="bbi-char-preview">
-          <span class="bbi-field-label">最终 tag 预览</span>
-          <code class="bbi-char-preview-tag">{{ previewTag || '(空)' }}</code>
-          <span v-if="draftIsRaw" class="bbi-char-preview-mode">整串模式</span>
+          <span class="bbi-field-label">Final tag preview</span>
+          <code class="bbi-char-preview-tag">{{ previewTag || '(empty)' }}</code>
+          <span v-if="draftIsRaw" class="bbi-char-preview-mode">Whole string mode</span>
         </div>
 
         <!-- 变更历史:仅本聊天条目;全局条目无历史(AI 不可改,手动编辑不留痕) -->
         <div v-if="editingHistory.length" class="bbi-char-history">
           <button class="bbi-char-history-toggle" type="button" @click="historyOpen = !historyOpen">
             <span class="bbi-char-history-caret" :class="{ 'is-open': historyOpen }"><Icon name="chevron" /></span>
-            变更历史({{ editingHistory.length }})
+            Change History ({{ editingHistory.length }})
           </button>
           <ul v-if="historyOpen" class="bbi-char-history-list">
             <li v-for="(record, i) in [...editingHistory].reverse()" :key="i" class="bbi-char-history-item">
@@ -563,10 +563,10 @@ function sourceLabel(entry: CharTagEntry): string {
                   <template v-else>{{ record.to }}</template>
                 </span>
                 <span v-if="record.reason" class="bbi-char-history-reason">{{ record.reason }}</span>
-                <span class="bbi-char-history-meta">{{ record.floor >= 0 ? `第${record.floor}楼` : '手动' }}·{{ new Date(record.at).toLocaleString() }}</span>
+                <span class="bbi-char-history-meta">{{ record.floor >= 0 ? `No.${record.floor}building` : 'Manual' }}·{{ new Date(record.at).toLocaleString() }}</span>
               </div>
-              <button class="bbi-btn bbi-btn-sm" type="button" title="把该字段回滚到变更前的值" @click="askRollback(record)">
-                回滚
+              <button class="bbi-btn bbi-btn-sm" type="button" title="Roll back the field to its value before the change" @click="askRollback(record)">
+                rollback
               </button>
             </li>
           </ul>
@@ -574,61 +574,61 @@ function sourceLabel(entry: CharTagEntry): string {
 
         <footer class="bbi-modal-foot">
           <button v-if="editingName" class="bbi-btn bbi-btn-danger" type="button" @click="askRemove">
-            <Icon name="trash" /> 删除
+            <Icon name="trash" /> Delete
           </button>
           <span class="bbi-modal-foot-spacer"></span>
           <button
             v-if="editingName && editingScope === 'chat'"
             class="bbi-btn"
             type="button"
-            title="把当前外貌快照进全局库,所有聊天生效;本聊天副本与变更记录将清除"
+            title="Snapshot the current appearance into the global library, all chats will take effect; this chat copy and change history will be cleared"
             @click="askPromote"
           >
-            <Icon name="star" /> 提升为全局
+            <Icon name="star" /> Promote to global
           </button>
           <button
             v-if="editingName && editingScope === 'global'"
             class="bbi-btn"
             type="button"
-            title="复制为本聊天副本:之后本聊天以副本为准,AI 可对其变更"
+            title="Copy as this chat copy: This chat will be based on the copy later, and AI can change it."
             @click="copyToChat"
           >
-            <Icon name="copy" /> 复制到本聊天
+            <Icon name="copy" /> Copy to this chat
           </button>
           <button
             class="bbi-btn"
             type="button"
-            title="读取柏宝书最新状态里该角色的外貌,重新转换成字段"
+            title="Read the appearance of the character in the latest status of BaiBai Book and convert it into a field again."
             :disabled="regenerating"
             @click="regenerateFromBook"
           >
-            <Icon name="refresh" /> {{ regenerating ? '生成中…' : '从柏宝书生成' }}
+            <Icon name="refresh" /> {{ regenerating ? 'Generating...' : 'Generate from BaiBai Book' }}
           </button>
-          <button class="bbi-btn bbi-btn-primary" type="button" @click="confirmEntry">完成</button>
+          <button class="bbi-btn bbi-btn-primary" type="button" @click="confirmEntry">Done</button>
         </footer>
 
         <ConfirmDialog
           v-model:open="confirmDeleteOpen"
-          title="删除角色"
-          confirm-text="删除"
+          title="Delete role"
+          confirm-text="Delete"
           confirm-icon="trash"
           tone="danger"
           top-layer
           @confirm="confirmRemove"
         >
-          确定删除「{{ editingName }}」的固定外貌 tag 吗?之后生成时该角色的外貌将不再锚定。
+          Confirm to delete &quot;{{ editingName }}&quot;tag's fixed appearance? The character's appearance will no longer be anchored when generated later.
         </ConfirmDialog>
 
         <ConfirmDialog
           v-model:open="confirmPromoteOpen"
-          title="提升为全局"
-          confirm-text="提升"
+          title="Promote to global"
+          confirm-text="promote"
           confirm-icon="star"
           top-layer
           @confirm="confirmPromote"
         >
-          把「{{ editingName }}」的当前外貌快照进全局库?之后所有聊天(包括本聊天)都以全局值为准,
-          AI 不能再修改它;本聊天的副本与变更记录将被清除。
+          Put &quot;{{ editingName }}”’s current appearance snapshot into the global database? All subsequent chats (including this chat) will be based on the global value.
+          AI can no longer modify it; the copy and change history of this chat will be cleared.
         </ConfirmDialog>
       </div>
     </ModalMask>
@@ -636,17 +636,17 @@ function sourceLabel(entry: CharTagEntry): string {
     <!-- ===== 回滚确认 ===== -->
     <ConfirmDialog
       v-model:open="confirmRollbackOpen"
-      title="回滚变更"
-      confirm-text="回滚"
+      title="Rollback changes"
+      confirm-text="rollback"
       tone="danger"
       top-layer
       @confirm="confirmRollback"
     >
       <template v-if="pendingRollback">
-        把「{{ pendingRollback.name }}」的「{{ fieldLabel(pendingRollback.record.field) }}」从
-        <code>{{ pendingRollback.record.to }}</code> 回滚到
-        <code>{{ pendingRollback.record.from || '(空)' }}</code> ?
-        建档记录的回滚会删除整个条目。
+        Put &quot;{{ pendingRollback.name }}&quot; of &quot;{{ fieldLabel(pendingRollback.record.field) }}&quot;From
+        <code>{{ pendingRollback.record.to }}</code> rollback to
+        <code>{{ pendingRollback.record.from || '(empty)' }}</code> ?
+        Rolling back an archived record deletes the entire entry.
       </template>
     </ConfirmDialog>
   </section>

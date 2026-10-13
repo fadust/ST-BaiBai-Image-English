@@ -91,8 +91,8 @@ function clampToStoryBody(
 /** 历史楼层与柏宝书 cleanBody 同口径；本插件的 bbi_image 必须保留供角色外貌续接。 */
 export function cleanHistoryText(mes: string, tags: string[]): string {
   return clampToStoryBody(mes, tags, true)
-    .replace(RE_START, (_, value) => `(起始时间:${String(value).trim()})`)
-    .replace(RE_END, (_, value) => `(结束时间:${String(value).trim()})`);
+    .replace(RE_START, (_, value) => `(Start time:${String(value).trim()})`)
+    .replace(RE_END, (_, value) => `(End time:${String(value).trim()})`);
 }
 
 interface RemovalRange {

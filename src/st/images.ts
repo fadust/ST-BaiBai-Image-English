@@ -29,7 +29,7 @@ async function postImage(
   body: Record<string, unknown>,
 ): Promise<{ ok: boolean; status: number; text: string }> {
   const ctx = getContext();
-  if (!ctx) throw new ImageStoreError('SillyTavern 上下文不可用');
+  if (!ctx) throw new ImageStoreError('SillyTavern context is not available');
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: ctx.getRequestHeaders(),
@@ -59,7 +59,7 @@ export async function uploadUserImage(
   });
   if (!ok) {
     throw new ImageStoreError(
-      `图片上传失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Image upload failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -70,7 +70,7 @@ export async function uploadUserImage(
   } catch {
     /* 响应不是 JSON,落到下方统一报错 */
   }
-  if (!path) throw new ImageStoreError('图片上传失败：服务端未返回路径');
+  if (!path) throw new ImageStoreError('Image upload failed: The server did not return the path.');
   return path;
 }
 
@@ -93,7 +93,7 @@ export async function listUserImageFolders(): Promise<string[]> {
   const { ok, status, text } = await postImage('/api/images/folders', {});
   if (!ok) {
     throw new ImageStoreError(
-      `读取图片目录失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Failed to read image directory (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -117,7 +117,7 @@ export async function listUserImages(
   });
   if (!ok) {
     throw new ImageStoreError(
-      `读取图片列表失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Failed to read image list (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -170,7 +170,7 @@ export async function deleteUserImage(path: string): Promise<boolean> {
   if (ok) return true;
   if (status === 404) return false;
   throw new ImageStoreError(
-    `图片删除失败 (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+    `Image deletion failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
     status,
   );
 }

@@ -108,7 +108,7 @@ describe('parseResolution', () => {
   it('拒绝非 64 倍数与非法格式', () => {
     expect(() => parseResolution('830×1216')).toThrow(/64/);
     expect(() => parseResolution('')).toThrow(NaiError);
-    expect(() => parseResolution('4096×4096')).toThrow(/范围/);
+    expect(() => parseResolution('4096×4096')).toThrow(/range/);
   });
 });
 
@@ -656,7 +656,7 @@ describe('parseNaiv4vibe', () => {
   });
 
   it('拒绝非 vibe JSON', () => {
-    expect(() => parseNaiv4vibe('{"foo":1}')).toThrow(/标识/);
+    expect(() => parseNaiv4vibe('{"foo":1}')).toThrow(/identifier/);
     expect(() => parseNaiv4vibe('not json')).toThrow(NaiError);
   });
 });

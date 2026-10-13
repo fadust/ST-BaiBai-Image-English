@@ -131,7 +131,7 @@ async function renderWorldInfoContent(
     const out = await ejs.evalTemplate(text, env);
     if (typeof out === 'string') text = out;
   } catch (e) {
-    console.log('[柏宝绘] 世界书 EJS 渲染失败(退回未执行文本):', e);
+    console.log('[BaiBai Image] World Info EJS rendering failed (unexecuted text returned):', e);
   }
   return text;
 }
@@ -199,7 +199,7 @@ export async function fetchWorldInfo(
     );
     return joinWorldInfoChunks(chunks);
   } catch (e) {
-    console.log('[柏宝绘] 世界书激活失败(降级为不带设定):', e);
+    console.log('[BaiBai Image] World Info activation failed (downgraded to no settings):', e);
     return '';
   }
 }
@@ -222,9 +222,9 @@ export function fetchCharCard(context: STContext): string {
   if (!ch) return '';
   const sub = typeof context.substituteParams === 'function' ? context.substituteParams : (s: string) => s;
   const fields: Array<[string, string]> = [
-    ['描述', String(ch.description ?? '')],
-    ['性格', String(ch.personality ?? '')],
-    ['情景', String(ch.scenario ?? '')],
+    ['Description', String(ch.description ?? '')],
+    ['Personality', String(ch.personality ?? '')],
+    ['Scenario', String(ch.scenario ?? '')],
   ];
   const parts: string[] = [];
   for (const [label, raw] of fields) {
@@ -250,24 +250,24 @@ export function fetchUserPersona(context: STContext): string {
 
 /** 把世界书设定包成独立 system 消息的内容(空设定时调用方应跳过) */
 export function buildWorldInfoSystem(worldInfo: string): string {
-  return `【世界设定(世界书激活的相关设定,只读参考)】
-务必与以下设定保持一致,不得编造与其矛盾的内容;但设定本身不是本轮发生的事,不要写进输出。
+  return `【World setting (activated lorebook; read-only reference)】
+Be sure to be consistent with the following settings, and do not make up contradictory content; but the setting itself is not what happened this round, so do not write it into the output.
 
 ${worldInfo.trim()}`;
 }
 
 /** 把角色卡描述包成独立 system 消息(有些卡人设写在角色描述而非世界书里,tag 生成也需据此理解角色)。 */
 export function buildCharCardSystem(charCard: string): string {
-  return `【角色设定(角色卡设定,只读参考)】
-以下是当前角色的人物设定,用于帮助你理解角色的外貌与言行;它不是本轮发生的事,不要写进输出。
+  return `【Character setting (character card; read-only reference)】
+The following is the character setting of the current character, which is used to help you understand the appearance, words and deeds of the character; it is not something that happened this round, so do not write it into the output.
 
 ${charCard.trim()}`;
 }
 
 /** 把用户人设(persona)包成独立 system 消息(用于理解「主角是谁」)。 */
 export function buildPersonaSystem(persona: string): string {
-  return `【主角设定(用户操控的主角本人设定,只读参考)】
-以下是主角(即对话里的"用户/User"一方)本人的人物设定,用于帮助你理解主角的身份与外貌;它不是本轮发生的事,不要写进输出。
+  return `【Protagonist persona (user-controlled protagonist; read-only reference)】
+The following is the character setting of the protagonist (i.e. the "User/User" side in the dialogue) to help you understand the identity and appearance of the protagonist; it does not happen in this round, so do not write it into the output.
 
 ${persona.trim()}`;
 }

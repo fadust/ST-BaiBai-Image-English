@@ -45,33 +45,33 @@ const PURPOSES = new Set<WorkflowBindingPurpose>([
   'height',
 ]);
 
-const SYSTEM_PROMPT = `你是 ComfyUI API 格式工作流的动态参数定位器。你只负责判断现有节点的哪个 inputs 字段承担什么用途，不得重写工作流。
+const SYSTEM_PROMPT = `You are a dynamic parameter locator for the ComfyUI API format workflow. You are only responsible for determining which inputs field of an existing node serves what purpose, and may not rewrite the workflow.
 
-只返回一个 JSON 对象，不要 Markdown、解释或思维过程：
+Return only an JSON object, no Markdown, explanations or thought processes:
 {"bindings":[{"node":"6","input":"text","purpose":"positive_combined","keep":["F1","F2"]}]}
 
-purpose 只能是：
-- positive_tag：正向 danbooru/tag 提示词输入。
-- positive_nl：与 tag 分开的自然语言正向输入。
-- positive_combined：同一个文本输入同时接收 tag 与自然语言；原值同时包含逗号 tag 和完整句子，或该模型用同一编码器接收两者时选择此项。
-- negative：负面提示词输入。
-- seed：主生成链使用的随机种子。
-- width / height：主生成画布或初始 latent 的宽高。
+purpose can only be:
+- positive_tag: Forward danbooru/tag prompt word input.
+- positive_nl: Natural language forward input separate from tag.
+- positive_combined: Select this if the same text input receives both tag and natural language; the original value contains both a comma and a complete sentence, or the model receives both with the same encoder.
+- negative: Negative prompt word input.
+- seed: Random seed used by the main generation chain.
+- width / height: Width and height of main generated canvas or initial latent.
 
-规则：
-1. node 和 input 必须逐字对应工作流中真实存在的节点 ID 与 inputs 键。
-2. 只选择值为字符串或数字的可编辑输入，不得选择形如 ["节点ID", 输出序号] 的连线数组。
-3. 同一输入只能选择一个 purpose；tag 与自然语言共用时必须选 positive_combined。
-4. 可以返回多个同用途输入，例如双编码器、多个同步 seed。
-5. 不要选择模型名、LoRA、采样步数、CFG、采样器、调度器、放大/裁剪/预览尺寸。
-6. width/height 只标记主生成尺寸，不标记后期放大、裁剪或输出尺寸。
-7. 文本输入会提供 fragments。keep 只能填写该输入中需要跨所有图片永久保留的片段 ID：
-   - 正向保留质量词、模型/LoRA触发词、固定风格词、固定评级词。
-   - 正向删除导出示例里的角色数量、人物外貌、服装、动作、场景、构图、光线和自然语言画面描述。
-   - 同一风格已由简短触发词表达时，不再保留自然语言中的重复风格句。
-   - 负向保留通用质量、解剖、伪影和固定风格排除词；删除只针对导出示例人物或场景的临时排除词。
-   - 不得复制片段文本，只返回 ID；没有固定片段就返回空数组。seed/width/height 的 keep 必须为空数组。
-8. 至少必须找到一个 positive_tag 或 positive_combined。无法可靠确认的输入不要猜。`;
+Rules:
+1. node and input must correspond verbatim to the actual nodes ID and inputs keys in the workflow.
+2. Only editable inputs whose values are strings or numbers are selected. Wired arrays of the form ["Node ID", Output Serial Number] cannot be selected.
+3. Only one purpose can be selected for the same input; positive_combined must be selected when tag is used with natural language.
+4. Can return multiple inputs with the same purpose, such as dual encoders and multiple simultaneous seed.
+5. Do not select model name, LoRA, sampling steps, CFG, sampler, scheduler, enlarge/crop/preview size.
+6. width/height only marks the main generated size, not the post-enlargement, cropping or output size.
+7. The text input supplies fragments. keep can only fill in the fragments of this input that need to be persisted across all images ID:
+   - Positively retain quality words, model/LoRA trigger words, fixed style words, and fixed rating words.
+   - Forwardly delete the number of characters, character appearance, clothing, actions, scenes, composition, lighting and natural language descriptions in the exported examples.
+   - Repeated style sentences in natural language are no longer preserved when the same style is already expressed by a short trigger word.
+   - Negatively preserve general quality, anatomy, artifacts, and fixed style exclusions; remove temporary exclusions specific to exported example characters or scenes.
+   - Fragment text must not be copied, only ID is returned; if there is no fixed fragment, an empty array is returned. keep of seed/width/height must be an empty array.
+8. At least one positive_tag or positive_combined must be found. Do not guess at input that cannot be reliably confirmed.`;
 
 interface PromptFragment {
   id: string;
@@ -159,10 +159,10 @@ export function parseWorkflowBindings(raw: string): WorkflowBinding[] {
     }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('AI 没有返回可解析的工作流定位 JSON');
+    throw new Error('AI No resolvable workflow location was returned JSON');
   }
   const bindings = (parsed as Record<string, unknown>).bindings;
-  if (!Array.isArray(bindings)) throw new Error('AI 返回结果缺少 bindings 数组');
+  if (!Array.isArray(bindings)) throw new Error('The AI response is missing the bindings array');
 
   const byPath = new Map<string, WorkflowBinding>();
   for (const item of bindings) {
@@ -198,7 +198,7 @@ export function parseWorkflowBindings(raw: string): WorkflowBinding[] {
       });
       continue;
     }
-    throw new Error(`AI 为节点 ${node}.${input} 返回了互相冲突的用途`);
+    throw new Error(`AI is the node ${node}.${input} Returned conflicting uses`);
   }
   return [...byPath.values()];
 }
@@ -222,7 +222,7 @@ function fixedText(value: string, keep: string[], binding: WorkflowBinding): str
   const available = new Map(fragments.map(fragment => [fragment.id, fragment.text]));
   const unknown = keep.filter(id => !available.has(id));
   if (unknown.length) {
-    throw new Error(`AI 为节点 ${binding.node}.${binding.input} 返回了不存在的片段：${unknown.join('、')}`);
+    throw new Error(`AI is the node ${binding.node}.${binding.input} returned a fragment that does not exist:${unknown.join('、')}`);
   }
   return fragments
     .filter(fragment => keep.includes(fragment.id))
@@ -244,18 +244,18 @@ function renderTextBinding(value: string, binding: WorkflowBinding): string {
 function editableInput(workflow: ComfyWorkflow, binding: WorkflowBinding): string | number {
   const node = workflow[binding.node];
   if (!node || typeof node !== 'object' || Array.isArray(node)) {
-    throw new Error(`AI 返回的节点 ${binding.node} 不存在`);
+    throw new Error(`AI returned node ${binding.node} does not exist`);
   }
   const inputs = node.inputs;
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) {
-    throw new Error(`节点 ${binding.node} 没有可编辑的 inputs`);
+    throw new Error(`node ${binding.node} No editable inputs`);
   }
   if (!Object.hasOwn(inputs, binding.input)) {
-    throw new Error(`节点 ${binding.node} 不存在输入 ${binding.input}`);
+    throw new Error(`node ${binding.node} No input exists ${binding.input}`);
   }
   const value = (inputs as Record<string, unknown>)[binding.input];
   if (typeof value !== 'string' && typeof value !== 'number') {
-    throw new Error(`节点 ${binding.node}.${binding.input} 不是可直接替换的文本或数字输入`);
+    throw new Error(`node ${binding.node}.${binding.input} Not a directly replaceable text or numeric input`);
   }
   return value;
 }
@@ -284,11 +284,11 @@ export function applyWorkflowBindings(template: string, bindings: WorkflowBindin
   }
 
   if (!hasPositive && !getWorkflowPlaceholders(template).includes('prompt')) {
-    throw new Error('AI 没有找到正向提示词输入');
+    throw new Error('AI No positive prompt word input found');
   }
   const rendered = JSON.stringify(workflow, null, 2);
   if (!getWorkflowPlaceholders(rendered).includes('prompt')) {
-    throw new Error('自动配置后的工作流仍缺少 %prompt%');
+    throw new Error('The configured workflow is still missing %prompt%');
   }
   return { workflow: rendered, changes, nlMode, hasNegative };
 }
@@ -302,12 +302,12 @@ export async function configureWorkflowWithAi(
     { role: 'system', content: SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `请定位以下 ComfyUI API 工作流的动态输入。文本值已拆成片段编号：\n${JSON.stringify(workflowAnalysisPayload(workflow))}`,
+      content: `Please locate the following dynamic input for the ComfyUI API workflow. The text value has been split into fragment numbers: \n${JSON.stringify(workflowAnalysisPayload(workflow))}`,
     },
   ];
   const channel = getTagGenChannel();
   const raw = channel
-    ? await requestCompletion(channel, messages, { signal, source: 'ComfyUI 工作流配置' })
-    : await requestViaMainApi(messages, { signal, source: 'ComfyUI 工作流配置' });
+    ? await requestCompletion(channel, messages, { signal, source: 'ComfyUI workflow configuration' })
+    : await requestViaMainApi(messages, { signal, source: 'ComfyUI workflow configuration' });
   return applyWorkflowBindings(template, parseWorkflowBindings(raw));
 }

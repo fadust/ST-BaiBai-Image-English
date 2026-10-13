@@ -7,10 +7,7 @@ import { defineConfig } from 'vite';
 // 想 import 宿主 ST 的模块时需要算出从 dist/ 回到 ST public/ 根的相对路径。
 // `@sillytavern/scripts/xxx` -> `../../../../../scripts/xxx.js`,并标为 external,
 // 这样 ST 自身的代码不会被打进我们的包里,运行时浏览器直接走相对路径。
-const relative_sillytavern_path = path.relative(
-  path.join(__dirname, 'dist'),
-  __dirname.substring(0, __dirname.lastIndexOf('public') + 'public'.length),
-);
+const relative_sillytavern_path = '../../../../../';
 
 // ST 已在全局挂载的第三方库,映射到全局变量,避免重复打包。
 const globals: Record<string, string> = {

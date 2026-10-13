@@ -39,16 +39,16 @@ describe('formatGenerationMeta', () => {
       }),
     );
 
-    expect(text).toContain('画师串: 厚涂 · artist:wlop, artist:foo');
+    expect(text).toContain("Artist Tags: 厚涂 · artist:wlop, artist:foo");
     // 质量词与解析后的负面不在 tag 文本里，单独成行
-    expect(text).toContain('质量词: masterpiece, best quality');
-    expect(text).toContain('负面: lowres');
+    expect(text).toContain('Quality word: masterpiece, best quality');
+    expect(text).toContain('Negative: lowres');
     // 配置强度是主值，归一化后的实际值以括号标注
-    expect(text).toContain('参考A(风景) ×0.8(实际 ×0.571)');
-    expect(text).toContain('参考B ×0.6(实际 ×0.429)');
-    expect(text).toContain('模型: nai-diffusion-4-5-full');
-    expect(text).toContain('尺寸: 832×1216');
-    expect(text).toContain('采样: k_euler · 28 步 · CFG 5 · CFG-Rescale 0.2 · 噪声表 karras · Variety Boost');
+    expect(text).toContain('参考A(风景) ×0.8(Actual ×0.571)');
+    expect(text).toContain('参考B ×0.6(Actual ×0.429)');
+    expect(text).toContain("Model: nai-diffusion-4-5-full");
+    expect(text).toContain("Dimensions: 832×1216");
+    expect(text).toContain('Sampling: k_euler · 28 steps · CFG 5 · CFG-Rescale 0.2 · Noise schedule karras · Variety Boost');
   });
 
   it('omits the normalized marker when configured and effective strengths match', () => {
@@ -80,15 +80,15 @@ describe('formatGenerationMeta', () => {
         },
       }),
     );
-    expect(text).toContain('模型: Pony 预设');
-    expect(text).toContain('模板 checkpoint');
-    expect(text).toContain('底模 pony.safetensors');
+    expect(text).toContain("Model: Pony 预设");
+    expect(text).toContain('Template checkpoint');
+    expect(text).toContain('Base model pony.safetensors');
     expect(text).toContain('LoRA detail×0.7、style×1');
-    expect(text).toContain('euler_ancestral/normal · 30 步 · CFG 7');
+    expect(text).toContain('euler_ancestral/normal · 30 steps · CFG 7');
   });
 
   it('does not invent lines when there is no extra info', () => {
     const text = formatGenerationMeta(meta({ model: 'nai-diffusion-3', negative: '' }));
-    expect(text).toBe('模型: nai-diffusion-3\n尺寸: 832×1216');
+    expect(text).toBe("Model: nai-diffusion-3\nDimensions: 832×1216");
   });
 });

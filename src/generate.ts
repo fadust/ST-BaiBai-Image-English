@@ -113,10 +113,10 @@ export function backendStatus(): BackendStatus {
     // 少了名字也不难定位:面板下拉里选中的就是这条。
     const conn = activeNaiEndpoint();
     if (!conn.url.trim()) {
-      return { ...base, configured: false, reason: '当前 NAI 接入点未填写服务地址' };
+      return { ...base, configured: false, reason: 'The current NAI access point has no service address filled in' };
     }
     if (!conn.key.trim()) {
-      return { ...base, configured: false, reason: '当前 NAI 接入点未填写 API Key' };
+      return { ...base, configured: false, reason: 'Current NAI access point is not filled in API Key' };
     }
     return { ...base, configured: true, reason: '' };
   }
@@ -125,7 +125,7 @@ export function backendStatus(): BackendStatus {
     const preset = activeComfyPreset();
     const base = { backend, model: preset.name, supportsCharacters: false };
     if (!settings.comfyui.url.trim()) {
-      return { ...base, configured: false, reason: '未填写 ComfyUI 服务地址' };
+      return { ...base, configured: false, reason: 'ComfyUI service address not filled in' };
     }
     if (preset.mode === 'simple') {
       const invalid = validateSimpleConfig(preset.simple);
@@ -133,7 +133,7 @@ export function backendStatus(): BackendStatus {
       return { ...base, configured: true, reason: '' };
     }
     if (!preset.workflow.trim()) {
-      return { ...base, configured: false, reason: '当前工作流预设未填写工作流 JSON' };
+      return { ...base, configured: false, reason: 'The current workflow preset does not fill in the workflow JSON' };
     }
     return { ...base, configured: true, reason: '' };
   }
@@ -144,7 +144,7 @@ export function backendStatus(): BackendStatus {
     configured: false,
     model: '',
     supportsCharacters: false,
-    reason: '出图后端未选择,请在柏宝绘「渠道」页选择出图渠道',
+    reason: 'The image rendering backend is not selected. Please select the image rendering channel on the "Backend" page of BaiBai Image.',
   };
 }
 
@@ -178,7 +178,7 @@ export async function generateImage(
   const status = backendStatus();
   // 兜底:卡片侧已用 configured 拦在按钮上,公开接口侧也会先报 not_configured。
   // 真漏到这里说明上游判据漂了,宁可明说也别发一个注定 401/404 的请求。
-  if (!status.configured) throw new Error(status.reason || '出图后端未配置');
+  if (!status.configured) throw new Error(status.reason || 'The drawing backend is not configured');
 
   const isNai = status.backend === 'nai';
   const characters = input.characters ?? [];

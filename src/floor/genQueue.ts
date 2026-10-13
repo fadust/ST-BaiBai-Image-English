@@ -49,7 +49,7 @@ function pump(): void {
  * 返回前还会等完全局节奏(最小间隔 + 429 冷却),故调用方拿到 release 时即可立刻发请求。
  */
 export async function acquireNaiSlot(signal?: AbortSignal): Promise<() => void> {
-  if (signal?.aborted) throw signal.reason ?? new DOMException('已取消', 'AbortError');
+  if (signal?.aborted) throw signal.reason ?? new DOMException('Cancelled', 'AbortError');
 
   if (running < limit) {
     running++;
@@ -59,7 +59,7 @@ export async function acquireNaiSlot(signal?: AbortSignal): Promise<() => void> 
       const onAbort = () => {
         const index = waiting.indexOf(grant);
         if (index >= 0) waiting.splice(index, 1);
-        reject(signal?.reason ?? new DOMException('已取消', 'AbortError'));
+        reject(signal?.reason ?? new DOMException('Cancelled', 'AbortError'));
       };
       const grant = () => {
         signal?.removeEventListener('abort', onAbort);

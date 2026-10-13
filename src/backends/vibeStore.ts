@@ -20,8 +20,8 @@ function openLocalDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(LOCAL_STORE_NAME)) db.createObjectStore(LOCAL_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('打开 Vibe 本地存储失败'));
-    request.onblocked = () => reject(new Error('Vibe 本地存储被其他页面占用'));
+    request.onerror = () => reject(request.error ?? new Error('Opening Vibe local storage failed'));
+    request.onblocked = () => reject(new Error('Vibe local storage is occupied by other pages'));
   });
   return localDbPromise;
 }
@@ -31,7 +31,7 @@ async function writeLocalData(key: string, data: NaiVibeData): Promise<string> {
   await new Promise<void>((resolve, reject) => {
     const request = db.transaction(LOCAL_STORE_NAME, 'readwrite').objectStore(LOCAL_STORE_NAME).put(data, key);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('写入 Vibe 本地存储失败'));
+    request.onerror = () => reject(request.error ?? new Error('Writing to Vibe local storage failed'));
   });
   return `${LOCAL_PATH_PREFIX}${key}`;
 }
@@ -44,9 +44,9 @@ async function readLocalData(path: string): Promise<NaiVibeData> {
     request.onsuccess = () => {
       const data = request.result as NaiVibeData | undefined;
       if (data) resolve(data);
-      else reject(new Error('Vibe 本地数据不存在'));
+      else reject(new Error('Vibe local data does not exist'));
     };
-    request.onerror = () => reject(request.error ?? new Error('读取 Vibe 本地存储失败'));
+    request.onerror = () => reject(request.error ?? new Error('Failed to read Vibe local storage'));
   });
 }
 
@@ -56,7 +56,7 @@ async function deleteLocalData(path: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const request = db.transaction(LOCAL_STORE_NAME, 'readwrite').objectStore(LOCAL_STORE_NAME).delete(key);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('删除 Vibe 本地数据失败'));
+    request.onerror = () => reject(request.error ?? new Error('Failed to delete Vibe local data'));
   });
 }
 
@@ -150,7 +150,7 @@ export async function saveVibeFiles(
     return await saveServerVibeFiles(data, current, localKey);
   } catch (error) {
     if (current) throw error;
-    console.warn('[柏宝绘] Vibe 写入 ST 文件存储失败，回退浏览器 IndexedDB:', error);
+    console.warn('[BaiBai Image] Vibe failed to write to ST file storage, and fell back to the browser IndexedDB:', error);
     return { dataPath: await writeLocalData(localKey, data), thumbnailPath: '' };
   }
 }
@@ -176,16 +176,16 @@ async function saveServerVibeFiles(
 }
 
 export async function loadVibeData(vibe: Pick<NaiVibe, 'dataPath' | 'name'>): Promise<NaiVibeData> {
-  if (!vibe.dataPath) throw new Error(`Vibe「${vibe.name}」缺少数据文件`);
+  if (!vibe.dataPath) throw new Error(`Vibe「${vibe.name}"Missing data file`);
   if (vibe.dataPath.startsWith(LOCAL_PATH_PREFIX)) return readLocalData(vibe.dataPath);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(vibe.dataPath, { signal: controller.signal });
-    if (!response.ok) throw new Error(`读取 Vibe「${vibe.name}」失败 (${response.status})`);
+    if (!response.ok) throw new Error(`Read Vibe「${vibe.name}"Failed (${response.status})`);
     const data = (await response.json()) as Partial<NaiVibeData>;
     if (!data || typeof data !== 'object' || !data.encodings || typeof data.encodings !== 'object') {
-      throw new Error(`Vibe「${vibe.name}」数据格式无效`);
+      throw new Error(`Vibe「${vibe.name}"Invalid data format`);
     }
     return {
       image: typeof data.image === 'string' ? data.image : '',

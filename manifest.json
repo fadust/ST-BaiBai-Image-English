@@ -1,12 +1,12 @@
 {
-  "display_name": "柏宝绘",
+  "display_name": "BaiBai Image",
   "loading_order": 100,
   "requires": [],
   "optional": [],
   "js": "dist/index.js?ver=0.3.2",
   "author": "柏柏",
   "version": "0.3.2",
-  "homePage": "https://github.com/baibai-git/ST-BaiBai-Image",
+  "homePage": "https://github.com/fadust/ST-BaiBai-Image-English",
   "auto_update": false,
   "minimum_client_version": "1.12.13"
 }

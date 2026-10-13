@@ -54,7 +54,7 @@ function isObject(value: unknown): value is JsonObject {
 
 /** 解析并做最低限度的 API 工作流结构校验。 */
 export function parseWorkflowTemplate(template: string): ComfyWorkflow {
-  if (!template.trim()) throw new ComfyUIError('请先粘贴 ComfyUI API 格式工作流');
+  if (!template.trim()) throw new ComfyUIError('Please paste ComfyUI API format workflow first');
 
   let parsed: unknown;
   try {
@@ -63,20 +63,20 @@ export function parseWorkflowTemplate(template: string): ComfyWorkflow {
     const detail = error instanceof Error ? error.message : String(error);
     // 常见笔误：占位符写成了裸值（seed: %seed%），JSON 里必须是字符串（"%seed%"）
     const hint = detail.includes('%')
-      ? '；占位符必须写成字符串形式，如 "seed": "%seed%"（带引号）'
+      ? ';The placeholder must be written in the form of a string, such as "seed": "%seed%" (with quotes)'
       : '';
-    throw new ComfyUIError(`工作流 JSON 格式错误：${detail}${hint}`);
+    throw new ComfyUIError(`Workflow JSON format error:${detail}${hint}`);
   }
 
   if (!isObject(parsed) || Object.keys(parsed).length === 0) {
-    throw new ComfyUIError('工作流必须是非空的 JSON 对象');
+    throw new ComfyUIError('Workflow must be a non-null JSON object');
   }
 
   const hasApiNode = Object.values(parsed).some(
     node => isObject(node) && typeof node.class_type === 'string' && isObject(node.inputs),
   );
   if (!hasApiNode) {
-    throw new ComfyUIError('未找到 API 格式节点，请在 ComfyUI 中使用「Save (API Format)」导出');
+    throw new ComfyUIError('API format node not found, please use "Save (API Format)" to export in ComfyUI');
   }
 
   return parsed as ComfyWorkflow;
@@ -131,12 +131,12 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
   collectPlaceholders(workflow, found);
 
   const unsupported = [...found].filter(name => !SUPPORTED_PLACEHOLDERS.has(name));
-  if (unsupported.length) throw new ComfyUIError(`工作流含暂不支持的占位符：${unsupported.map(x => `%${x}%`).join('、')}`);
-  if (!found.has('prompt')) throw new ComfyUIError('工作流中缺少 %prompt% 占位符');
+  if (unsupported.length) throw new ComfyUIError(`The workflow contains placeholders that are not supported yet:${unsupported.map(x => `%${x}%`).join('、')}`);
+  if (!found.has('prompt')) throw new ComfyUIError('%prompt% placeholder missing from workflow');
 
   const needsSize = found.has('width') || found.has('height');
   if (needsSize && !(values.width && values.height)) {
-    throw new ComfyUIError('工作流用到了 %width%/%height%，请先在 ComfyUI 渠道页填写竖屏与横屏尺寸（如 832×1216）');
+    throw new ComfyUIError('The workflow uses %width%/%height%. Please fill in the vertical and horizontal screen sizes (such as 832×1216) on the ComfyUI channel page first.');
   }
 
   const seed = values.seed ?? randomSeed();
@@ -175,7 +175,7 @@ function isNetworkError(error: unknown): boolean {
 
 function requireContext() {
   const context = getContext();
-  if (!context) throw new ComfyUIError('SillyTavern 上下文不可用');
+  if (!context) throw new ComfyUIError('SillyTavern context is not available');
   return context;
 }
 
@@ -185,12 +185,12 @@ export interface ComfyTestResult {
 }
 
 export async function testComfyConnection(conn: ComfyRunConn, signal?: AbortSignal): Promise<ComfyTestResult> {
-  if (!conn.url.trim()) throw new ComfyUIError('请先填写 ComfyUI 服务地址');
+  if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
 
   // 浏览器直连优先;仅网络级失败(CORS/拒连)才回退 ST 后端转发
   try {
     const response = await fetch(endpoint(conn.url, 'system_stats'), { signal });
-    if (!response.ok) throw await responseError(response, '浏览器连接 ComfyUI 失败');
+    if (!response.ok) throw await responseError(response, 'Browser connection failed ComfyUI');
     return { mode: 'browser' };
   } catch (error) {
     if (!isNetworkError(error)) throw error;
@@ -203,7 +203,7 @@ export async function testComfyConnection(conn: ComfyRunConn, signal?: AbortSign
     body: JSON.stringify({ url: conn.url.trim() }),
     signal,
   });
-  if (!response.ok) throw await responseError(response, 'ST 后端连接 ComfyUI 失败');
+  if (!response.ok) throw await responseError(response, 'ST backend connection ComfyUI failed');
   return { mode: 'server' };
 }
 
@@ -231,15 +231,15 @@ function executionError(item: unknown): string | null {
   if (!isObject(item) || !isObject(item.status)) return null;
   if (item.status.status_str !== 'error') return null;
   const messages = item.status.messages;
-  if (!Array.isArray(messages)) return 'ComfyUI 工作流执行失败';
+  if (!Array.isArray(messages)) return 'ComfyUI Workflow execution failed';
 
   const details = messages
     .filter(message => Array.isArray(message) && message[0] === 'execution_error' && isObject(message[1]))
     .map(message => {
       const data = message[1] as JsonObject;
-      return `${String(data.node_type ?? '节点')} [${String(data.node_id ?? '?')}]：${String(data.exception_message ?? data.exception_type ?? '执行失败')}`;
+      return `${String(data.node_type ?? 'node')} [${String(data.node_id ?? '?')}]：${String(data.exception_message ?? data.exception_type ?? 'Execution failed')}`;
     });
-  return details.length ? details.join('\n') : 'ComfyUI 工作流执行失败';
+  return details.length ? details.join('\n') : 'ComfyUI Workflow execution failed';
 }
 
 function executionCompleted(item: unknown): boolean {
@@ -249,12 +249,12 @@ function executionCompleted(item: unknown): boolean {
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(signal.reason ?? new DOMException('已取消', 'AbortError'));
+      reject(signal.reason ?? new DOMException('Cancelled', 'AbortError'));
       return;
     }
     const onAbort = () => {
       clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException('已取消', 'AbortError'));
+      reject(signal?.reason ?? new DOMException('Cancelled', 'AbortError'));
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener('abort', onAbort);
@@ -285,10 +285,10 @@ async function generateViaServer(
     }),
     signal,
   });
-  if (!response.ok) throw await responseError(response, 'ComfyUI 生图失败');
+  if (!response.ok) throw await responseError(response, 'ComfyUI Picture generation failed');
 
   const data = (await response.json()) as { format?: unknown; data?: unknown };
-  if (typeof data.data !== 'string' || !data.data) throw new ComfyUIError('ST 后端未返回图片数据');
+  if (typeof data.data !== 'string' || !data.data) throw new ComfyUIError('ST The backend did not return image data');
   const format = typeof data.format === 'string' && data.format ? data.format.toLowerCase() : 'png';
   return {
     url: `data:image/${format === 'jpg' ? 'jpeg' : format};base64,${data.data}`,
@@ -309,10 +309,10 @@ async function queueDirect(
     body: JSON.stringify({ prompt: workflow }),
     signal,
   });
-  if (!queued.ok) throw await responseError(queued, 'ComfyUI 拒绝了工作流');
+  if (!queued.ok) throw await responseError(queued, 'ComfyUI rejected workflow');
   const queuedData = (await queued.json()) as { prompt_id?: unknown; node_errors?: unknown };
   if (typeof queuedData.prompt_id !== 'string' || !queuedData.prompt_id) {
-    throw new ComfyUIError(`ComfyUI 未返回 prompt_id${queuedData.node_errors ? `：${JSON.stringify(queuedData.node_errors).slice(0, 500)}` : ''}`);
+    throw new ComfyUIError(`ComfyUI did not return prompt_id${queuedData.node_errors ? `：${JSON.stringify(queuedData.node_errors).slice(0, 500)}` : ''}`);
   }
   return queuedData.prompt_id;
 }
@@ -435,16 +435,16 @@ async function pollDirectResult(
     // 一旦观察到自己在执行就不再查队列:位置信息已无意义,省掉每轮一次请求
     let watchQueue = !!hooks?.onQueue;
     while (!file) {
-      if (Date.now() - startedAt > POLL_TIMEOUT_MS) throw new ComfyUIError('等待 ComfyUI 结果超时（10 分钟）');
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) throw new ComfyUIError('Timeout waiting for ComfyUI result (10 minutes)');
       const historyResponse = await fetch(endpoint(conn.url, `history/${encodeURIComponent(promptId)}`), { signal });
-      if (!historyResponse.ok) throw await responseError(historyResponse, '读取 ComfyUI 任务状态失败');
+      if (!historyResponse.ok) throw await responseError(historyResponse, 'Failed to read ComfyUI task status');
       const history = (await historyResponse.json()) as JsonObject;
       const item = history[promptId];
       const error = executionError(item);
       if (error) throw new ComfyUIError(error);
       file = findOutputFile(item);
       if (!file && executionCompleted(item)) {
-        throw new ComfyUIError('工作流已执行完成，但没有找到图片输出；请确认工作流包含 SaveImage 或 PreviewImage 节点');
+        throw new ComfyUIError('The workflow has been executed, but no image output was found; please confirm that the workflow contains the SaveImage or PreviewImage node');
       }
       if (file) break;
       if (watchQueue) {
@@ -461,7 +461,7 @@ async function pollDirectResult(
       type: file.type ?? 'output',
     });
     const imageResponse = await fetch(`${endpoint(conn.url, 'view')}?${query}`, { signal });
-    if (!imageResponse.ok) throw await responseError(imageResponse, '读取 ComfyUI 输出图片失败');
+    if (!imageResponse.ok) throw await responseError(imageResponse, 'Failed to read ComfyUI output image');
     const blob = await imageResponse.blob();
     const url = URL.createObjectURL(blob);
     return {
@@ -481,8 +481,8 @@ export async function generateComfyImage(
   signal?: AbortSignal,
   hooks?: ComfyProgressHooks,
 ): Promise<ComfyImageResult> {
-  if (!conn.url.trim()) throw new ComfyUIError('请先填写 ComfyUI 服务地址');
-  if (!values.prompt.trim()) throw new ComfyUIError('正向提示词不能为空');
+  if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
+  if (!values.prompt.trim()) throw new ComfyUIError('Positive prompt word cannot be empty');
   // 按方向取渠道配置里的尺寸;解析不出就传空,由 renderWorkflowTemplate 决定是报错还是无视
   // (工作流没用 %width%/%height% 时,尺寸配错了也不该妨碍出图)
   const size = values.width && values.height

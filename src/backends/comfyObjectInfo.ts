@@ -108,15 +108,15 @@ async function responseError(response: Response, label: string): Promise<ComfyUI
 
 async function fetchViaBrowser(url: string, signal?: AbortSignal): Promise<ComfyModelLists> {
   const response = await fetch(endpoint(url, 'object_info'), { signal });
-  if (!response.ok) throw await responseError(response, '读取 ComfyUI 模型列表失败');
+  if (!response.ok) throw await responseError(response, 'Failed to read ComfyUI model list');
   const info = (await response.json()) as JsonObject;
-  if (!isObject(info)) throw new ComfyUIError('ComfyUI 返回的 object_info 格式异常');
+  if (!isObject(info)) throw new ComfyUIError('object_info format returned by ComfyUI is abnormal');
   return { ...parseObjectInfo(info), mode: 'browser', fetchedAt: Date.now() };
 }
 
 async function fetchViaServer(url: string, signal?: AbortSignal): Promise<ComfyModelLists> {
   const context = getContext();
-  if (!context) throw new ComfyUIError('SillyTavern 上下文不可用');
+  if (!context) throw new ComfyUIError('SillyTavern context is not available');
   const post = async (path: string): Promise<unknown> => {
     const response = await fetch(`${SERVER_BASE}/${path}`, {
       method: 'POST',
@@ -124,7 +124,7 @@ async function fetchViaServer(url: string, signal?: AbortSignal): Promise<ComfyM
       body: JSON.stringify({ url: url.trim() }),
       signal,
     });
-    if (!response.ok) throw await responseError(response, 'ST 后端读取 ComfyUI 模型列表失败');
+    if (!response.ok) throw await responseError(response, 'ST backend failed to read ComfyUI model list');
     return response.json();
   };
   const [models, samplers, schedulers, vaes] = await Promise.all([
@@ -153,7 +153,7 @@ export async function fetchComfyModelLists(
   options?: { force?: boolean; signal?: AbortSignal },
 ): Promise<ComfyModelLists> {
   const key = url.trim();
-  if (!key) throw new ComfyUIError('请先填写 ComfyUI 服务地址');
+  if (!key) throw new ComfyUIError('Please fill in the ComfyUI service address first');
   if (!options?.force && cache.has(key)) return cache.get(key)!;
 
   let lists: ComfyModelLists;

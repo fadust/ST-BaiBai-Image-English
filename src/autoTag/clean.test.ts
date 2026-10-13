@@ -19,7 +19,7 @@ describe('stripCustomTags', () => {
   });
 
   it('中文标签名同样生效(前瞻而非词边界)', () => {
-    expect(stripCustomTags('<雪>飘雪特效</雪>正文', ['雪'])).toBe('正文');
+    expect(stripCustomTags('<雪>飘雪特效</雪>正文', ['雪'])).toBe("正文");
   });
 
   it('边界前瞻:不误吃同名前缀标签(<snow> 不吃 <snowball>)', () => {
@@ -61,12 +61,12 @@ describe('prompt body cleaning', () => {
 
   it('cleans historical floors like BaiBai Book while preserving image tags', () => {
     expect(cleanHistoryText(source, ['snow', 'bbi_image'])).toBe(
-      `(起始时间:2026/8/16 10:00)
+      `(Start time:2026/8/16 10:00)
 第一段正文
 
 <bbi_image>1girl, silver hair<size>portrait</size></bbi_image>
 第二段正文
-(结束时间:2026/8/16 10:05)`,
+(End time:2026/8/16 10:05)`,
     );
   });
 
@@ -109,7 +109,7 @@ describe('prompt body cleaning', () => {
   it('removes a lone closing time tag from the target', () => {
     expect(prepareTargetText('正文\n</bbs_end>', [])).toEqual({
       promptText: '正文 ⟦P1⟧',
-      segments: [{ id: 'P1', sourceLine: 0, text: '正文' }],
+      segments: [{ id: 'P1', sourceLine: 0, text: "正文" }],
     });
   });
 
@@ -142,7 +142,7 @@ second useful line \u27e6P2\u27e7`,
       ),
     ).toEqual({
       promptText: '正文 ⟦P1⟧',
-      segments: [{ id: 'P1', sourceLine: 2, text: '正文' }],
+      segments: [{ id: 'P1', sourceLine: 2, text: "正文" }],
     });
   });
 });

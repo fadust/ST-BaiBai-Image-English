@@ -51,8 +51,8 @@ const activePanel = computed(() => PANELS[viewing.value]);
 <template>
   <section class="bbi-page">
     <div class="bbi-page-head">
-      <h2 class="bbi-title bbi-title-sub">渠道</h2>
-      <div class="bbi-segmented" role="tablist" aria-label="生图渠道">
+      <h2 class="bbi-title bbi-title-sub">Backend</h2>
+      <div class="bbi-segmented" role="tablist" aria-label="Image backends">
         <button
           v-for="b in VISIBLE_BACKENDS"
           :key="b.value"

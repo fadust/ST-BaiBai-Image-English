@@ -55,7 +55,7 @@ describe('groupVibes', () => {
       vibe('4', '日常组'),
       vibe('5', '战斗组'),
     ]);
-    expect(groups.map(g => g.label)).toEqual(['战斗组', '日常组', '未分组']);
+    expect(groups.map(g => g.label)).toEqual(['战斗组', '日常组', "Ungrouped"]);
     expect(groups[0].all.map(v => v.id)).toEqual(['2', '5']);
     expect(groups[2].all.map(v => v.id)).toEqual(['1', '3']);
   });

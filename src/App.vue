@@ -103,7 +103,7 @@ const windowStyle = computed(() => {
              嵌套 Transition 在父子 v-if 同时翻转时,子的 leave 不会触发(实测窗口直接随父被移除,
              无任何动画)。改由遮罩 Transition 的 class 作后代选择器驱动窗口的进出场动画
              (见 <style> 里 .bbi-fade-enter-from/.bbi-fade-leave-to 下的 .bbi-window)。 -->
-        <div class="bbi-window" :style="windowStyle" role="dialog" aria-modal="true" aria-label="柏宝绘">
+        <div class="bbi-window" :style="windowStyle" role="dialog" aria-modal="true" aria-label="BaiBai Image">
             <!-- 移动端抓手:可下滑关闭 -->
             <div
               v-if="navPlacement !== 'top' || narrowFlag"
@@ -118,12 +118,12 @@ const windowStyle = computed(() => {
 
             <!-- 题首 -->
             <header class="bbi-head">
-              <span class="bbi-brand-name">柏宝绘</span>
+              <span class="bbi-brand-name">BaiBai Image</span>
               <div class="bbi-head-actions">
-                <button class="bbi-icon-btn" type="button" :title="`切换主题:${nextTheme.label}`" @click="cycleTheme">
+                <button class="bbi-icon-btn" type="button" :title="`Switch theme: ${nextTheme.label}`" @click="cycleTheme">
                   <Icon :name="nextTheme.icon" />
                 </button>
-                <button class="bbi-icon-btn" type="button" title="关闭" @click="closePanel">
+                <button class="bbi-icon-btn" type="button" title="Close" @click="closePanel">
                   <Icon name="close" />
                 </button>
               </div>
