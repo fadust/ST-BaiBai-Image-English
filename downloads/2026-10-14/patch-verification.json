@@ -1,0 +1,26 @@
+{
+  "ST-BaiBai-Image": {
+    "upstream": "1187528c5b796a686c57659556dfaecdd2ddfbf9",
+    "published": "009ebfd1fd5b5cb46824adb3cd5039afbb9a4608",
+    "patch": "ST-BaiBai-Image-english.patch",
+    "appliesCleanly": true
+  },
+  "story-oracle": {
+    "upstream": "84884eb505b3b891fa2969785cb838921d3eebb7",
+    "published": "809b2b4b687689ac7bcb03b2b366362ad239ba99",
+    "patch": "story-oracle-english.patch",
+    "appliesCleanly": true
+  },
+  "choice": {
+    "upstream": "b59e27cd304c6030f1e78696343ce0d749f4a016",
+    "published": "cc71983cf264e5073b9886a1fd5e9bb26f70f642",
+    "patch": "choice-english.patch",
+    "appliesCleanly": true
+  },
+  "ST-BaiBai-Inkwell": {
+    "upstream": "24704ac8682884f2ee98cca25da0688f42325380",
+    "published": "e94a51207ef8d7eeda9437ab63b5469f5f3a118e",
+    "patch": "ST-BaiBai-Inkwell-english.patch",
+    "appliesCleanly": true
+  }
+}

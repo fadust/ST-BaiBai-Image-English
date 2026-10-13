@@ -1,0 +1,214 @@
+{
+  "74": {
+    "inputs": {
+      "text": [
+        "237",
+        0
+      ],
+      "clip": [
+        "245",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "✨ Positive Prompt"
+    }
+  },
+  "76": {
+    "inputs": {
+      "samples": [
+        "195",
+        0
+      ],
+      "vae": [
+        "197",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "🎨 VAE Decode"
+    }
+  },
+  "194": {
+    "inputs": {
+      "width": "%width%",
+      "height": "%height%",
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "📐 Image Size"
+    }
+  },
+  "195": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": "%seed%",
+      "steps": 12,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "245",
+        0
+      ],
+      "positive": [
+        "74",
+        0
+      ],
+      "negative": [
+        "239",
+        0
+      ],
+      "latent_image": [
+        "194",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "🎨 Generate Image"
+    }
+  },
+  "197": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "198": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "215": {
+    "inputs": {
+      "lora_01": "AnimaMythC0lorL1nes.safetensors",
+      "strength_01": 0.5,
+      "lora_02": "anima-base-1-masterpiece-v51.safetensors",
+      "strength_02": 0.5,
+      "lora_03": "anima-turbo-lora-v0.2.safetensors",
+      "strength_03": 1,
+      "lora_04": "zoda_v3_anima.safetensors",
+      "strength_04": 0.5,
+      "model": [
+        "232",
+        0
+      ],
+      "clip": [
+        "198",
+        0
+      ]
+    },
+    "class_type": "Lora Loader Stack (rgthree)",
+    "_meta": {
+      "title": "Lora Loader Stack (rgthree)"
+    }
+  },
+  "226": {
+    "inputs": {
+      "filename_prefix": "qig_%seed%",
+      "images": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image (for ST/QIG)"
+    }
+  },
+  "229": {
+    "inputs": {
+      "images": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "232": {
+    "inputs": {
+      "ckpt_name": "anima-turbo-v1.1.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": true,
+      "sage_attention": "disabled",
+      "enable_fp16_accumulation": true
+    },
+    "class_type": "CheckpointLoaderKJ",
+    "_meta": {
+      "title": "CheckpointLoaderKJ"
+    }
+  },
+  "237": {
+    "inputs": {
+      "value": "%prompt%"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "✨ Positive Prompt"
+    }
+  },
+  "239": {
+    "inputs": {
+      "text": "worst quality, low quality, lowres, score_1, score_2, score_3, blurry, jpeg artifacts, , long fingers, sepia, bad anatomy, missing fingers, watermark, artist name, slop, censored, realistic, bend knee, %negative_prompt%",
+      "clip": [
+        "215",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "➖ Negative Prompt"
+    }
+  },
+  "245": {
+    "inputs": {
+      "lora_01": "Anima_NIJI_SWEET_SPOT_v5.safetensors",
+      "strength_01": 0.5,
+      "lora_02": "anon-scene_v1.0.safetensors",
+      "strength_02": 0.5,
+      "lora_03": "gpt-image-2_anima-base1_v1-1.safetensors",
+      "strength_03": 0.6,
+      "lora_04": "None",
+      "strength_04": 0,
+      "model": [
+        "215",
+        0
+      ],
+      "clip": [
+        "215",
+        1
+      ]
+    },
+    "class_type": "Lora Loader Stack (rgthree)",
+    "_meta": {
+      "title": "Lora Loader Stack (rgthree)"
+    }
+  },
+  "247": {
+    "inputs": {},
+    "class_type": "CLIPNegPip",
+    "_meta": {
+      "title": "CLIP NegPip"
+    }
+  }
+}

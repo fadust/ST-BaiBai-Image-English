@@ -1,0 +1,61 @@
+{
+  "verifiedAt": "2026-10-13T17:58:20.212Z",
+  "extensions": {
+    "ST-BaiBai-Image": {
+      "repository": "https://github.com/fadust/ST-BaiBai-Image-English",
+      "commit": "009ebfd1fd5b5cb46824adb3cd5039afbb9a4608",
+      "zip": "ST-BaiBai-Image-English.zip",
+      "zipSha256": "f297e24ce3493dd25616dc7d6090ab3a347911fdec99c4b613d14af8bb596093",
+      "runtimeAssets": {
+        "manifest.json": "7f6bb158db929e226abbf860cf7a94c275b1ab68453bc44b53052b6dbc6eac62",
+        "dist/index.js": "b2e36b7e2cdb798b1390f01a3889f155d5acd65193bf26b9cdb8d1bb24ce50a5",
+        "dist/index.css": "77eb09d76fb08a1f7e4a31e2972f5b8a333002b1f7ab5dc587c01bb41ed99349",
+        "dist/index.js.map": "beae06e3f647417bf975c9b83fa10349d8252df641978d4a55014b26bbbd13e6"
+      }
+    },
+    "story-oracle": {
+      "repository": "https://github.com/fadust/story-oracle-English",
+      "commit": "809b2b4b687689ac7bcb03b2b366362ad239ba99",
+      "zip": "story-oracle-English.zip",
+      "zipSha256": "0b88df79e97961c038fbc6e3c3b510b6d0c0dc0bbe7ae9635767803d5d45dba0",
+      "runtimeAssets": {
+        "manifest.json": "d880b9d0fa91fab6622290469a51ad3ed244cd4689b1283b269cd382ed21e3a1",
+        "index.js": "5c44f94d0fa52d2545ef9f69f779e36d3d2078b78ec91ed7a3dba90c703ecb5a",
+        "style.css": "aa06de6d2d18d3acf2ec873f115c55ec8208a83bd09b7d46025925a0107e06f1",
+        "localization/en.json": "265925bcafb0e215704101e98194469ba0fcbbb87a20c00ba73a24b61548514c",
+        "localization/english.css": "18388b2075dc692b1214b4107bf1fcc022bbdf7f4e005b2f2892f767529f0a0d",
+        "localization/english.mjs": "2fe2f7a167a7d0dec219e4d985b1244edbe103140375fe83d2506768e07ea55f",
+        "localization/english.test.mjs": "798b435d4b0ad28100505fb78b0cab732a754db8198cde8223e8ec2323eeccc4",
+        "localization/preserved.json": "2e40d6984270e93cebc95fcec94f1c6e59663499c9c286d0b4a2eb2d0c606c7f",
+        "localization/upstream.json": "f30407f1b2907274b76f796ac064d7756b5f2a75865dff4a16fd7276afd96691"
+      }
+    },
+    "choice": {
+      "repository": "https://github.com/fadust/choice-English",
+      "commit": "cc71983cf264e5073b9886a1fd5e9bb26f70f642",
+      "zip": "choice-English.zip",
+      "zipSha256": "2f253f19c734008595ae7626b2d8af68b46b6044954dfa7ead87667dad76f6af",
+      "runtimeAssets": {
+        "manifest.json": "f16864fcf192610d8442379ae8ca630f65b62383a15218ae707d138f1a132668",
+        "dist/index.js": "26cfb635c220787abca94690a54af2261f8364ab284c5270368472ec343e898b",
+        "dist/index.css": "e15c57c5d57b7d6276674f4cff97e784b6d92bbb09fe2061b0c7002698760a0d",
+        "i18n/en.json": "a7fc15b499e0b15bb0c08580bea14881d8e75cd8aae635f8b17cd0c85db6af0a"
+      }
+    },
+    "ST-BaiBai-Inkwell": {
+      "repository": "https://github.com/fadust/ST-BaiBai-Inkwell",
+      "commit": "e94a51207ef8d7eeda9437ab63b5469f5f3a118e",
+      "zip": "ST-BaiBai-Inkwell.zip",
+      "zipSha256": "578bc3732b51e55b97294b8f13344fb8a8cf9b5a11bfb985dcb9cf117f70f7cc",
+      "runtimeAssets": {
+        "manifest.json": "f9382bcd00862bf19bcef38d823699de70ea7cf777a93d14b89c1e56b154aa8b",
+        "dist/index.css": "74dfb50a70894757ad76ab4082098e39ba9997919be27073bc99e1467a3856f1",
+        "dist/index.js": "d06dbebd44b64585bd62bd3db8f5618697676a096ef8cbbd986492b877e0d96d",
+        "dist/index.js.map": "f65908094700d546dd949c940cef91604fb918a13cb0c299b6b55a8cf4db9966",
+        "dist/snapdom.Ca7IazGN.chunk.js": "d7a7c66eed775d573b63ba2e3228d3d8474cac6f1ad7ac904a349fac2b655e0d",
+        "dist/snapdom.Ca7IazGN.chunk.js.map": "2263eb4406a1538b655b07d9344ffdd9fb7b45c65e9bfc4d7024b7661f8628da"
+      }
+    }
+  },
+  "credentialsIncluded": false
+}

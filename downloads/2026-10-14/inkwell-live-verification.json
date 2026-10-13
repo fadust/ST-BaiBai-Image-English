@@ -1,0 +1,18 @@
+{
+  "verifiedAt": "2026-10-13T17:56:10.658Z",
+  "environment": "Isolated SillyTavern 1.19.0 with synthetic English text",
+  "provider": "NanoGPT",
+  "rewriteModel": "deepseek/deepseek-v4.1-flash",
+  "deletionModel": "openai/gpt-4.1-mini",
+  "targetedRewriteSaved": true,
+  "untouchedParagraphsPreserved": true,
+  "quotedDialoguePreserved": true,
+  "namePunctuationPreserved": true,
+  "activeSwipeSynchronized": true,
+  "reloadPersistence": true,
+  "deletionPatchSaved": true,
+  "discardedRelatedEditNotSaved": true,
+  "malformedRepliesRejected": true,
+  "desktopAndPhoneLayoutChecked": true,
+  "credentialsIncluded": false
+}
