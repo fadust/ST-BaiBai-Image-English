@@ -102,6 +102,12 @@ describe('renderWorkflowTemplate with %seed%', () => {
 });
 
 describe('renderWorkflowTemplate with %nl%', () => {
+  it('accepts a semantic-only workflow without a Danbooru prompt input', () => {
+    const template = JSON.stringify({ '3': { class_type: 'CLIPTextEncode', inputs: { text: '%nl%' } } });
+    const workflow = renderWorkflowTemplate(template, { prompt: '1girl', nl: 'A woman with red hair wears a blue coat.' });
+    expect((workflow['3'] as { inputs: { text: string } }).inputs.text).toBe('A woman with red hair wears a blue coat.');
+    expect((renderWorkflowTemplate(template, { prompt: 'An externally supplied prose portrait.' })['3'] as { inputs: { text: string } }).inputs.text).toBe('An externally supplied prose portrait.');
+  });
   it('writes nl only into explicit %nl% placeholders, never into %prompt%', () => {
     const template = JSON.stringify({
       '3': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },

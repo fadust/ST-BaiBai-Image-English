@@ -1,5 +1,6 @@
 import { requestCompletion, requestViaMainApi } from '@/api/client';
 import { readBookMemory } from '@/autoTag/bookMemory';
+import { codexAppearance } from '@/autoTag/codexAppearance';
 import {
   applyPositionedCharRefs,
   resolveCharAnchors,
@@ -300,9 +301,10 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // 已建档角色当新人重写。charTagsBeforeFloor(floor + 1) 正好含本楼(swipe 匹配时生效)。
     const entriesBefore = slot ? charTagsBeforeFloor(floor + 1) : charTagsBeforeFloor(floor);
     // 锁定名(全局库 ⊖ 本聊天基线):AI 的 changes 对这些名字一律无效,库文本里带 [locked] 标记
-    const lockedNames = lockedCharTagNames();
+    const codex = codexAppearance(context, floor, rawSource, entriesBefore, lockedCharTagNames(), memory?.roles.map(role => role.name));
+    const lockedNames = codex.locked;
     // 纯本地渲染:建档由主请求在同一次输出里完成(changes 的 field="new")
-    const anchors = resolveCharAnchors(entriesBefore, lockedNames);
+    const anchors = resolveCharAnchors(codex.entries, lockedNames);
     // 单槽重写:协议强制「恰好 1 张」,并把该槽位当前提示词与其余槽位摘要带给模型
     // (锚住同一个画面、别抢别人的画面)。min/max 要同时覆盖 build 的规则文案与下面的
     // parse 校验,只改一处会自相矛盾。
@@ -320,6 +322,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       anchors.text,
       slot ? buildSlotTaskNote(rawSource, slot.seq) : '',
       profile,
+      codex.note,
     );
     const channel = getTagGenChannel();
     // 失败重试:请求异常与「返回无法解析/校验不通过」都视为可重试的异常(后者常见于模型没遵守协议);
@@ -402,11 +405,12 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
 
     // 单槽重写不落 changes:首次全量分析已为整楼建过档,这里再应用一次只会产生
     // 重复的建档/变更记录;库文本已含本楼增量(见上面 entriesBefore),AI 照抄即可。
+    if (!codex.isCurrent()) throw new Error('NPC Codex appearance changed during image planning. Run image planning again.');
     const planOps = slot ? [] : planChangeOps(plan);
     // 锁定角色(全局库)不接受 AI changes:丢弃,不写入楼层、不参与 @替换。
     // 重放侧 applyCharTagOps 也会按锁定名再拦一次(旧消息里可能已存这类 ops)。
     const effectiveOps = lockedNames.size
-      ? planOps.filter(item => !lockedNames.has(item.op.name))
+      ? planOps.filter(item => !lockedNames.has(item.op.name) && !lockedNames.has(item.op.name.normalize('NFKC').toLocaleLowerCase().trim()))
       : planOps;
     const floorOps = effectiveOps.map(item => item.op);
     const previousDelta = readCharTagFloorDelta(message);
@@ -510,6 +514,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     const result = await applyMessageText(
       floor,
       currentText => {
+        if (!codex.isCurrent()) return null;
         // 单槽重写:只替换第 seq 条 tag,正文与其它 tag 一字不动,也不需要位置重定位。
         // 模型返回的 position 在这里刻意不参与——画面钉死在原位,它只负责重写内容。
         // 开跑时快照的原文对不上 = 期间被用户/别的流程改过,放弃覆盖(同提示词编辑弹窗)。

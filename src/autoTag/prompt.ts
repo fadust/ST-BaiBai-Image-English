@@ -162,6 +162,7 @@ export async function buildAutoTagMessages(
   taskNote?: string,
   /** 协议形态;runner 开跑时快照一份传进来,验收与收尾用同一份(缺省即时现算)。 */
   profile: AutoTagProfile = autoTagProfile(),
+  appearanceAuthority = '',
 ): Promise<ChatMsg[]> {
   const target = context.chat[targetFloor];
   const preparedTarget =
@@ -335,6 +336,7 @@ ${characterRule}
   // 解析端(protocol.ts)会先剥掉 think 块再取 JSON,二者配套;按后端取对应的那一份。
   const thinking = backendThinkingPrompt(options, nlOn, naiCharPromptsOn);
   if (thinking) messages.push({ role: 'system', content: thinking });
+  if (appearanceAuthority) messages.push({ role: 'system', content: appearanceAuthority });
   const libraryBlock = library?.trim() || `【 character fixed appearance database 】[system-maintained; currently empty]\n (Currently empty, no character has been profiled. The World Info, character card, BaiBai Book and text only provide the basis for creation; official characters not listed in this block must be profiled through field:"new".)`;
   const taskBlock = taskNote?.trim() ? `${taskNote.trim()}\n\n` : '';
   const userContent = `${memoryText}\n\n${libraryBlock}\n\n${taskBlock}${previous ? `${previous}\n\n` : ''}---Target text｜${roleLabel(context, targetFloor)} ---\n${preparedTarget.promptText}`;

@@ -132,7 +132,7 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
 
   const unsupported = [...found].filter(name => !SUPPORTED_PLACEHOLDERS.has(name));
   if (unsupported.length) throw new ComfyUIError(`The workflow contains placeholders that are not supported yet:${unsupported.map(x => `%${x}%`).join('、')}`);
-  if (!found.has('prompt')) throw new ComfyUIError('%prompt% placeholder missing from workflow');
+  if (!found.has('prompt') && !found.has('nl')) throw new ComfyUIError('%prompt% or %nl% placeholder missing from workflow');
 
   const needsSize = found.has('width') || found.has('height');
   if (needsSize && !(values.width && values.height)) {
@@ -143,7 +143,7 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
   return replacePlaceholders(workflow, {
     prompt: values.prompt,
     negative_prompt: values.negative_prompt ?? '',
-    nl: values.nl ?? '',
+    nl: values.nl?.trim() || (!found.has('prompt') ? values.prompt : ''),
     width: values.width ?? 0,
     height: values.height ?? 0,
     seed,
