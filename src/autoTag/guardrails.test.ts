@@ -159,7 +159,7 @@ describe('MOSS-tuned natural-language rules (ComfyUI)', () => {
     expect(DEFAULT_COMFY_NL_SPEC).toContain('Placement and facing come before any action');
     expect(DEFAULT_COMFY_NL_SPEC).toContain('One primary contact per image');
     expect(DEFAULT_COMFY_NL_SPEC).toContain('Assign the hands of every character in contact');
-    expect(DEFAULT_COMFY_NL_SPEC).toContain('State what each body rests on');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('Name the contacting parts and where they meet');
     expect(DEFAULT_COMFY_NL_SPEC).toContain('The background must match the camera angle');
     expect(DEFAULT_COMFY_NL_SPEC).toContain('at least one visible adult cue');
     expect(DEFAULT_COMFY_NL_SPEC).toContain('Race needs concrete features');
