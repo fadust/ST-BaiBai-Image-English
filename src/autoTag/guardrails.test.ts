@@ -126,15 +126,15 @@ describe('content boundaries', () => {
   it.each(['comfyui', 'nai'] as const)('runs the content gate in the thought chain (%s)', backend =>
     withBackend(backend, async () => {
       const messages = await buildAutoTagMessages(context(), 1, options(), null);
-      const thinking = messages.find(m => m.content.includes('Consideration Checklist before Output'))?.content ?? '';
-      expect(thinking).toContain('The first layer, A~F,');
+      const thinking = messages.find(m => m.content.includes('Pre-output checklist'))?.content ?? '';
+      expect(thinking).toContain('Layer one (A–F)');
       expect(thinking).toContain('F. Content gate');
       expect(thinking).toContain('depicted appearance overrides any stated age, species or lifespan');
       expect(thinking).toContain('Content: <sfw / sexual / consolation>');
       expect(thinking).toContain('- Content gate: no image with sexual or sexualised content includes a character not marked "yes" in F');
       // The gate sits between E (selection) and the per-image slot blocks.
-      expect(thinking.indexOf('F. Content gate')).toBeGreaterThan(thinking.indexOf('E. Excerpt'));
-      expect(thinking.indexOf('Second layer')).toBeGreaterThan(thinking.indexOf('F. Content gate'));
+      expect(thinking.indexOf('F. Content gate')).toBeGreaterThan(thinking.indexOf('E. Scene selection'));
+      expect(thinking.indexOf('Layer two |')).toBeGreaterThan(thinking.indexOf('F. Content gate'));
     }),
   );
 
