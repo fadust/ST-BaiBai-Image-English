@@ -30,22 +30,22 @@ import {
 } from './types';
 
 /**
- * 公开接口的实现层。**跨插件边界的全部脏活都收在这里。**
+ * Implementation layer of the public API. **All the dirty work at the cross-plugin boundary is kept here.**
  *
- * 三条纪律,每条都对应一类真实会咬人的问题:
+ * Three rules, each matching a class of problems that really bite:
  *
- * 1. **一切出去的数据都深拷贝**。charTagLib.entries 是 Vue reactive 数组,
- *    原样递出去等于把角色库的写权限也一起给了 —— 第三方随手改一下,轻则被下一次
- *    recomputeCharTags() 静默冲掉(用户看见「我改的东西又没了」),重则把 reactive
- *    代理带进它自己的响应式系统,两边互相触发更新。
+ * 1. **Deep-copy all outgoing data**. charTagLib.entries is a Vue reactive array;
+ *    handing it out as-is also hands over write access to the character library. A third party changing it casually is at best
+ *    silently overwritten by the next recomputeCharTags() (users see "my changes vanished again"), at worst pulls the reactive
+ *    proxy into its own reactivity system, with both sides triggering each other's updates.
  *
- * 2. **错误一律归一成带 code 的普通 Error**。NaiError / ComfyUIError / DOMException
- *    的 instanceof 跨 bundle 必然失效(两份构造函数),第三方只能匹配 message 文案——
- *    而文案是中文、会随版本改。故这里统一挂 code,文档明说「按 code 分支」。
+ * 2. **Normalise every error into a plain Error with a code**. instanceof for NaiError / ComfyUIError / DOMException
+ *    always fails across bundles (two copies of each constructor), leaving third parties to match message text,
+ *    which is human-readable and changes between versions. So a code is attached here, and the docs say plainly "branch on code".
  *
- * 3. **图一律转 data URL 再交出去**。ComfyUI 直连模式返回的是 blob: URL,要配对
- *    revokeObjectURL:第三方忘了就泄漏,我们替它 revoke 它的 <img> 就变空白。
- *    data URL 无主、无生命周期,代价是字符串大一些 —— 这个代价值得。
+ * 3. **Convert every image to a data URL before handing it out**. The ComfyUI direct mode returns a blob: URL, which needs a matching
+ *    revokeObjectURL: if the third party forgets, it leaks; if we revoke on its behalf, its <img> goes blank.
+ *    A data URL has no owner and no lifetime; the cost is a larger string, and that cost is worth it.
  */
 
 export function clonePublic<T>(value: T): T {
@@ -54,7 +54,7 @@ export function clonePublic<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/* —— 修订号:角色库每变一次 +1,第三方据此做缓存失效 —— */
+/* —— Revision: +1 on every character-library change; third parties use it for cache invalidation —— */
 
 let revision = 0;
 
@@ -67,11 +67,11 @@ export function bumpPublicRevision(): number {
   return revision;
 }
 
-/* —— 错误归一 —— */
+/* —— Error normalisation —— */
 
 /**
- * 造一个带 code 的 Error。**不派生 Error 子类**:子类的 instanceof 跨 bundle 无效,
- * 造出来的类型信息第三方拿不到,纯属自欺。
+ * Builds an Error with a code. **No Error subclass**: subclass instanceof doesn't work across bundles,
+ * and third parties can't get at the type information anyway, so it would only fool ourselves.
  */
 export function publicError(code: PublicErrorCode, message: string): PublicError {
   const error = new Error(message) as PublicError;
@@ -79,7 +79,7 @@ export function publicError(code: PublicErrorCode, message: string): PublicError
   return error;
 }
 
-/** 已经是我们造的、带合法 code 的错误吗(避免二次包装丢原始 code)。 */
+/** Is it already one of ours with a valid code (to avoid double-wrapping and losing the original code)? */
 function hasPublicCode(error: unknown): error is PublicError {
   if (!(error instanceof Error) || !('code' in error)) return false;
   const code = (error as { code: unknown }).code;
@@ -93,14 +93,14 @@ function hasPublicCode(error: unknown): error is PublicError {
 }
 
 /**
- * 把内部错误翻成公开 code。
+ * Translates internal errors into public codes.
  *
- * 取消判定看 `name === 'AbortError'` 而非 instanceof DOMException:
- * abort 可能由第三方自己的 AbortController 触发,那个 DOMException 来自**它的** realm,
- * instanceof 在我们这边是 false —— 于是用户主动取消会被报成 backend_error。
+ * Cancellation is detected by `name === 'AbortError'`, not instanceof DOMException:
+ * the abort may come from the third party's own AbortController, whose DOMException comes from **its** realm,
+ * so instanceof is false on our side, and a user cancellation would be reported as backend_error.
  *
- * rate_limited 与 backend_error 分开,是因为两者的**处置方式**不同:前者该等一会儿再来
- * (柏宝绘的自动退避已经用尽了),后者是配置/网络问题,再来一次也是同样的错。
+ * rate_limited and backend_error are separate because they are **handled** differently: the former should wait and try again
+ * (BaiBai Image's automatic backoff is already exhausted); the latter is a configuration/network problem and retrying gives the same error.
  */
 export function toPublicError(error: unknown): PublicError {
   if (hasPublicCode(error)) return error;
@@ -109,36 +109,36 @@ export function toPublicError(error: unknown): PublicError {
   if (error instanceof Error && error.name === 'AbortError') {
     return publicError('aborted', message || 'Cancelled');
   }
-  // NaiError 带 status:429/408 是限流(能重试),其余 4xx/5xx 是后端错
+  // NaiError carries status: 429/408 are rate limits (retryable); other 4xx/5xx are backend errors
   if (error instanceof NaiError) {
     const status = error.status;
     if (status === 429 || status === 408) return publicError('rate_limited', message);
     return publicError('backend_error', message);
   }
   if (error instanceof ComfyUIError) return publicError('backend_error', message);
-  // 兜底也看一眼文案:上面两个 instanceof 在同 bundle 内是可靠的,但内部还有别处抛的
-  // 纯 Error(如 uploadUserImage 的 ImageStoreError),它们没有 status 可看
+  // The fallback also checks the text: the two instanceof checks above are reliable within the same bundle, but there are plain Errors thrown elsewhere
+  // internally (such as uploadUserImage's ImageStoreError) that have no status to check
   if (/\b429\b|限流|rate limit/i.test(message)) return publicError('rate_limited', message);
   return publicError('backend_error', message || 'Build failed');
 }
 
-/* —— 角色列表 —— */
+/* —— Character list —— */
 
 function toPublicCharacter(entry: CharTagEntry, locked: ReadonlySet<string>): PublicCharacter {
   return {
     name: entry.name,
-    // tag 用 buildEntryTag 现算,不自己拼:它是「字段 → tag 串」的唯一口径
-    // (含「老条目只有整串 raw」那条回落),抄第二份必然与卡片实际出图的串漂移
+    // The tag is computed by buildEntryTag, not assembled here: it is the single rule for "fields → tag string"
+    // (including the fallback for "old entries with only a whole raw string"); a second copy would inevitably drift from the string cards actually generate with
     tag: buildEntryTag(entry),
     fields: { ...entry.fields },
     nl: entry.nl,
     source: entry.source,
-    // 锁定名 = 全局库有、本聊天没同名覆盖。这正是「全局条目」的判据
-    // (见 charTags.ts computeLockedCharTagNames),不必另立标记
+    // Locked name = present in the global library with no same-name override in this chat. That is exactly the criterion for a "global entry"
+    // (see computeLockedCharTagNames in charTags.ts), so no separate flag is needed
     scope: locked.has(entry.name) ? 'global' : 'chat',
     desc: entry.desc,
-    // history 刻意不给:50 条变更记录对第三方无用,而**给出去就删不掉了**
-    // (删字段要升 apiVersion)。真有人要,日后加个 options 开关即可。
+    // history is deliberately withheld: 50 change records are useless to third parties, and **once given it can't be removed**
+    // (removing a field means bumping apiVersion). If someone really needs it, add an options switch later.
   };
 }
 
@@ -147,7 +147,7 @@ export function getCharacters(options: GetCharactersOptions = {}): PublicCharact
   if (floor !== undefined && !Number.isInteger(floor)) {
     throw publicError('invalid_args', 'floor must be an integer');
   }
-  // 指定楼层走快照重放(那一楼当时的档案);否则用现成的响应式库
+  // A specific floor uses snapshot replay (the profile as it was on that floor); otherwise use the live reactive library
   const entries = floor === undefined ? charTagLib.entries : charTagsBeforeFloor(floor);
   const locked = lockedCharTagNames();
   return {
@@ -155,17 +155,17 @@ export function getCharacters(options: GetCharactersOptions = {}): PublicCharact
     pluginVersion: PLUGIN_VERSION,
     revision,
     floor: floor ?? null,
-    // map 出的对象已是新建的普通对象(fields 也展开过),不含 reactive 代理
+    // The mapped objects are already new plain objects (fields spread too) with no reactive proxies
     characters: entries.map(entry => toPublicCharacter(entry, locked)),
   };
 }
 
-/* —— 后端状态 —— */
+/* —— Backend status —— */
 
 /**
- * 后端状态。**字段是白名单而非黑名单**:只挑这四项出去,
- * 而不是「把 status 整个递出去再删掉敏感字段」—— 后者日后往内部结构加字段时会静默泄漏。
- * 尤其 settings.nai.key 与各后端 url 绝不出现在这里。
+ * Backend status. **The fields are an allowlist, not a denylist**: only these four go out,
+ * rather than "hand over the whole status and delete sensitive fields", which would silently leak whenever fields are added to the internal structure later.
+ * In particular settings.nai.key and each backend's url never appear here.
  */
 export function getBackendStatus(): PublicBackendStatus {
   const status = backendStatus();
@@ -180,9 +180,9 @@ export function getBackendStatus(): PublicBackendStatus {
   };
 }
 
-/* —— 生成 —— */
+/* —— Generation —— */
 
-/** 第三方传进来的 characters:逐项清洗成内部形状,名字或 tag 空的丢掉。 */
+/** characters passed in by third parties: each item is cleaned into the internal shape; items with an empty name or tag are dropped. */
 function normalizeCharacters(raw: GenerateRequest['characters']): ImageCharacterPrompt[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap(item => {
@@ -195,10 +195,10 @@ function normalizeCharacters(raw: GenerateRequest['characters']): ImageCharacter
 }
 
 /**
- * 结果图 → data URL。
+ * Result image → data URL.
  *
- * server 代理模式下 result.url 本就是 data URL,原样返回(不过一遍 fetch,省一次拷贝);
- * 直连模式是 blob: URL,读回来重编码。理由见文件头第 3 条。
+ * In server-proxy mode result.url already is a data URL and is returned as-is (no extra fetch, saving a copy);
+ * direct mode gives a blob: URL, which is read back and re-encoded. Reason: see point 3 in the file header.
  */
 async function toDataUrl(url: string, format: string): Promise<string> {
   if (url.startsWith('data:')) return url;
@@ -206,7 +206,7 @@ async function toDataUrl(url: string, format: string): Promise<string> {
   if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
   const bytes = new Uint8Array(await (await response.blob()).arrayBuffer());
   let binary = '';
-  // 分块拼接:一次 String.fromCharCode(...几 MB) 会爆调用栈
+  // Chunked concatenation: one String.fromCharCode(...several MB) would blow the call stack
   const CHUNK = 0x8000;
   for (let i = 0; i < bytes.length; i += CHUNK) {
     binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
@@ -215,7 +215,7 @@ async function toDataUrl(url: string, format: string): Promise<string> {
   return `data:image/${mime};base64,${btoa(binary)}`;
 }
 
-/** 进度回调包装:第三方的回调抛错不能连累生成(它只是想看个进度)。 */
+/** Progress callback wrapper: a third party's callback throwing must not break generation (it only wanted to see progress). */
 function safeProgress(
   onProgress: GenerateOptions['onProgress'],
 ): (progress: PublicGenerateProgress) => void {
@@ -242,7 +242,7 @@ export async function generate(
     throw publicError('invalid_args', 'seed must be a number');
   }
 
-  // 先报 not_configured,别让第三方等一个注定 401 的请求
+  // Report not_configured first, so the third party doesn't wait for a request certain to 401
   const status = backendStatus();
   if (!status.configured) {
     throw publicError('not_configured', status.reason || 'The backend of BaiBai Image is not configured');
@@ -253,11 +253,11 @@ export async function generate(
   const characters = normalizeCharacters(request.characters);
   const nl = typeof request.nl === 'string' ? request.nl.trim() : '';
   const negative = typeof request.negative === 'string' ? request.negative.trim() : '';
-  // 方向容忍式归一:传了认不出的值按竖屏,不为一个画幅参数让整次生成失败
+  // Tolerant orientation normalisation: an unrecognised value counts as portrait; one frame parameter shouldn't fail the whole generation
   const size = normalizeOrientation(request.size);
   const seed = decideSeed(status.backend, request.seed);
 
-  // NAI 要过并发闸门,可能先排一会儿队;ComfyUI 直接发,队列在服务端
+  // NAI must pass the concurrency gate and may queue for a while; ComfyUI sends directly, with the queue on the server
   report({ phase: status.backend === 'nai' ? 'queued' : 'generating' });
 
   let output;
@@ -277,12 +277,12 @@ export async function generate(
   const { result } = output;
   try {
     const dataUrl = await toDataUrl(result.url, result.format);
-    // 落盘默认开(用户定的口径):默认进图库,第三方要「阅后即焚」才显式传 false
+    // Saving is on by default (the user's chosen rule): images go into the gallery by default; a third party must pass false explicitly for "burn after reading"
     const wantSave = request.save !== false;
     let path: string | null = null;
     if (wantSave) {
       report({ phase: 'saving' });
-      // 存实际出图的方向:渠道锁定时它与请求的 size 不同,图库里的 tag 要如实描述这张图
+      // Store the orientation actually generated: when the channel locks it, it differs from the requested size, and the gallery's tag must describe this image truthfully
       path = await saveToGallery(request, prompt, nl, negative, characters, output.size, seed, result, output.meta);
     }
     return {
@@ -298,15 +298,15 @@ export async function generate(
   } catch (error) {
     throw toPublicError(error);
   } finally {
-    // blob URL 用完即撕:dataUrl 已经拿到,原始 blob 再留着就是纯泄漏
+    // Revoke the blob URL once used: the dataUrl is already in hand, so keeping the original blob is a pure leak
     result.revoke();
   }
 }
 
 /**
- * 落盘进图库。**失败只警告不抛** —— 图已经在 dataUrl 里了,
- * 因为存不进图库就让第三方连图都拿不到是本末倒置(它可能压根不在乎图库)。
- * 返回 null 让调用方从 path 上看出来没存成。
+ * Saves into the gallery. **Failure only warns, never throws**: the image is already in the dataUrl,
+ * and denying the third party the image because it couldn't go into the gallery would put the cart before the horse (it may not care about the gallery at all).
+ * Returns null so the caller can tell from path that it wasn't saved.
  */
 async function saveToGallery(
   request: GenerateRequest,
@@ -319,9 +319,9 @@ async function saveToGallery(
   result: Parameters<typeof saveExternalImage>[3],
   meta: GenerationMeta,
 ): Promise<string | null> {
-  // 存的是 **tag 原文**(含 <bbi_image> 壳),不是拼好的展示文本:
-  // 图库读侧写后要 parseImageTagContent 再 formatPromptText(与楼层卡片同一口径),
-  // 这里存展示文本会让图库解析出一团糊在一起的裸 tag。
+  // What is stored is the **raw tag text** (including the <bbi_image> wrapper), not the assembled display text:
+  // the gallery's read side runs parseImageTagContent then formatPromptText (the same rule as floor cards),
+  // so storing display text here would make the gallery parse out one clump of bare tags.
   const tag = serializeImageTag({ tag: prompt, nl, negative, characters, size });
   const name =
     (typeof request.character === 'string' ? request.character.trim() : '') ||

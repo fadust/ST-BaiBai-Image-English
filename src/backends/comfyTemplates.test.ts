@@ -23,11 +23,11 @@ function node(workflow: Record<string, SimpleWorkflowNode>, id: string): SimpleW
 }
 
 describe('validateSimpleConfig', () => {
-  it('未选模型时报错', () => {
+  it('errors when no model is selected', () => {
     expect(validateSimpleConfig(simpleDefaults())).toContain("Model");
   });
 
-  it('flux/anima 缺 VAE 或 CLIP 时报对应字段;checkpoint 外置 VAE 可留空', () => {
+  it('flux/anima missing VAE or CLIP reports the matching field; checkpoint external VAE may be blank', () => {
     const flux = { ...simpleDefaults('flux'), model: 'flux1-dev.safetensors' };
     expect(validateSimpleConfig(flux)).toContain('VAE');
     expect(validateSimpleConfig({ ...flux, vae: 'ae.safetensors' })).toContain('T5-XXL');
@@ -47,7 +47,7 @@ describe('validateSimpleConfig', () => {
 describe('buildSimpleWorkflow - checkpoint', () => {
   const simple = config({ model: 'illustrious_xl.safetensors', positive: 'masterpiece, best quality', negative: 'worst quality' });
 
-  it('组出经典五节点链路,正负面按「固定+生成」拼接', () => {
+  it('builds the classic five-node chain, positive/negative joined as fixed + generated', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'extra people' });
     expect(node(wf, '1').class_type).toBe('CheckpointLoaderSimple');
     expect(node(wf, '1').inputs.ckpt_name).toBe('illustrious_xl.safetensors');
@@ -64,30 +64,30 @@ describe('buildSimpleWorkflow - checkpoint', () => {
       positive: ['3', 0],
       negative: ['4', 0],
     });
-    // 无外置 VAE → 用 checkpoint 内置(槽位 2)
+    // No external VAE → use the checkpoint's built-in one (slot 2)
     expect(node(wf, '7').inputs.vae).toEqual(['1', 2]);
     expect(node(wf, '8').class_type).toBe('SaveImage');
   });
 
-  it('nl 存在时优先于 tag 作为正向生成内容', () => {
+  it('when nl exists it takes precedence over tag as the positive generated content', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, nl: 'A girl with silver hair.' });
     expect(node(wf, '3').inputs.text).toBe('masterpiece, best quality, A girl with silver hair.');
   });
 
-  it('固定词留空时只剩生成内容(不多逗号)', () => {
+  it('blank fixed words leave only generated content (no extra commas)', () => {
     const wf = buildSimpleWorkflow(config({ model: 'm.safetensors' }), VALUES);
     expect(node(wf, '3').inputs.text).toBe('1girl, silver hair');
     expect(node(wf, '4').inputs.text).toBe('');
   });
 
-  it('外置 VAE 走 VAELoader;LoRA 串联在底模与编码之间', () => {
+  it('external VAE goes through VAELoader; LoRAs chain between the base model and encoding', () => {
     const wf = buildSimpleWorkflow(
       config({
         model: 'm.safetensors',
         vae: 'fix_vae.safetensors',
         loras: [
           { name: 'style.safetensors', strength: 0.8 },
-          { name: '', strength: 1 }, // 未填完的行被忽略
+          { name: '', strength: 1 }, // Unfinished rows are ignored
           { name: 'detail.safetensors', strength: 0.5 },
         ],
       }),
@@ -112,7 +112,7 @@ describe('buildSimpleWorkflow - flux', () => {
     clip2: 'clip_l.safetensors',
   };
 
-  it('UNet + DualCLIP + ae,负面恒空、cfg 恒 1、走 FluxGuidance', () => {
+  it('UNet + DualCLIP + ae, negative always empty, cfg always 1, via FluxGuidance', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'ignored' });
     expect(node(wf, '1').class_type).toBe('UNETLoader');
     expect(node(wf, '2').inputs).toMatchObject({ clip_name1: 't5xxl_fp8.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' });
@@ -122,13 +122,13 @@ describe('buildSimpleWorkflow - flux', () => {
     expect(node(wf, '7').class_type).toBe('EmptySD3LatentImage');
   });
 
-  it('guidance = 1 时跳过 FluxGuidance,直连编码输出', () => {
+  it('guidance = 1 skips FluxGuidance and connects the encoding output directly', () => {
     const wf = buildSimpleWorkflow({ ...simple, guidance: 1 }, VALUES);
     expect(wf['6']).toBeUndefined();
     expect(node(wf, '8').inputs.positive).toEqual(['4', 0]);
   });
 
-  it('GGUF 用 UnetLoaderGGUF;LoRA 只挂 model(LoraLoaderModelOnly)', () => {
+  it('GGUF uses UnetLoaderGGUF; LoRAs only attach to model (LoraLoaderModelOnly)', () => {
     const wf = buildSimpleWorkflow(
       { ...simple, gguf: true, loras: [{ name: 'flux_lora.safetensors', strength: 1 }] },
       VALUES,
@@ -148,7 +148,7 @@ describe('buildSimpleWorkflow - anima', () => {
     clip1: 'qwen_2.5_vl_7b.safetensors',
   };
 
-  it('CLIPLoader 用 qwen_image 类型,模型过 ModelSamplingAuraFlow(shift 可调)', () => {
+  it('CLIPLoader uses the qwen_image type, and the model passes through ModelSamplingAuraFlow (adjustable shift)', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'blurry' });
     expect(node(wf, '2').inputs).toMatchObject({ clip_name: 'qwen_2.5_vl_7b.safetensors', type: 'qwen_image' });
     expect(node(wf, '6').inputs).toMatchObject({ shift: 3, model: ['1', 0] });
@@ -156,14 +156,14 @@ describe('buildSimpleWorkflow - anima', () => {
     expect(node(wf, '5').inputs.text).toBe('blurry');
   });
 
-  it('LoRA 链尾接进 AuraFlow 而不是采样器', () => {
+  it('the LoRA chain end connects into AuraFlow, not the sampler', () => {
     const wf = buildSimpleWorkflow({ ...simple, loras: [{ name: 'a.safetensors', strength: 1 }] }, VALUES);
     expect(node(wf, '6').inputs.model).toEqual(['300', 0]);
   });
 });
 
-describe('buildSimpleWorkflow - 尺寸', () => {
-  it('尺寸无效时报错(简易模式的画布节点是必建的,没有「工作流写死尺寸」的豁免)', () => {
+describe('buildSimpleWorkflow - size', () => {
+  it('errors on invalid size (the simple-mode canvas node is always built, with no exemption for a workflow with hardcoded size)', () => {
     const simple = config({ model: 'm.safetensors' });
     expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('dimensions');
     expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('dimensions');
@@ -171,11 +171,11 @@ describe('buildSimpleWorkflow - 尺寸', () => {
 });
 
 describe('normalizeSimpleConfig', () => {
-  it('空输入给 checkpoint 默认值', () => {
+  it('empty input gets checkpoint defaults', () => {
     expect(normalizeSimpleConfig(undefined)).toEqual(simpleDefaults());
   });
 
-  it('非法 template 回 checkpoint;脏字段逐项归位', () => {
+  it('invalid template falls back to checkpoint; dirty fields reset item by item', () => {
     const normalized = normalizeSimpleConfig({
       template: 'qwen-whatever',
       model: 42,
@@ -192,14 +192,14 @@ describe('normalizeSimpleConfig', () => {
     ]);
   });
 
-  it('合法 template 的采样参数按该模板默认值兜底', () => {
+  it('sampling parameters of a valid template fall back to that template defaults', () => {
     expect(normalizeSimpleConfig({ template: 'flux' })).toEqual(simpleDefaults('flux'));
     expect(normalizeSimpleConfig({ template: 'anima' }).shift).toBe(3);
   });
 });
 
 describe('templateSupportsNegative', () => {
-  it('flux 无真实负面输入,其余有', () => {
+  it('flux has no real negative input; the others do', () => {
     expect(templateSupportsNegative('flux')).toBe(false);
     expect(templateSupportsNegative('checkpoint')).toBe(true);
     expect(templateSupportsNegative('anima')).toBe(true);

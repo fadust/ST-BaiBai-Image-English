@@ -40,16 +40,16 @@ const configuring = ref(false);
 const assistOpen = ref(false);
 const assistDraft = ref('');
 const assistResult = ref<WorkflowAssistResult | null>(null);
-/** AI 预览针对哪一套:预览期间用户可能切走或删掉,应用时按 id 回写而不是写「当前」。 */
+/** Which preset the AI preview targets: the user may switch away or delete it during the preview, so applying writes back by id, not to "current". */
 const assistTargetId = ref('');
 const confirmDeleteOpen = ref(false);
 
-/** 本渠道是否为当前出图渠道;「使用此渠道」按钮与设置页选择器、页签徽标同属一个开关。 */
+/** Whether this channel is the current image channel; the "Use this channel" button, the settings page selector and the tab badge are one switch. */
 const inUse = computed(() => settings.defaultBackend === 'comfyui');
 
-/* ============ 工作流库 ============ */
+/* ============ Workflow library ============ */
 
-/** 当前预设。settings 是 reactive,直接把它的字段绑 v-model 即可就地编辑。 */
+/** Current preset. settings is reactive, so its fields can be bound with v-model for in-place editing. */
 const active = computed(() => activeComfyPreset());
 
 const workflowOptions = computed(() =>
@@ -57,8 +57,8 @@ const workflowOptions = computed(() =>
 );
 
 /**
- * 下拉的值取「实际生效的那一套」而非存的 id:存的 id 悬空时
- * activeComfyPreset 会回落第一条,下拉也该跟着显示第一条,不能显示空白。
+ * The dropdown value is "the preset actually in effect", not the stored id: when the stored id dangles,
+ * activeComfyPreset falls back to the first one, and the dropdown should show the first one too, not a blank.
  */
 const activeId = computed<string>({
   get: () => active.value.id,
@@ -67,14 +67,14 @@ const activeId = computed<string>({
   },
 });
 
-/** 只剩一套时不给删:workflows 恒非空是全局不变式,禁用比「点了没反应」诚实。 */
+/** Deletion is disabled when only one preset remains: non-empty workflows is a global invariant, and disabling is more honest than "clicked, nothing happened". */
 const canRemove = computed(() => settings.comfyui.workflows.length > 1);
 
 function switchTo(preset: { id: string }) {
   settings.comfyui.activeWorkflowId = preset.id;
 }
 
-/** 改名是低频操作:平时只显示下拉,点「改名」才把选择器原地换成输入框,省掉常驻的名称行。 */
+/** Renaming is rare: normally only the dropdown shows; clicking "Rename" swaps the selector in place for an input, saving a permanent name row. */
 const renaming = ref(false);
 const renameDraft = ref('');
 const renameInput = ref<HTMLInputElement | null>(null);
@@ -85,7 +85,7 @@ function startRename() {
   nextTick(() => renameInput.value?.focus());
 }
 
-/** Enter / 失焦都算确认;Esc 直接置 renaming=false 不经过这里,即为取消。 */
+/** Enter / blur both confirm; Esc sets renaming=false directly without passing through here, which means cancel. */
 function commitRename() {
   if (renaming.value) active.value.name = renameDraft.value.trim();
   renaming.value = false;
@@ -98,8 +98,8 @@ function addWorkflow() {
 }
 
 function duplicateWorkflow() {
-  // 拷全部字段(JSON/开关/尺寸一起复制),只换 id 与名字;id 生成仍由 settings 统一口径。
-  // simple 是嵌套对象(含 loras 数组),必须深拷——浅拷会让两套预设共享同一份参数。
+  // Copy every field (JSON/toggles/sizes together), changing only the id and name; id generation still follows settings' single rule.
+  // simple is a nested object (with a loras array) and must be deep-copied; a shallow copy would make two presets share one set of parameters.
   const preset = {
     ...active.value,
     id: newComfyWorkflow().id,
@@ -120,14 +120,14 @@ function confirmRemoveWorkflow() {
   const index = list.findIndex(w => w.id === active.value.id);
   if (index < 0) return;
   list.splice(index, 1);
-  // 删掉的是当前项:接位到原位置那一条(已是最后一条则退一格)
+  // The current one was deleted: the entry at its original position takes its place (step back one if it was the last)
   settings.comfyui.activeWorkflowId = list[Math.min(index, list.length - 1)].id;
 }
 
-/* ============ 简易模式:选模型填参数 ============ */
+/* ============ Simple mode: pick models, fill in parameters ============ */
 
-// 分段开关文案要短(括注会让小药丸挤变形),含义靠下方的表单本身说明;
-// 顺序:默认项 custom 在左(与「存量预设/新预设都是自定义工作流」的口径一致)
+// Segmented toggle labels must be short (parentheses would squeeze the little pills out of shape); the meaning is explained by the form below;
+// order: the default, custom, on the left (consistent with "existing presets/new presets are all custom workflows")
 const modeOptions: Array<{ value: ComfyPresetMode; label: string }> = [
   { value: 'custom', label: 'Custom workflow' },
   { value: 'simple', label: 'Simple parameters' },
@@ -135,7 +135,7 @@ const modeOptions: Array<{ value: ComfyPresetMode; label: string }> = [
 
 const templateOptions = COMFY_TEMPLATE_OPTIONS;
 
-/** 当前模板的元数据(决定表单显示哪些字段)。 */
+/** Metadata of the current template (decides which fields the form shows). */
 const meta = computed(() => COMFY_TEMPLATES[active.value.simple.template] ?? COMFY_TEMPLATES.checkpoint);
 
 const lists = ref<ComfyModelLists | null>(null);
@@ -164,7 +164,7 @@ async function onFetchModels(silent = false) {
   }
 }
 
-// 进入简易模式且手上没有列表时自动拉一次(静默,失败只在状态行留原因)
+// Fetch once automatically when entering simple mode with no list in hand (silent; a failure only leaves the reason in the status line)
 watch(
   () => [active.value.id, active.value.mode] as const,
   () => {
@@ -175,10 +175,10 @@ watch(
   { immediate: true },
 );
 
-// 状态行只在「有话要说」时出现:直连拉成功是常态,静默(候选已进 datalist);
-// 转发模式要提醒 LoRA/CLIP 拿不到;失败要留原因。手动点按钮的正反馈由 toastr 负责。
+// The status line only appears when there is something to say: a successful direct fetch is the norm and stays silent (candidates are in the datalist);
+// forwarding mode must warn that LoRA/CLIP can't be fetched; a failure must leave the reason. Positive feedback for a manual button click is toastr's job.
 const fetchStatus = computed(() => {
-  if (fetchError.value) return `Pull failed:${fetchError.value}`;
+  if (fetchError.value) return `Fetch failed: ${fetchError.value}`;
   if (!lists.value || lists.value.mode === 'browser') return '';
   return 'ST forwarding cannot get the LoRA/CLIP list, these two items need to be entered manually (ComfyUI plus --enable-cors-header can be directly connected)';
 });
@@ -199,7 +199,7 @@ const schedulerOptions = computed(() =>
   lists.value?.schedulers.length ? lists.value.schedulers : FALLBACK_SCHEDULERS,
 );
 
-// 选了列表里的 GGUF 文件自动勾选 GGUF;选回普通 unet 自动取消(手输的名字不动开关)
+// Picking a GGUF file from the list ticks GGUF automatically; picking a normal unet again unticks it (typed names don't touch the toggle)
 watch(
   () => active.value.simple.model,
   name => {
@@ -210,9 +210,9 @@ watch(
 );
 
 /**
- * 切架构模板:采样参数换成新模板推荐值,模型/VAE/CLIP 清空(列表不同源),
- * LoRA 与固定正负词保留(与架构无关)。尺寸若还是旧模板默认值则跟着换,
- * 用户自己改过的尺寸不动。
+ * Switching the architecture template: sampling parameters change to the new template's recommended values, model/VAE/CLIP are cleared (the lists come from different sources),
+ * LoRAs and fixed positive/negative words are kept (architecture-independent). Sizes follow along if they are still the old template's defaults;
+ * sizes the user changed are left alone.
  */
 function onTemplateChange(id: string) {
   if (!isComfyTemplateId(id)) return;
@@ -238,7 +238,7 @@ function removeLora(index: number) {
   active.value.simple.loras.splice(index, 1);
 }
 
-/** 简易模式状态药丸:与出图组装同一口径(validateSimpleConfig)。 */
+/** Simple-mode status pill: the same rule as image assembly (validateSimpleConfig). */
 const simpleState = computed(() => {
   const invalid = validateSimpleConfig(active.value.simple);
   return invalid
@@ -252,7 +252,7 @@ const nlHint = computed(() =>
     : 'Generate an additional natural language description and inject it into the workflow with %nl%',
 );
 
-/** 药丸只显示一个词,具体原因放 title 悬浮提示,不占版面。 */
+/** The pill shows only one word; the specific reason goes in the title tooltip, taking no space. */
 const workflowState = computed(() => {
   if (!active.value.workflow.trim()) return { tone: 'muted', text: 'Not filled in', detail: '' };
   try {
@@ -267,13 +267,13 @@ const workflowState = computed(() => {
       return {
         tone: 'error',
         text: 'Placeholder is not supported',
-        detail: `Not supported yet:${unknown.map(name => `%${name}%`).join('、')}`,
+        detail: `Not supported yet: ${unknown.map(name => `%${name}%`).join(', ')}`,
       };
     }
     return {
       tone: 'ok',
       text: 'valid',
-      detail: `Recognized ${placeholders.map(name => `%${name}%`).join('、')}`,
+      detail: `Recognized ${placeholders.map(name => `%${name}%`).join(', ')}`,
     };
   } catch (error) {
     return { tone: 'error', text: 'JSON is invalid', detail: errorMessage(error) };
@@ -345,7 +345,7 @@ function applyAssist() {
     target.workflow = assistDraft.value;
     const name = target.name;
     closeAssist();
-    toastr.success(`Workflow with AI configuration applied (${name}）`, 'BaiBai Image');
+    toastr.success(`Workflow with AI configuration applied (${name})`, 'BaiBai Image');
     if (placeholders.includes('nl') && !target.naturalLanguage) {
       toastr.info('Workflow has been configured %nl%; please turn on "Generate Natural Language" if needed', 'BaiBai Image');
     }
@@ -451,10 +451,10 @@ function applyAssist() {
           </span>
         </div>
 
-        <!-- 分界:线以下的开关、尺寸与 JSON 均跟随当前选中的这一套 -->
+        <!-- Divider: the switches, sizes and JSON below the line all follow the currently selected preset -->
         <hr class="wf-divider" />
 
-        <!-- 配置方式:分段开关二选一(复用全局 bbi-segmented;两个选项用下拉太重),状态药丸居右 -->
+        <!-- Configuration mode: a two-option segmented switch (reusing the global bbi-segmented; a dropdown is too heavy for two options), status pill on the right -->
         <div class="wf-mode-bar">
           <div class="bbi-segmented" role="tablist" aria-label="Configuration method">
             <button
@@ -542,8 +542,8 @@ function applyAssist() {
           The direction already noted in the text will not be overwritten and will be restored by changing it back to &quot;Auto&quot;.
         </p>
 
-        <!-- 简易模式:选模型填参数,JSON 由插件按模板组装。
-             分组排布(模型/LoRA/采样/提示词),字段行统一「短标签列 + 输入列」网格,避免长标签把输入框挤得参差不棁。 -->
+        <!-- Simple mode: pick models and fill parameters; the plugin assembles the JSON from a template.
+             Grouped layout (models/LoRA/sampling/prompts); field rows share a "short label column + input column" grid, so long labels don't leave the inputs ragged. -->
         <template v-if="active.mode === 'simple'">
           <section class="wf-group">
             <div class="wf-group-head">
@@ -709,7 +709,7 @@ function applyAssist() {
 
         </template>
 
-        <!-- 自定义模式:粘贴 API 格式 JSON -->
+        <!-- Custom mode: paste API-format JSON -->
         <template v-else>
         <div class="wf-json-head">
           <span class="bbi-field-label">Workflow JSON</span>
@@ -808,8 +808,8 @@ function applyAssist() {
 </template>
 
 <style scoped>
-/* 工作流选择行:grid 而非 flex——靠 flex-basis 撑出的对齐一 wrap 就散,
-   固定首列宽让标签列与下方 switch/num 行的标签列同起点。 */
+/* Workflow selector row: grid rather than flex; alignment built from flex-basis falls apart as soon as it wraps,
+   and a fixed first column makes the label column start where the labels of the switch/num rows below start. */
 .wf-row {
   display: grid;
   grid-template-columns: 5.5em minmax(0, 1fr) auto;
@@ -823,7 +823,7 @@ function applyAssist() {
 .wf-row > .bbi-input {
   min-width: 0;
 }
-/* 下拉不吃满:名称通常很短,拉满只会拖出半截空白(子组件根类默认 180px/不伸缩,此处 0,2,0 压过) */
+/* The dropdown doesn't fill the row: names are usually short, and stretching only drags out empty space (the child's root class defaults to 180px/no flex; 0,2,0 overrides it here) */
 .wf-row > .wf-select {
   width: auto;
   max-width: 320px;
@@ -834,8 +834,8 @@ function applyAssist() {
   gap: 4px;
   justify-self: end;
 }
-/* 四个操作是低频且同级的,图标化后整行只剩下拉一个视觉重点;
-   文案退到 title/aria-label,不损失可达性。 */
+/* The four actions are rare and equal in rank; with icons the row has only the dropdown as its visual focus;
+   the text moves to title/aria-label without losing accessibility. */
 .wf-op {
   width: 30px;
   height: 30px;
@@ -845,22 +845,22 @@ function applyAssist() {
   opacity: 0.4;
   cursor: default;
 }
-/* 选择器与预设内容的分界:线以下均跟随当前这套工作流 */
+/* Divider between the selector and the preset content: everything below the line follows the current workflow */
 .wf-divider {
   border: 0;
   border-top: 1px dashed var(--bbi-line);
   margin: 4px 0;
 }
-/* 开关自带下留白,说明文字只需补一点上间距(base.css 的 .bbi-input + hint 规则不覆盖此组合) */
+/* The switch has its own bottom spacing, so the hint only needs a little top margin (base.css's .bbi-input + hint rule doesn't cover this combination) */
 .wf-switch-hint {
   margin: 2px 0 6px;
 }
-/* 尺寸输入:比 .bbi-num 宽一点(要装「1024×1536」),但不右对齐——「宽×高」是文本不是数值 */
+/* Size input: a little wider than .bbi-num (it must fit "1024×1536"), but not right-aligned: "width×height" is text, not a number */
 .wf-size {
   width: 130px;
   flex: 0 0 auto;
 }
-/* 配置方式:分段开关在左、状态药丸在右 */
+/* Configuration mode: segmented switch on the left, status pill on the right */
 .wf-mode-bar {
   display: flex;
   align-items: center;
@@ -868,13 +868,13 @@ function applyAssist() {
   gap: 10px;
   padding: 4px 0 6px;
 }
-/* 架构下拉不吃满(同 .wf-select 的理由) */
+/* The architecture dropdown doesn't fill the row (same reason as .wf-select) */
 .wf-tpl {
   width: auto;
   max-width: 320px;
   min-width: 0;
 }
-/* 简易模式分组:组标题带虚线分隔,组间距固定;组内字段行统一「短标签列+输入列+尾部」网格 */
+/* Simple-mode groups: group titles with a dashed divider and fixed spacing between groups; field rows in a group share a "short label column + input column + trailing" grid */
 .wf-group {
   padding: 10px 0 2px;
 }
@@ -917,7 +917,7 @@ function applyAssist() {
   white-space: nowrap;
   cursor: pointer;
 }
-/* LoRA 行:文件名吃满、强度定宽、删除收尾(与字段行同节奏) */
+/* LoRA rows: file name fills, strength fixed width, delete at the end (same rhythm as the field rows) */
 .wf-lora-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px 30px;
@@ -928,7 +928,7 @@ function applyAssist() {
 .wf-lora-hint {
   margin: 4px 0 2px;
 }
-/* 采样参数:多列网格,标签在上输入在下(与 NaiPanel 的 be-row 同款语义) */
+/* Sampling parameters: multi-column grid, label above input (same meaning as NaiPanel's be-row) */
 .wf-params {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -952,7 +952,7 @@ function applyAssist() {
     grid-template-columns: repeat(2, 1fr);
   }
 }
-/* JSON 头部行:标签在左,状态药丸与 AI 按钮作为「工具组」在右(textarea 是块级,头部行即它的工具栏) */
+/* JSON header row: label on the left; the status pill and AI button as a "tool group" on the right (the textarea is block-level, so the header row is its toolbar) */
 .wf-json-head {
   display: flex;
   align-items: center;
@@ -969,8 +969,8 @@ function applyAssist() {
 .wf-hint {
   margin-top: 8px;
 }
-/* 危险操作按钮:平时与其它图标钮同样低调,hover 才显红(与 ConfirmDialog 同口径)。
-   图标钮无描边,故 hover 只换底色与前景色,不碰 border。 */
+/* Dangerous-action button: as subtle as the other icon buttons normally, red only on hover (same rule as ConfirmDialog).
+   Icon buttons have no outline, so hover only changes the background and foreground colours, never the border. */
 .wf-remove:not(:disabled) {
   color: var(--bbi-danger);
 }
@@ -978,7 +978,7 @@ function applyAssist() {
   color: var(--bbi-danger);
   background: var(--bbi-danger-soft);
 }
-/* AI 预览弹窗关闭钮:.bbi-icon-btn 只在 App.vue 里声明(scoped 不跨组件),此处补一份 */
+/* AI preview dialog close button: .bbi-icon-btn is only declared in App.vue (scoped doesn't cross components), so a copy is added here */
 .bbi-icon-btn {
   width: 36px;
   height: 36px;
@@ -999,7 +999,7 @@ function applyAssist() {
   color: var(--bbi-ink);
   background: var(--bbi-line-strong);
 }
-/* JSON 状态药丸:复用全局 bbi-prompt-state 基样式,此处只按 tone 上色 */
+/* JSON status pill: reuses the global bbi-prompt-state base style; only the tone colour is set here */
 .wf-state.is-ok {
   color: var(--bbi-accent);
   background: var(--bbi-accent-soft);
@@ -1046,7 +1046,7 @@ function applyAssist() {
   font-size: 12px;
   line-height: 1.5;
 }
-/* URL 标签与输入框同行:标签靠左不压缩,输入框吃满剩余宽度 */
+/* URL label and input on one row: the label stays left without shrinking; the input fills the remaining width */
 .api-row {
   display: flex;
   align-items: center;
@@ -1066,7 +1066,7 @@ function applyAssist() {
   align-items: center;
   margin-top: 12px;
 }
-/* 左侧「使用此渠道 / 当前出图渠道」与右侧测试连接分据两端 */
+/* "Use this channel / Current image channel" on the left and Test connection on the right, at opposite ends */
 .conn-use,
 .conn-inuse {
   margin-right: auto;
@@ -1079,7 +1079,7 @@ function applyAssist() {
   color: var(--bbi-accent);
 }
 @media (max-width: 640px) {
-  /* 窄屏:四个图标钮 + 标签会把下拉挤成一条缝,标签独占首行,下拉与操作组同行分据两端 */
+  /* Narrow screens: four icon buttons + a label would squeeze the dropdown into a slit, so the label takes the first row alone, and the dropdown and action group share a row at opposite ends */
   .wf-row {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 8px;

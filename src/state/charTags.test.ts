@@ -192,25 +192,25 @@ describe('global library merge & lock', () => {
     history: [],
   });
 
-  it('mergeCharTagSeed: 本聊天同名条目优先,全局只补同名空缺', () => {
+  it('mergeCharTagSeed: same-name entries in this chat take priority; global only fills same-name gaps', () => {
     const chat = [globalEntry('小雪', { hair: 'short red hair' })];
     const global = [globalEntry('小雪', { hair: 'long black hair' }), globalEntry('玩家', { sex: '1boy' })];
     const merged = mergeCharTagSeed(chat, global);
     expect(merged).toHaveLength(2);
     expect(merged.find(e => e.name === '小雪')?.fields.hair).toBe('short red hair');
     expect(merged.find(e => e.name === '玩家')?.fields.sex).toBe('1boy');
-    // 无全局时原样返回(零开销路径)
+    // Without global it returns as-is (zero-cost path)
     expect(mergeCharTagSeed(chat, [])).toBe(chat);
   });
 
-  it('computeLockedCharTagNames: 只有「全局独有」的名字被锁定;本聊天同名即解锁', () => {
+  it('computeLockedCharTagNames: only names unique to global are locked; a same name in this chat unlocks it', () => {
     const global = [globalEntry('玩家', { sex: '1boy' }), globalEntry('小雪', { sex: '1girl' })];
     expect([...computeLockedCharTagNames([], global)].sort()).toEqual(['小雪', '玩家']);
     expect([...computeLockedCharTagNames([globalEntry('小雪', { sex: '1girl' })], global)]).toEqual(['玩家']);
     expect(computeLockedCharTagNames([], []).size).toBe(0);
   });
 
-  it('applyCharTagOps: 锁定名的 new 与 set 一律丢弃', () => {
+  it('applyCharTagOps: new and set for locked names are always discarded', () => {
     const locked = new Set(['玩家']);
     const create = createCharTagNewOp({
       name: '玩家',
@@ -225,12 +225,12 @@ describe('global library merge & lock', () => {
     const out = applyCharTagOps(base, [create, dye], 3, locked);
     expect(out[0].fields.hair).toBe('short black hair');
     expect(out[0].history).toEqual([]);
-    // 不传 locked 时旧行为不变
+    // Without locked, the old behaviour is unchanged
     const out2 = applyCharTagOps(base, [dye], 3);
     expect(out2[0].fields.hair).toBe('long red hair');
   });
 
-  it('deriveCharTags: 旧消息里针对锁定角色的楼层 ops 重放时失效', () => {
+  it('deriveCharTags: floor ops in old messages targeting locked characters have no effect on replay', () => {
     const dye = createCharTagSetOp('玩家', 'hair', 'long red hair', '染发')!;
     const chat = [floorMessage([dye])];
     const base = [globalEntry('玩家', { sex: '1boy', hair: 'short black hair' })];

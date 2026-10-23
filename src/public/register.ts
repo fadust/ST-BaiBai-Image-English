@@ -23,12 +23,12 @@ import {
 } from './types';
 
 /**
- * 公开接口的注册与事件面(与柏宝书 src/public/register.ts 同款,第三方学一套就够)。
+ * Registration and event surface of the public API (same as BaiBai Book's src/public/register.ts, so third parties learn one set).
  *
- * 第三方怎么拿到接口——**两条路都得给**,因为插件加载顺序不确定:
- * - 它比柏宝绘晚加载:直接读 globalThis.STBaiBaiImage 就有;
- * - 它比柏宝绘早加载:读到 undefined,只能等 window 的 'st-baibai-image:ready'。
- * 只给其中一条,另一半场合的第三方就得写轮询——那是我们的锅,不是它的。
+ * How third parties get the API: **both routes must be provided**, because plugin load order is not fixed:
+ * - it loads after BaiBai Image: globalThis.STBaiBaiImage is simply there;
+ * - it loads before BaiBai Image: it reads undefined and has to wait for window's 'st-baibai-image:ready'.
+ * Providing only one would force third parties to poll in the other case; that would be our fault, not theirs.
  */
 
 export const PUBLIC_READY_EVENT = 'st-baibai-image:ready';
@@ -63,9 +63,9 @@ function notice(type: PublicChangeNotice['type']): PublicChangeNotice {
 }
 
 /**
- * 发通知。**每个接收方各拿一份深拷贝**:同一个 detail 对象传给 N 个订阅者时,
- * 头一个改了它、后面的就收到被篡改的内容(而且两边都不知道发生了什么)。
- * 订阅回调抛错只记 console:一个第三方写崩了不能连累其余订阅者收不到通知。
+ * Sends a notification. **Each receiver gets its own deep copy**: when one detail object goes to N subscribers,
+ * if the first changes it, the rest receive tampered content (and neither side knows what happened).
+ * A subscriber callback throwing is only logged to the console: one crashing third party must not stop the others from being notified.
  */
 function emitNotice(type: PublicChangeNotice['type']): void {
   const detail = notice(type);
@@ -81,9 +81,9 @@ function emitNotice(type: PublicChangeNotice['type']): void {
 }
 
 /**
- * 攒一个微任务再发。recomputeCharTags() 一次会整体替换 entries,
- * 而切聊天/删楼/滑动会连着触发好几次重算 —— 不攒的话第三方一秒内收到十几条同样的通知,
- * 每条都可能引它去做一次全量刷新。
+ * Waits one microtask before sending. recomputeCharTags() replaces entries wholesale,
+ * and switching chats/deleting floors/swiping trigger several recomputations in a row; without batching, a third party would get a dozen identical
+ * notifications within a second, each possibly prompting a full refresh.
  */
 function queueChangedNotice(): void {
   if (changeQueued) return;
@@ -96,8 +96,8 @@ function queueChangedNotice(): void {
 }
 
 function createApi(): STBaiBaiImageApi {
-  // 冻结:第三方(或它引的某个库)往接口对象上挂东西、或替换掉 generate,
-  // 会让后到的另一个第三方拿到被改过的接口。冻结让这类改动直接失败而不是静默生效。
+  // Frozen: if a third party (or a library it uses) attaches things to the API object or replaces generate,
+  // another third party arriving later would get the modified API. Freezing makes such changes fail outright instead of silently taking effect.
   return Object.freeze({
     apiVersion: PUBLIC_API_VERSION,
     pluginVersion: PLUGIN_VERSION,
@@ -116,9 +116,9 @@ function createApi(): STBaiBaiImageApi {
 }
 
 /**
- * 注册公开接口。**必须在 hydrateSettings() 之后调**:
- * 设置回灌前 settings 还是内存里的默认值,getBackendStatus() 会把「其实配好了的用户」
- * 报成 not_configured,第三方据此直接不给出图入口。
+ * Registers the public API. **Must be called after hydrateSettings()**:
+ * before settings are restored they are still in-memory defaults, and getBackendStatus() would report "a user who is in fact configured"
+ * as not_configured, so third parties would simply not offer an image entry point.
  */
 export function registerPublicInterface(): void {
   if (registered) return;
@@ -128,8 +128,8 @@ export function registerPublicInterface(): void {
   const api = createApi();
   (globalThis as typeof globalThis & { STBaiBaiImage?: STBaiBaiImageApi }).STBaiBaiImage = api;
 
-  // 角色库是响应式派生结果,一律 watch 它本身,不去逐个订阅那些**导致**它变的事件
-  // (CHAT_CHANGED / 删楼 / 滑动 / 用户手动编辑 / 柏宝书同步……漏一个就少一次通知)。
+  // The character library is a reactive derived result, so watch it directly instead of subscribing to each event that **causes** it to change
+  // (CHAT_CHANGED / floor deletion / swipe / manual user edits / BaiBai Book sync…; missing one means one missed notification).
   watch(() => charTagLib.entries, queueChangedNotice, { deep: true });
 
   ready = true;

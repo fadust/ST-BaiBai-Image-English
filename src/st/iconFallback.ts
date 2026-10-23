@@ -1,20 +1,20 @@
 /**
- * 字体图标兜底:有些酒馆美化主题会把顶栏/聊天框里 .drawer-icon.fa-solid::before(或类似)
- * 的字体图标清空(content:''、color:transparent、font-size:0),改用 background-image 按
- * **每个按钮 id** 单独贴自定义图标。我们注入的按钮不在它们名单里,会变成一片空白。
+ * Icon-font fallback: some SillyTavern custom themes blank the icon-font glyphs of .drawer-icon.fa-solid::before (or similar)
+ * in the top bar/chat box (content:'', color:transparent, font-size:0) and instead paste custom icons via background-image
+ * **per button id**. Buttons we inject are not on their list and would turn blank.
  *
- * 这里用更高特异性(祖先 id + 自身 id)+ !important 压过那条通用规则,强制还原字形。
- * \f53f = fa-palette 的 Unicode(取自 ST 的 fontawesome.min.css,别凭记忆猜)。
+ * Here a higher specificity (ancestor id + own id) + !important overrides that generic rule and forces the glyph back.
+ * \f53f = the Unicode for fa-palette (taken from ST's fontawesome.min.css; don't guess from memory).
  *
- * 各注入点共用此函数:传入自身按钮 id 与图标元素的选择器,生成一段一次性 <style>。
+ * Shared by every injection point: pass your button id and the icon element's selector to generate a one-off <style>.
  */
 const PALETTE = '\\f53f';
 const injected = new Set<string>();
 
 /**
- * 确保某按钮的图标兜底样式已注入(按 styleId 去重,可重复调用)。
- * @param styleId   <style> 元素的 id(去重键)
- * @param selector  命中该按钮图标 ::before 的高特异性选择器(不含 ::before)
+ * Ensures a button's icon fallback style is injected (deduplicated by styleId, safe to call repeatedly).
+ * @param styleId   id of the <style> element (dedup key)
+ * @param selector  high-specificity selector matching the button icon's ::before (without ::before)
  */
 export function ensureIconFallback(styleId: string, selector: string): void {
   if (injected.has(styleId) || document.getElementById(styleId)) {

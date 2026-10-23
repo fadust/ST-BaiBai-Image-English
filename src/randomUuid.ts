@@ -1,7 +1,7 @@
 /**
- * 不依赖 Web Crypto 的 UUID v4:ST 常在非安全上下文(http)下运行,
- * 那里 crypto.randomUUID 会直接抛错,而 vibe 缓存键/文件名的随机段
- * 只是防撞,不需要密码学强度——Math.random 足够。
+ * UUID v4 without Web Crypto: ST often runs in an insecure context (http),
+ * where crypto.randomUUID throws outright. The random part of vibe cache keys/file names
+ * only prevents collisions and needs no cryptographic strength, so Math.random is enough.
  */
 export function randomUuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {

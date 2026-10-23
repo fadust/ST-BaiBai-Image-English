@@ -10,12 +10,12 @@ export interface ComfyTemplateValues {
   prompt: string;
   negative_prompt?: string;
   seed?: number;
-  /** 自然语言部分;仅写入显式含 %nl% 的工作流,不自动拼进 %prompt%。 */
+  /** Natural-language part; only written into workflows that explicitly contain %nl%, never merged into %prompt% automatically. */
   nl?: string;
-  /** 画面宽高;仅写入显式含 %width%/%height% 的工作流,缺省时工作流里写死的尺寸原样生效。 */
+  /** Image width/height; only written into workflows that explicitly contain %width%/%height%; otherwise the sizes hard-coded in the workflow apply. */
   width?: number;
   height?: number;
-  /** 画幅方向;generateComfyImage 据此从渠道配置解析出 width/height。 */
+  /** Frame orientation; generateComfyImage resolves width/height from the channel config with it. */
   size?: Orientation;
 }
 
@@ -23,7 +23,7 @@ export interface ComfyImageResult {
   url: string;
   filename: string;
   format: string;
-  /** 浏览器直连使用 object URL 时释放资源；data URL 无需释放。 */
+  /** Frees resources when the direct browser connection uses an object URL; data URLs need no freeing. */
   revoke(): void;
 }
 
@@ -34,8 +34,8 @@ const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
- * 生成随机种子（0 ≤ seed < 2^53，与 Python random.randint(0, 2**53 - 1) 同范围）。
- * 必须在发起生成时就生成并显式传值：部分节点（如部分采样器包装）不接受 -1 自动随机。
+ * Generates a random seed (0 ≤ seed < 2^53, the same range as Python random.randint(0, 2**53 - 1)).
+ * It must be generated and passed explicitly when generation starts: some nodes (such as certain sampler wrappers) do not accept -1 for auto-random.
  */
 export function randomSeed(): number {
   return Math.floor(Math.random() * 2 ** 53);
@@ -52,7 +52,7 @@ function isObject(value: unknown): value is JsonObject {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** 解析并做最低限度的 API 工作流结构校验。 */
+/** Parses and does minimal structural validation of an API workflow. */
 export function parseWorkflowTemplate(template: string): ComfyWorkflow {
   if (!template.trim()) throw new ComfyUIError('Please paste ComfyUI API format workflow first');
 
@@ -61,11 +61,11 @@ export function parseWorkflowTemplate(template: string): ComfyWorkflow {
     parsed = JSON.parse(template);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    // 常见笔误：占位符写成了裸值（seed: %seed%），JSON 里必须是字符串（"%seed%"）
+    // Common typo: a placeholder written as a bare value (seed: %seed%); in JSON it must be a string ("%seed%")
     const hint = detail.includes('%')
-      ? ';The placeholder must be written in the form of a string, such as "seed": "%seed%" (with quotes)'
+      ? '; placeholders must be written as strings, e.g. "seed": "%seed%" (with quotes)'
       : '';
-    throw new ComfyUIError(`Workflow JSON format error:${detail}${hint}`);
+    throw new ComfyUIError(`Workflow JSON format error: ${detail}${hint}`);
   }
 
   if (!isObject(parsed) || Object.keys(parsed).length === 0) {
@@ -118,12 +118,12 @@ function replacePlaceholders(value: unknown, replacements: Record<string, string
 }
 
 /**
- * 把模板渲染成可提交工作流。先解析后递归替换，提示词中的引号和换行不会破坏 JSON；
- * 精确等于 %seed% / %width% / %height% 的字符串会被替换为数值，而不是字符串
- * （EmptyLatentImage 的 width/height 必须是数字）。
+ * Renders a template into a submittable workflow. Parses first, then replaces recursively, so quotes and newlines in prompts can't break the JSON;
+ * strings exactly equal to %seed% / %width% / %height% are replaced with numbers, not strings
+ * (EmptyLatentImage's width/height must be numbers).
  *
- * 画幅是 opt-in 的：工作流没写 %width%/%height% 时完全不受影响，尺寸仍由工作流自己决定；
- * 写了却拿不到有效尺寸才报错，提示去面板补配置——静默按默认值出图会让用户以为设置生效了。
+ * Frame size is opt-in: a workflow without %width%/%height% is completely unaffected and the workflow decides its own size;
+ * only when they are present but no valid size is available does it error, pointing to the panel to fill in the config; silently generating with defaults would make users think the setting worked.
  */
 export function renderWorkflowTemplate(template: string, values: ComfyTemplateValues): ComfyWorkflow {
   const workflow = parseWorkflowTemplate(template);
@@ -131,7 +131,7 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
   collectPlaceholders(workflow, found);
 
   const unsupported = [...found].filter(name => !SUPPORTED_PLACEHOLDERS.has(name));
-  if (unsupported.length) throw new ComfyUIError(`The workflow contains placeholders that are not supported yet:${unsupported.map(x => `%${x}%`).join('、')}`);
+  if (unsupported.length) throw new ComfyUIError(`The workflow contains placeholders that are not supported yet: ${unsupported.map(x => `%${x}%`).join(', ')}`);
   if (!found.has('prompt')) throw new ComfyUIError('%prompt% placeholder missing from workflow');
 
   const needsSize = found.has('width') || found.has('height');
@@ -156,17 +156,17 @@ function endpoint(base: string, path: string): string {
 
 async function responseError(response: Response, label: string): Promise<ComfyUIError> {
   const text = (await response.text().catch(() => '')).trim();
-  return new ComfyUIError(`${label} (${response.status})${text ? `：${text.slice(0, 500)}` : ''}`, response.status);
+  return new ComfyUIError(`${label} (${response.status})${text ? `: ${text.slice(0, 500)}` : ''}`, response.status);
 }
 
 /**
- * 请求通道自动选择。策略:
- * 1. 浏览器直连优先(延迟最低,不占 ST 服务端);
- * 2. 仅当请求「根本没送达后端」的网络级失败(fetch TypeError:CORS 拦截/拒连/断网)时,
- *    回退到 ST 后端转发;
- * 3. HTTP 状态错误是服务端真实反馈,不重试——转发过去结果一样;
- * 4. 用户主动取消(AbortError)一律直接抛出。
- * 两个通道都通时「优先浏览器直连」天然成立:直连成功就不试转发,无需探测、无缓存过期问题。
+ * Automatic request-channel selection. Strategy:
+ * 1. direct browser connection first (lowest latency, does not load the ST server);
+ * 2. only on a network-level failure where the request "never reached the backend" (fetch TypeError: CORS block/connection refused/offline)
+ *    fall back to forwarding via the ST backend;
+ * 3. HTTP status errors are real server feedback and are not retried; forwarding would give the same result;
+ * 4. user cancellation (AbortError) is always rethrown directly.
+ * When both channels work, "prefer the direct connection" holds naturally: if direct succeeds, forwarding is never tried; no probing, no stale cache.
  */
 function isNetworkError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === 'AbortError') return false;
@@ -180,14 +180,14 @@ function requireContext() {
 }
 
 export interface ComfyTestResult {
-  /** 实际打通的通道:browser=浏览器直连;server=ST 后端转发 */
+  /** The channel that actually connected: browser = direct browser connection; server = forwarded via the ST backend */
   mode: 'browser' | 'server';
 }
 
 export async function testComfyConnection(conn: ComfyRunConn, signal?: AbortSignal): Promise<ComfyTestResult> {
   if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
 
-  // 浏览器直连优先;仅网络级失败(CORS/拒连)才回退 ST 后端转发
+  // Direct browser connection first; only network-level failures (CORS/connection refused) fall back to forwarding via the ST backend
   try {
     const response = await fetch(endpoint(conn.url, 'system_stats'), { signal });
     if (!response.ok) throw await responseError(response, 'Browser connection failed ComfyUI');
@@ -237,7 +237,7 @@ function executionError(item: unknown): string | null {
     .filter(message => Array.isArray(message) && message[0] === 'execution_error' && isObject(message[1]))
     .map(message => {
       const data = message[1] as JsonObject;
-      return `${String(data.node_type ?? 'node')} [${String(data.node_id ?? '?')}]：${String(data.exception_message ?? data.exception_type ?? 'Execution failed')}`;
+      return `${String(data.node_type ?? 'node')} [${String(data.node_id ?? '?')}]: ${String(data.exception_message ?? data.exception_type ?? 'Execution failed')}`;
     });
   return details.length ? details.join('\n') : 'ComfyUI Workflow execution failed';
 }
@@ -312,18 +312,18 @@ async function queueDirect(
   if (!queued.ok) throw await responseError(queued, 'ComfyUI rejected workflow');
   const queuedData = (await queued.json()) as { prompt_id?: unknown; node_errors?: unknown };
   if (typeof queuedData.prompt_id !== 'string' || !queuedData.prompt_id) {
-    throw new ComfyUIError(`ComfyUI did not return prompt_id${queuedData.node_errors ? `：${JSON.stringify(queuedData.node_errors).slice(0, 500)}` : ''}`);
+    throw new ComfyUIError(`ComfyUI did not return prompt_id${queuedData.node_errors ? `: ${JSON.stringify(queuedData.node_errors).slice(0, 500)}` : ''}`);
   }
   return queuedData.prompt_id;
 }
 
-/** GET /queue 的条目形如 [number, prompt_id, prompt, extra_data, outputs_to_execute]。 */
+/** GET /queue entries have the shape [number, prompt_id, prompt, extra_data, outputs_to_execute]. */
 type QueueEntry = [number, string, ...unknown[]];
 
 interface QueuePosition {
-  /** 任务正在执行。 */
+  /** The task is running. */
   running: boolean;
-  /** 前面还有几个任务;running 时为 0;任务已不在队列(执行完/被删)为 null。 */
+  /** How many tasks are ahead; 0 when running; null when the task is no longer in the queue (finished/removed). */
   ahead: number | null;
 }
 
@@ -332,11 +332,11 @@ function isQueueEntry(value: unknown): value is QueueEntry {
 }
 
 /**
- * 查任务在 ComfyUI 服务端队列里的位置。
- * 取不到/解析不了一律返回 null——排队位置只是展示信息,不值得中断出图(降级优先)。
+ * Looks up the task's position in the ComfyUI server queue.
+ * Anything unavailable or unparseable returns null: queue position is display-only and not worth interrupting generation (degrade first).
  *
- * 「前面几个」按优先级序号(条目 index 0)比较,不用数组下标:
- * queue_pending 是堆结构的原始快照,列表顺序不等于执行顺序。
+ * "How many ahead" compares the priority number (entry index 0), not the array index:
+ * queue_pending is a raw snapshot of a heap, so list order is not execution order.
  */
 async function fetchQueuePosition(
   conn: ComfyRunConn,
@@ -347,9 +347,9 @@ async function fetchQueuePosition(
     const response = await fetch(endpoint(conn.url, 'queue'), { signal });
     if (!response.ok) return null;
     const data = (await response.json()) as JsonObject;
-    // 两个键都必须是数组才算有效快照(空数组 = 队列真的空了,是有效信息)。
-    // 形状不对 = 响应不可信,按「位置未知」处理——不能当成「任务已结束」,
-    // 否则取消时会只发 delete,漏掉对正在跑的任务的中断。
+    // Both keys must be arrays for a valid snapshot (an empty array = the queue really is empty, which is valid information).
+    // Wrong shape = untrustworthy response; treat as "position unknown", never as "task finished",
+    // or cancelling would only send delete and miss interrupting the running task.
     if (!Array.isArray(data.queue_running) || !Array.isArray(data.queue_pending)) return null;
     const running = data.queue_running.filter(isQueueEntry);
     const pending = data.queue_pending.filter(isQueueEntry);
@@ -357,7 +357,7 @@ async function fetchQueuePosition(
     if (running.some(entry => entry[1] === promptId)) return { running: true, ahead: 0 };
     const mine = pending.find(entry => entry[1] === promptId);
     if (!mine) return { running: false, ahead: null };
-    // 正在执行的那个也算在前面
+    // The running task counts as ahead too
     const ahead = pending.filter(entry => entry[0] < mine[0]).length + running.length;
     return { running: false, ahead };
   } catch {
@@ -366,25 +366,25 @@ async function fetchQueuePosition(
 }
 
 /**
- * 取消一个已入队的任务。
+ * Cancels a queued task.
  *
- * 必须分情况——ComfyUI 的两个接口各管一段,用错了会取消到别人:
- * - 任务还在排队 → POST /queue {delete:[id]} 把它摘出队列;`/interrupt` 对它无效。
- * - 任务正在执行 → POST /interrupt 中断,并带上 prompt_id。
- * - 队列位置查不到(接口 502/解析失败,position=null):**两条都发**。
- *   delete 摘不到是无害空操作;interrupt 带 prompt_id,新版据此校验,只有确实在跑的
- *   才会被中断。若只发 delete,「正在跑但查不到位置」会漏中断、白烧 GPU 到跑完。
+ * Cases must be handled separately: ComfyUI's two endpoints each cover one stage, and using the wrong one can cancel someone else's task:
+ * - task still queued → POST /queue {delete:[id]} removes it from the queue; `/interrupt` has no effect on it.
+ * - task running → POST /interrupt to interrupt it, with prompt_id.
+ * - queue position unknown (endpoint 502/parse failure, position=null): **send both**.
+ *   A delete that finds nothing is a harmless no-op; interrupt carries prompt_id, which newer versions check, so only a task that really is running
+ *   gets interrupted. Sending only delete would miss "running but position unknown" and burn GPU until it finishes.
  *
- * 反过来若不查队列就无脑 /interrupt:并发出图时取消排在后面的任务,
- * 打断的会是正在跑的**别的**任务(旧版无视 body 里的 prompt_id,必现)。
+ * Conversely, a blind /interrupt without checking the queue: when generating concurrently, cancelling a task further back
+ * would interrupt **another** task that is running (old versions ignore prompt_id in the body; it always happens).
  *
- * 残留竞态(已知、可接受):查队列与发 interrupt 之间有一个往返,期间我们的任务可能刚跑完、
- * 下一个刚开始——此时旧版 ComfyUI(无视 prompt_id)会误伤下一个任务。
- * 带上 prompt_id 让新版免疫;旧版无法从客户端根治(没有「按 id 中断」的接口),
- * 故只在确认自己在跑时才发 interrupt,把窗口压到最小。
+ * Residual race (known, acceptable): there is one round trip between checking the queue and sending interrupt, during which our task may just finish
+ * and the next one start; then old ComfyUI (ignoring prompt_id) would hit the next task by mistake.
+ * Sending prompt_id makes new versions immune; old versions can't be fixed from the client (there is no "interrupt by id" endpoint),
+ * so interrupt is only sent once we've confirmed we are running, keeping the window as small as possible.
  */
 async function cancelPrompt(conn: ComfyRunConn, promptId: string): Promise<void> {
-  // 此处不传 signal:调用方的 signal 正是「已取消」本身,带上会让清理请求当场夭折。
+  // No signal here: the caller's signal is the cancellation itself, and passing it would abort the cleanup request on the spot.
   const position = await fetchQueuePosition(conn, promptId);
   const post = (path: string, body: JsonObject) =>
     fetch(endpoint(conn.url, path), {
@@ -399,22 +399,22 @@ async function cancelPrompt(conn: ComfyRunConn, promptId: string): Promise<void>
       return;
     }
     if (position) {
-      // 位置已确认:在排队(ahead>=0)或已结束(ahead=null),都只需摘队列
+      // Position confirmed: queued (ahead>=0) or finished (ahead=null); either way removing from the queue is enough
       await post('queue', { delete: [promptId] });
       return;
     }
-    // 位置未知:两条都发,谁生效算谁
+    // Position unknown: send both; whichever takes effect wins
     await Promise.allSettled([
       post('queue', { delete: [promptId] }),
       post('interrupt', { prompt_id: promptId }),
     ]);
   } catch {
-    /* 取消是尽力而为:网络失败就让它跑完,结果没人接收 */
+    /* Cancelling is best-effort: on network failure let it run to completion; nobody receives the result */
   }
 }
 
 export interface ComfyProgressHooks {
-  /** 排队位置变化:0=已在执行,n>0=前面还有 n 个,null=未知。 */
+  /** Queue position change: 0 = running, n>0 = n tasks ahead, null = unknown. */
   onQueue?(ahead: number | null): void;
 }
 
@@ -432,7 +432,7 @@ async function pollDirectResult(
   try {
     const startedAt = Date.now();
     let file: ComfyOutputFile | null = null;
-    // 一旦观察到自己在执行就不再查队列:位置信息已无意义,省掉每轮一次请求
+    // Once we see ourselves running, stop polling the queue: position no longer matters, saving one request per round
     let watchQueue = !!hooks?.onQueue;
     while (!file) {
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) throw new ComfyUIError('Timeout waiting for ComfyUI result (10 minutes)');
@@ -483,13 +483,13 @@ export async function generateComfyImage(
 ): Promise<ComfyImageResult> {
   if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
   if (!values.prompt.trim()) throw new ComfyUIError('Positive prompt word cannot be empty');
-  // 按方向取渠道配置里的尺寸;解析不出就传空,由 renderWorkflowTemplate 决定是报错还是无视
-  // (工作流没用 %width%/%height% 时,尺寸配错了也不该妨碍出图)
+  // Take the size for the orientation from the channel config; if it can't be parsed pass empty, and renderWorkflowTemplate decides between an error and ignoring it
+  // (when the workflow doesn't use %width%/%height%, a misconfigured size shouldn't stop generation)
   const size = values.width && values.height
     ? { width: values.width, height: values.height }
     : parseSize(pickSize(conn, values.size ?? 'portrait'));
-  // 两模式互斥的分叉点:simple 由模板组装(无占位符),custom 走宏渲染。
-  // 汇合点即「拿到可提交 JSON」,之后的排队/轮询/取消完全共用。
+  // Fork point of the two mutually exclusive modes: simple assembles from a template (no placeholders), custom uses macro rendering.
+  // The meeting point is "have a submittable JSON"; queueing/polling/cancelling after that is fully shared.
   let workflow: ComfyWorkflow;
   if (conn.mode === 'simple') {
     try {
@@ -508,8 +508,8 @@ export async function generateComfyImage(
     workflow = renderWorkflowTemplate(conn.workflow, { ...values, ...size });
   }
 
-  // 通道自动选择:浏览器直连优先;仅当请求根本没送达 ComfyUI(网络级失败)时回退 ST 后端转发。
-  // 回退只发生在「排队」之前——拿到 prompt_id 后任务已入队,轮询阶段的任何失败都不重发,避免重复生图。
+  // Automatic channel selection: direct browser connection first; only when the request never reached ComfyUI (network-level failure) does it fall back to forwarding via the ST backend.
+  // Fallback only happens before "queueing": once a prompt_id is returned the task is queued, and no failure in the polling phase resends it, avoiding duplicate images.
   let queued = false;
   try {
     const promptId = await queueDirect(conn, workflow, signal);

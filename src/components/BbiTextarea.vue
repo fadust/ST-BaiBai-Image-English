@@ -2,34 +2,34 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, useAttrs, watch } from 'vue';
 
 /**
- * 自适应高度 textarea(默认一行,内容超出按内容长高,封顶后内部滚动)。
+ * Auto-height textarea (one line by default, growing with content, scrolling internally once capped).
  *
- * 为什么做成组件:此前各页散装「textarea + v-autosize 指令 + 自配 max-height class」,
- * 口径不一还各有缺口。组件统一收口:
- * - 行数口径:props.rows 起始行、maxRows 封顶行,以 lineHeight 换算像素,
- *   不再让调用方自己写 max-height。
- * - v-model 按 Vue 原生 textarea 口径用 compositionstart/end 挡 IME 拼音串,
- *   这是指令版(v-autosize)没有的。
- * - ResizeObserver 监听自身宽度变化(窗口缩放/抽屉拖动)后重量,
- *   Book 那边窄窗口下手动拖宽后高度不回落就是漏了这个。
- * - focus()/insertAtCursor() 暴露给调用方(提示词弹窗的宏插入依赖光标操作)。
+ * Why a component: pages previously assembled "textarea + v-autosize directive + their own max-height class" ad hoc,
+ * with inconsistent rules and gaps in each. The component unifies it:
+ * - line rules: props.rows is the starting line count, maxRows the cap, converted to pixels via lineHeight,
+ *   so callers no longer write max-height themselves.
+ * - v-model follows Vue's native textarea behaviour, using compositionstart/end to hold back IME composition strings,
+ *   which the directive version (v-autosize) lacked.
+ * - a ResizeObserver re-measures after its own width changes (window resize/drawer drag);
+ *   BaiBai Book's height not shrinking after manually widening a narrow window was exactly this omission.
+ * - focus()/insertAtCursor() are exposed to callers (macro insertion in the prompt dialog relies on caret operations).
  *
- * 高度测量与指令版同思路:height 先归零再读 scrollHeight(归零是必须的,
- * 否则内容减少时 scrollHeight 不回落),写回时再夹在 [min,max] 之间。
- * 挂载/更新都等一帧再量,避免编辑回填时读到塌陷中的布局。
+ * Height measurement follows the directive version: set height to zero first, then read scrollHeight (zeroing is required,
+ * otherwise scrollHeight won't shrink when content is reduced), and clamp to [min,max] when writing back.
+ * Both mount and update wait one frame before measuring, avoiding reading a collapsing layout while an edit refills.
  */
 const props = withDefaults(
   defineProps<{
     modelValue: string;
-    /** 起始行数(空内容时的高度) */
+    /** Starting line count (height when empty) */
     rows?: number;
-    /** 封顶行数;超出后出现滚动条。默认 12 */
+    /** Maximum line count; a scrollbar appears beyond it. Default 12 */
     maxRows?: number;
-    /** 等宽字体(工作流 JSON / tag 串用) */
+    /** Monospace font (for workflow JSON / tag strings) */
     mono?: boolean;
-    /** 占位符 */
+    /** Placeholder */
     placeholder?: string;
-    /** 关闭拼写检查(tag/JSON 场景默认关;纯中文描述可开) */
+    /** Disable spell checking (off by default for tags/JSON; can be on for prose descriptions) */
     spellcheck?: boolean;
   }>(),
   { rows: 1, maxRows: 12, mono: false, placeholder: '', spellcheck: false },
@@ -37,11 +37,11 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>();
 
-// 透传 class/style(合并到根 textarea,保持 .bbi-input 等既有工具类可用)
+// Pass through class/style (merged onto the root textarea, keeping existing utility classes such as .bbi-input working)
 const attrs = useAttrs();
 
 const el = ref<HTMLTextAreaElement | null>(null);
-/** 单行像素高:mounted 后测一次;行数→像素换算的基准 */
+/** Pixel height of one line: measured once after mount; the basis for converting lines → pixels */
 let lineHeightPx = 21;
 
 const composing = ref(false);
@@ -54,7 +54,7 @@ function onCompositionStart() {
 }
 function onCompositionEnd(event: CompositionEvent) {
   composing.value = false;
-  // 兼容部分浏览器不触发 input 的口径:结束时统一以最终值回写一次
+  // For browsers that don't fire input in this case: write back the final value once when composition ends
   emit('update:modelValue', (event.target as HTMLTextAreaElement).value);
 }
 
@@ -62,7 +62,7 @@ function measure(): void {
   const node = el.value;
   if (!node) return;
   node.style.height = 'auto';
-  // scrollHeight 只含内容+上下 padding,box-sizing:border-box 时须补边框才是总占用高度
+  // scrollHeight only includes content + top/bottom padding; with box-sizing:border-box the borders must be added for the total height
   const content = node.scrollHeight;
   const style = window.getComputedStyle(node);
   const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
@@ -81,19 +81,19 @@ function setup() {
   lineHeightPx = parseFloat(style.lineHeight) || 21;
   ro?.disconnect();
   ro = new ResizeObserver(() => measure());
-  // 观察自身:宽度变化(拖动/缩放)时高度要跟着重排
+  // Observe itself: height must reflow when the width changes (drag/resize)
   ro.observe(node);
   requestAnimationFrame(() => measure());
 }
 
 defineExpose({
-  /** 聚焦 */
+  /** Focus */
   focus() {
     el.value?.focus();
   },
   /**
-   * 在光标处插入文本并选中;无焦点时追加到末尾。
-   * 用于宏按钮:返回插入后的光标位置,调用方如需移动光标再自行处理。
+   * Inserts text at the cursor and selects it; appends to the end when unfocused.
+   * Used by macro buttons: returns the cursor position after insertion; callers move the cursor themselves if needed.
    */
   insertAtCursor(text: string): void {
     const node = el.value;
@@ -114,9 +114,9 @@ defineExpose({
 });
 
 onMounted(setup);
-// rows/maxRows 变化时上下限变了,重新夹一次高度(模板编辑等场景会动态改)
+// When rows/maxRows change the bounds change, so clamp the height again (template editing and similar cases change them dynamically)
 watch(() => [props.rows, props.maxRows], () => requestAnimationFrame(() => measure()));
-// 程序化改值(弹窗回填草稿/恢复默认)不触发 input 事件,这里补量(输入路径重复量一次无害)
+// Programmatic value changes (the dialog refilling a draft/restoring defaults) don't fire the input event, so measure here too (measuring twice on the input path is harmless)
 watch(
   () => props.modelValue,
   () => requestAnimationFrame(() => measure()),

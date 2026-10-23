@@ -4,7 +4,7 @@ import Icon from '@/components/Icon.vue';
 import { settings } from '@/state/settings';
 import { ref } from 'vue';
 
-// 占位状态,功能接入后移到 settings.webui
+// Placeholder state; moves to settings.webui once the feature is wired up
 const hiresFix = ref(false);
 </script>
 

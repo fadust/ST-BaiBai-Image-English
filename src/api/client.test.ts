@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiChannel } from '@/state/settings';
 import { buildRequestBody, extractContent, readSseContent, requestCompletion } from './client';
 
-/** 历史层全部 mock 掉:这里要断的正是「什么时候记成功/失败」 */
+/** The history layer is all mocked: what is asserted here is exactly "when success/failure is recorded" */
 const h = vi.hoisted(() => ({
   beginLlm: vi.fn(() => 1),
   finishLlm: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock('@/state/history', () => ({
   finishLlm: h.finishLlm,
   failLlm: h.failLlm,
   patchLlmTokens: h.patchLlmTokens,
-  // 与真实实现同语义:吞异常返回 null
+  // Same semantics as the real implementation: swallows exceptions and returns null
   safeHistory: (fn: () => unknown) => {
     try {
       return fn();
@@ -51,13 +51,13 @@ const channel: ApiChannel = {
   reasoningEffort: '',
 };
 const messages = [{ role: 'user' as const, content: 'hi' }];
-/** 带 usage 的响应:避免触发 token 估算分支(那需要主界面分词器) */
+/** A response with usage: avoids triggering the token estimate branch (which needs the main UI's tokenizer) */
 const okPayload = {
   choices: [{ message: { role: 'assistant', content: '  答案文本  ' } }],
   usage: { prompt_tokens: 5, completion_tokens: 7 },
 };
 
-/** 造一个最小 Response,可读出给定 SSE 文本 */
+/** Builds a minimal Response that reads out the given SSE text */
 function sseResponse(text: string): Response {
   const bytes = new TextEncoder().encode(text);
   return new Response(
@@ -71,12 +71,12 @@ function sseResponse(text: string): Response {
   );
 }
 
-describe('buildRequestBody:思考强度与两条源分支', () => {
+describe('buildRequestBody: reasoning effort and the two source branches', () => {
   const msgs = [{ role: 'user' as const, content: 'hi' }];
   const build = (over: Partial<typeof channel> = {}) =>
     buildRequestBody({ ...channel, ...over }, msgs, 'https://api.example.com/v1', false);
 
-  it('未设思考强度 → 走 openai 源(除新增的 tool_choice 外,请求体与加功能前一致)', () => {
+  it('reasoning effort unset → openai source (apart from the added tool_choice, the request body is the same as before the feature)', () => {
     expect(build()).toEqual({
       chat_completion_source: 'openai',
       reverse_proxy: 'https://api.example.com/v1',
@@ -92,26 +92,26 @@ describe('buildRequestBody:思考强度与两条源分支', () => {
     });
   });
 
-  it('两条源分支都带 tool_choice:none(给防截断类 fetch 拦截器的放行握手)', () => {
-    // Kemini 等预设脚本拦截所有 /generate 请求,看到调用方自带 tool_choice 就放行,
-    // 不再注入合成工具 + 控制消息(否则生图 tag 会被拖慢甚至逼出重试)。
+  it('both source branches carry tool_choice:none (a pass-through handshake for anti-truncation fetch interceptors)', () => {
+    // Preset scripts like Kemini intercept every /generate request, and let it through when the caller brings its own tool_choice,
+    // no longer injecting a synthetic tool + control message (otherwise image tags would be slowed down or even forced into retries).
     expect(build().tool_choice).toBe('none');
     expect(build({ reasoningEffort: 'high' }).tool_choice).toBe('none');
-    // 若用户真想让第三方改写,可用 excludeParams 删掉它
+    // If the user really wants a third party to rewrite it, excludeParams can delete it
     expect(build({ excludeParams: ['tool_choice'] }).tool_choice).toBeUndefined();
   });
 
-  it('设了思考强度 → 切 custom 源,并经 custom_include_body 透传', () => {
+  it('reasoning effort set → switches to the custom source, passed through via custom_include_body', () => {
     const body = build({ reasoningEffort: 'high' });
     expect(body.chat_completion_source).toBe('custom');
     expect(body.custom_url).toBe('https://api.example.com/v1');
-    // 顶层不发 reasoning_effort:openai/custom 源都卡模型名白名单,
-    // 模型名恰好命中时会覆盖掉我们真正想发的值
+    // reasoning_effort isn't sent at the top level: both the openai/custom sources gate on a model-name allowlist,
+    // and when the model name happens to match, it would overwrite the value we actually want to send
     expect(body.reasoning_effort).toBeUndefined();
     expect(JSON.parse(body.custom_include_body as string)).toEqual({ reasoning_effort: 'high' });
   });
 
-  it('custom 源必须靠 header 带 key:proxy_password 在该源下不被读取', () => {
+  it('the custom source must carry the key via header: proxy_password is not read under that source', () => {
     const body = build({ reasoningEffort: 'high' });
     expect(body.proxy_password).toBeUndefined();
     expect(JSON.parse(body.custom_include_headers as string)).toEqual({
@@ -119,24 +119,24 @@ describe('buildRequestBody:思考强度与两条源分支', () => {
     });
   });
 
-  it('key 含 YAML 元字符时仍能安全注入(靠 JSON.stringify 转义)', () => {
-    // 手拼 YAML 会在这类 key 上解析失败;而 ST 的 mergeObjectWithYaml 是静默忽略,
-    // header 注入失败 → 退回读 ST 自己的 Custom 密钥 → 可能把别家的 key 发到本端点。
+  it('keys containing YAML metacharacters are still injected safely (escaped via JSON.stringify)', () => {
+    // Hand-built YAML would fail to parse on such keys, and ST's mergeObjectWithYaml silently ignores the failure;
+    // header injection fails → falls back to ST's own Custom key → may send someone else's key to this endpoint.
     const nasty = 'sk-a:b#c{d}e*f "g"';
     const body = build({ reasoningEffort: 'high', key: nasty });
     expect(JSON.parse(body.custom_include_headers as string).Authorization).toBe(`Bearer ${nasty}`);
   });
 
-  it('空白字符串视同未设(不误切 custom 源)', () => {
+  it('blank strings count as unset (no mistaken switch to the custom source)', () => {
     expect(build({ reasoningEffort: '   ' }).chat_completion_source).toBe('openai');
   });
 
-  it('取值不做白名单:非常规值原样透传', () => {
+  it('values are not allowlisted: unusual values pass through as-is', () => {
     const body = build({ reasoningEffort: '我自己的档位' });
     expect(JSON.parse(body.custom_include_body as string).reasoning_effort).toBe('我自己的档位');
   });
 
-  it('excludeParams 在两条分支下都照常生效', () => {
+  it('excludeParams works as usual under both branches', () => {
     expect(build({ excludeParams: ['temperature'] }).temperature).toBeUndefined();
     expect(
       build({ excludeParams: ['temperature'], reasoningEffort: 'high' }).temperature,
@@ -144,30 +144,30 @@ describe('buildRequestBody:思考强度与两条源分支', () => {
   });
 });
 
-describe('extractContent:标准响应', () => {
-  it('message.content 正常提取', () => {
+describe('extractContent: standard response', () => {
+  it('message.content extracted normally', () => {
     const data = { choices: [{ message: { role: 'assistant', content: 'hello' } }] };
     expect(extractContent(data)).toBe('hello');
   });
 
-  it('兼容 choices[0].text 与顶层 content', () => {
+  it('compatible with choices[0].text and top-level content', () => {
     expect(extractContent({ choices: [{ text: 'legacy' }] })).toBe('legacy');
     expect(extractContent({ content: 'top-level' })).toBe('top-level');
   });
 
-  it('content 为 content-parts 数组时拼接各段 text', () => {
+  it('content as a content-parts array joins each part text', () => {
     const data = { choices: [{ message: { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] } }] };
     expect(extractContent(data)).toBe('ab');
   });
 
-  it('content 为 null 时返回空串而非抛错', () => {
+  it('content null returns an empty string instead of throwing', () => {
     const data = { choices: [{ message: { role: 'assistant', content: null, refusal: null } }] };
     expect(extractContent(data)).toBe('');
   });
 });
 
-describe('extractContent:推理模型把答案塞进 reasoning', () => {
-  it('content 为空时回退 reasoning', () => {
+describe('extractContent: reasoning models put the answer in reasoning', () => {
+  it('empty content falls back to reasoning', () => {
     const data = {
       choices: [{
         message: {
@@ -180,7 +180,7 @@ describe('extractContent:推理模型把答案塞进 reasoning', () => {
     expect(extractContent(data)).toContain('"images"');
   });
 
-  it('content 为空时回退 reasoning_content(DeepSeek 标准字段)', () => {
+  it('empty content falls back to reasoning_content (the DeepSeek standard field)', () => {
     const data = {
       choices: [{
         message: { role: 'assistant', content: null, reasoning_content: '答案在里' },
@@ -189,12 +189,12 @@ describe('extractContent:推理模型把答案塞进 reasoning', () => {
     expect(extractContent(data)).toBe('答案在里');
   });
 
-  it('content 为空时回退 thinking', () => {
+  it('empty content falls back to thinking', () => {
     const data = { choices: [{ message: { content: null, thinking: 'via thinking' } }] };
     expect(extractContent(data)).toBe('via thinking');
   });
 
-  it('content 非空时绝不混入 reasoning', () => {
+  it('non-empty content never mixes in reasoning', () => {
     const data = {
       choices: [{
         message: { role: 'assistant', content: 'final answer', reasoning: 'chain of thought' },
@@ -204,8 +204,8 @@ describe('extractContent:推理模型把答案塞进 reasoning', () => {
   });
 });
 
-describe('readSseContent:流式', () => {
-  it('拼接 delta.content', async () => {
+describe('readSseContent: streaming', () => {
+  it('joins delta.content', async () => {
     const sse = [
       'data: {"choices":[{"delta":{"content":"Hel"}}]}',
       'data: {"choices":[{"delta":{"content":"lo"}}]}',
@@ -215,7 +215,7 @@ describe('readSseContent:流式', () => {
     await expect(readSseContent(sseResponse(sse))).resolves.toBe('Hello');
   });
 
-  it('content 全空时回退拼接 reasoning 增量', async () => {
+  it('all-empty content falls back to joining reasoning deltas', async () => {
     const sse = [
       'data: {"choices":[{"delta":{"reasoning":"思考"}}]}',
       'data: {"choices":[{"delta":{"reasoning_content":"…{\\"images\\":[]}"}}]}',
@@ -226,7 +226,7 @@ describe('readSseContent:流式', () => {
     await expect(readSseContent(sseResponse(sse))).resolves.toContain('"images"');
   });
 
-  it('content 出现后忽略 reasoning,不拼接', async () => {
+  it('once content appears, reasoning is ignored and not joined', async () => {
     const sse = [
       'data: {"choices":[{"delta":{"reasoning":"先想"}}]}',
       'data: {"choices":[{"delta":{"content":"答案"}}]}',
@@ -238,7 +238,7 @@ describe('readSseContent:流式', () => {
   });
 });
 
-describe('validate:历史「成功」= 调用方验收通过', () => {
+describe('validate: history success = the caller acceptance passed', () => {
   beforeEach(() => {
     h.beginLlm.mockClear();
     h.finishLlm.mockClear();
@@ -246,25 +246,25 @@ describe('validate:历史「成功」= 调用方验收通过', () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(okPayload)));
   });
 
-  it('验收通过 → 返回文本,历史记成功', async () => {
+  it('acceptance passed → returns the text, history records success', async () => {
     const seen: string[] = [];
     const text = await requestCompletion(channel, messages, {
       validate: raw => seen.push(raw),
     });
     expect(text).toBe('答案文本');
-    expect(seen).toEqual(['答案文本']); // validate 拿到的是提取后的正文
+    expect(seen).toEqual(['答案文本']); // validate gets the extracted body text
     expect(h.finishLlm).toHaveBeenCalledTimes(1);
     expect(h.failLlm).not.toHaveBeenCalled();
   });
 
-  it('不传 validate → 维持旧行为:拿到文本即记成功', async () => {
+  it('without validate → keeps the old behaviour: getting text records success', async () => {
     await expect(requestCompletion(channel, messages)).resolves.toBe('答案文本');
     expect(h.finishLlm).toHaveBeenCalledTimes(1);
   });
 
-  it('验收抛错 → 请求按失败抛出,历史记失败而非成功', async () => {
-    // 这是「HTTP 成功但协议解析不过」的场景:必须 failLlm,否则重试会在历史里
-    // 留下两条绿色成功记录,看历史的人会误以为成功也重复调用。
+  it('acceptance throws → the request throws as a failure, history records failure not success', async () => {
+    // This is the "HTTP succeeded but the protocol didn't parse" case: it must failLlm, otherwise retries would leave
+    // two green success records in history, and anyone reading it would think it succeeded yet was called twice.
     await expect(
       requestCompletion(channel, messages, {
         validate: () => {
@@ -276,7 +276,7 @@ describe('validate:历史「成功」= 调用方验收通过', () => {
     expect(h.failLlm).toHaveBeenCalledWith(1, '协议不合法', false);
   });
 
-  it('HTTP 失败时 validate 根本不该被调用', async () => {
+  it('validate must never be called when HTTP fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('boom', { status: 500 })),

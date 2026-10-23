@@ -1,15 +1,15 @@
 /**
- * 限并发的 map。图库按批发 HEAD 探体积、批量删图时都要用:
- * 一个角色目录几十张图,`Promise.all` 一把梭会把几十个请求同时压给 ST,
- * 公网连接下先把自己的聊天卡住。
+ * Concurrency-limited map. Used by the gallery's batched HEAD size probes and bulk deletes:
+ * a character folder holds dozens of images, and a single `Promise.all` would fire dozens of requests at ST at once,
+ * stalling your own chat first on a remote connection.
  */
 
 /**
- * 并发不超过 limit 地映射,**返回顺序与输入一致**(不是完成顺序)。
+ * Maps with at most `limit` in flight; **results keep input order** (not completion order).
  *
- * `fn` 抛出会让整体 reject(标准 Promise.all 语义),但已启动的其余任务不会被叫停——
- * 故批量删除这类「要容忍单条失败」的场景,请在 `fn` 内部自行 try/catch 并返回结果对象,
- * 不要依赖本函数做部分失败处理。
+ * If `fn` throws, the whole call rejects (standard Promise.all semantics), but already-started tasks are not cancelled.
+ * So for cases that must tolerate single failures, such as bulk deletes, try/catch inside `fn` and return a result object;
+ * do not rely on this function for partial-failure handling.
  */
 export async function mapLimit<T, R>(
   items: readonly T[],
@@ -20,7 +20,7 @@ export async function mapLimit<T, R>(
   if (!items.length) return results;
   const width = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
   let cursor = 0;
-  // 每个 worker 自取下一个未领的下标:比切片分组更均衡(慢任务不会拖住整片)
+  // Each worker claims the next unclaimed index itself: more even than slicing into chunks (a slow task cannot hold up a whole slice)
   const worker = async (): Promise<void> => {
     for (;;) {
       const index = cursor++;

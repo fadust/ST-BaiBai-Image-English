@@ -1,13 +1,13 @@
 import { getContext } from '@/st/context';
 
 /**
- * ST 图片存储（user/images）的上传/删除/列举封装,对应服务端 /api/images/*。
+ * Upload/delete/list wrappers for ST image storage (user/images), matching the server's /api/images/*.
  *
- * 与 floor/upload.ts 的 /api/files/* 分工:files 是平铺目录、无子目录概念;
- * images 支持 ch_name 子目录(服务端 ensureDirectoryExistence 自动递归创建),
- * 故按「文件夹」归类的资源(画师串预览图、聊天生成图片)走这里。
+ * Division with /api/files/* in floor/upload.ts: files is a flat folder without subfolders;
+ * images supports ch_name subfolders (created recursively by the server's ensureDirectoryExistence),
+ * so resources grouped by "folder" (artist-string previews, generated chat images) go here.
  *
- * 返回的路径形如 /user/images/<文件夹>/<文件名>,可直接作 <img src>。
+ * Returned paths look like /user/images/<folder>/<file name> and can be used directly as <img src>.
  */
 
 export class ImageStoreError extends Error {
@@ -18,9 +18,9 @@ export class ImageStoreError extends Error {
 }
 
 /**
- * 画师串预览图的固定子目录(user/images 下)。
- * 常量名:CJK + 下划线经服务端 sanitize-filename 原样保留。
- * 动态角色目录名也由上传接口清洗，无需额外请求 sanitize-filename。
+ * Fixed subfolder for artist-string preview images (under user/images).
+ * Constant name: CJK + underscore survive the server's sanitize-filename unchanged.
+ * Dynamic character folder names are also sanitised by the upload endpoint, so no extra sanitize-filename request is needed.
  */
 export const ARTIST_PREVIEW_FOLDER = '柏宝绘_画师串';
 
@@ -40,10 +40,10 @@ async function postImage(
 }
 
 /**
- * 上传 base64 图片到 user/images/<folder>/,返回可访问的相对路径(/user/images/...)。
+ * Uploads a base64 image to user/images/<folder>/ and returns an accessible relative path (/user/images/...).
  *
- * filename 可带扩展名,服务端统一替换为 format;同名静默覆盖——
- * 调用方用稳定文件名(如画师串 id)即可让「换预览图」原地覆盖,不攒孤儿文件。
+ * filename may carry an extension; the server replaces it with format. Same names are silently overwritten,
+ * so callers using a stable file name (such as the artist-string id) get "change preview image" overwriting in place without piling up orphan files.
  */
 export async function uploadUserImage(
   folder: string,
@@ -59,7 +59,7 @@ export async function uploadUserImage(
   });
   if (!ok) {
     throw new ImageStoreError(
-      `Image upload failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Image upload failed (${status})${text ? `: ${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -68,7 +68,7 @@ export async function uploadUserImage(
     const parsed = JSON.parse(text) as { path?: unknown };
     if (typeof parsed.path === 'string') path = parsed.path;
   } catch {
-    /* 响应不是 JSON,落到下方统一报错 */
+    /* Response is not JSON; falls through to the shared error below */
   }
   if (!path) throw new ImageStoreError('Image upload failed: The server did not return the path.');
   return path;
@@ -84,16 +84,16 @@ function parseJsonArray(text: string): unknown[] {
 }
 
 /**
- * 列出 user/images 下的一级子目录名(图库按角色分组的唯一名字来源)。
+ * Lists first-level subfolder names under user/images (the gallery's only source of names for grouping by character).
  *
- * 落盘文件名里的角色名是哈希(见 floor/storage.ts imageFileName),可读名只能从目录名还原,
- * 故图库必须先取目录、再逐目录列图,不能反过来从文件名推。
+ * The character name in saved file names is a hash (see imageFileName in floor/storage.ts); the readable name can only be recovered from the folder name,
+ * so the gallery must fetch folders first and then list images per folder, never the other way round from file names.
  */
 export async function listUserImageFolders(): Promise<string[]> {
   const { ok, status, text } = await postImage('/api/images/folders', {});
   if (!ok) {
     throw new ImageStoreError(
-      `Failed to read image directory (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Failed to read image directory (${status})${text ? `: ${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -101,10 +101,10 @@ export async function listUserImageFolders(): Promise<string[]> {
 }
 
 /**
- * 列出某个目录下的图片文件名(仅文件名,不含路径),返回顺序即服务端排序结果。
+ * Lists image file names in a folder (names only, no path), in the server's sort order.
  *
- * ⚠ 服务端对不存在的目录会 mkdir 递归创建(images.js /list),故只能拿
- * listUserImageFolders() 的结果去列——凭空猜目录名会在 user/images 下攒出空文件夹。
+ * ⚠ The server creates nonexistent folders recursively with mkdir (images.js /list), so only list folders
+ * returned by listUserImageFolders(); guessing folder names would pile up empty folders under user/images.
  */
 export async function listUserImages(
   folder: string,
@@ -117,7 +117,7 @@ export async function listUserImages(
   });
   if (!ok) {
     throw new ImageStoreError(
-      `Failed to read image list (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+      `Failed to read image list (${status})${text ? `: ${text.slice(0, 300)}` : ''}`,
       status,
     );
   }
@@ -125,22 +125,22 @@ export async function listUserImages(
 }
 
 /**
- * 探一张图的存在性与体积:HEAD 静态路由取 Content-Length,不下载图片本身。
+ * Probes an image's existence and size: HEAD on the static route reads Content-Length without downloading the image.
  *
- * 为什么非 HEAD 不可:`/api/images/list` **只返回文件名**,既无 size 也无 mtime
- * (服务端 util.js getImages 只 map 出 dirent.name),而图库要显示体积、卡片要判断
- * 「这张图是不是真没了」,都只能逐张问。实测 HEAD 走 users.js 的 createRouteHandler →
- * res.sendFile,响应 1~2ms 且无 body,比列表接口改造便宜得多。
+ * Why it must be HEAD: `/api/images/list` **returns only file names**, with neither size nor mtime
+ * (the server's util.js getImages only maps dirent.name), while the gallery must show sizes and cards must decide
+ * "is this image really gone"; both can only ask image by image. Measured: HEAD goes through users.js createRouteHandler →
+ * res.sendFile, responds in 1~2ms with no body, far cheaper than reworking the list endpoint.
  *
- * 走裸 fetch 不带 headers——静态路由不需要鉴权头(与 backends/vibeStore.ts loadVibeData 同款)。
+ * Uses a bare fetch without headers: static routes need no auth headers (same as loadVibeData in backends/vibeStore.ts).
  *
- * 返回值刻意三分:
- * - `{ exists: true, size }`   文件在,size 为字节数(缺 Content-Length 时为 null);
- * - `{ exists: false }`        服务端明确说没有(404);
- * - `null`                     **分不清**(网络错误/超时/5xx)。
+ * The return value is deliberately three-way:
+ * - `{ exists: true, size }`   file exists; size in bytes (null if Content-Length is missing);
+ * - `{ exists: false }`        the server explicitly says it doesn't exist (404);
+ * - `null`                     **can't tell** (network error/timeout/5xx).
  *
- * 第三态是关键:卡片凭它决定要不要把图标记成「已删除」。把一次掉线当成删除,
- * 会让用户网一抖就看见满屏「文件已删除」。
+ * The third state is key: cards rely on it to decide whether to mark the image "deleted". Treating one disconnect as a deletion
+ * would show users a screen full of "file deleted" on every network blip.
  */
 export async function probeUserImage(
   path: string,
@@ -152,8 +152,8 @@ export async function probeUserImage(
     const response = await fetch(path, { method: 'HEAD', signal: controller.signal });
     if (response.status === 404) return { exists: false };
     if (!response.ok) return null;
-    // 必须先判空再转数字:header 缺失时 get() 返回 null,而 `Number(null)` 是 **0** 不是 NaN,
-    // 直接转会把「不知道多大」谎报成「0 字节」,分组体积凭空少算一张。
+    // Check for null before converting to a number: when the header is missing get() returns null, and `Number(null)` is **0**, not NaN;
+    // converting directly would misreport "size unknown" as "0 bytes", undercounting a group's size by one image.
     const raw = response.headers.get('content-length');
     const length = raw === null || raw.trim() === '' ? NaN : Number(raw);
     return { exists: true, size: Number.isFinite(length) && length >= 0 ? length : null };
@@ -164,13 +164,13 @@ export async function probeUserImage(
   }
 }
 
-/** 删除 user/images 下的图片。返回 false 表示文件本就不存在(无需清理)。 */
+/** Deletes an image under user/images. Returns false if the file did not exist (nothing to clean up). */
 export async function deleteUserImage(path: string): Promise<boolean> {
   const { ok, status, text } = await postImage('/api/images/delete', { path });
   if (ok) return true;
   if (status === 404) return false;
   throw new ImageStoreError(
-    `Image deletion failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`,
+    `Image deletion failed (${status})${text ? `: ${text.slice(0, 300)}` : ''}`,
     status,
   );
 }

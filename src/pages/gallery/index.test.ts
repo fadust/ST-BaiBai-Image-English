@@ -125,7 +125,7 @@ const prefix = '\u67cf\u5b9d\u7ed8_';
 const alpha = `${prefix}Alpha`;
 const beta = `${prefix}Beta`;
 const expandedKey = 'bbi.ui.galleryExpanded.v1';
-/** 删除调用要的是归一化 key（解码、无前导斜杠），与组件 image.key、markImagesMissing 同一口径；<img> 用的编码 src 是另一回事（见 imageSrc）。 */
+/** The delete call wants the normalised key (decoded, no leading slash), the same rule as the component's image.key and markImagesMissing; the encoded src for <img> is another matter (see imageSrc). */
 const keyOf = (folder: string, file: string) => `user/images/${folder}/${file}`;
 let stored: Map<string, string>;
 let app: ReturnType<typeof renderer.createApp> | undefined;
@@ -152,7 +152,7 @@ beforeEach(() => {
   vi.mocked(listUserImages).mockImplementation(async folder =>
     Array.from({ length: folder === alpha ? 53 : 5 }, (_, i) => `image-${i}.png`),
   );
-  // 默认每张 1 KB:体积相关断言用得上,其余用例无副作用
+  // 1 KB per image by default: useful for size assertions, with no side effects on the other cases
   vi.mocked(probeUserImage).mockResolvedValue({ exists: true, size: 1024 });
   vi.mocked(deleteImageFileOnly).mockResolvedValue(undefined);
   vi.mocked(confirmDialog).mockResolvedValue(true);
@@ -171,7 +171,7 @@ describe('gallery on-demand rendering', () => {
     const root = await mount();
     expect(find(root, '.gal-fold-trigger').map(head => head.props['aria-expanded'])).toEqual([false, false]);
     expect(find(root, 'img')).toHaveLength(0);
-    // 折叠容器本身常驻(高度过渡要有 0fr 起点),但没展开过的组不渲染任何内容
+    // The fold container itself is permanent (the height transition needs a 0fr starting point), but groups never expanded render no content
     expect(find(root, '.gal-fold-wrap')).toHaveLength(2);
     expect(find(root, '.gal-fold-body')).toHaveLength(0);
   });
@@ -189,8 +189,8 @@ describe('gallery on-demand rendering', () => {
     expect(find(root, 'img')).toHaveLength(53);
     expect(find(root, '.gal-more')).toHaveLength(0);
 
-    // 收起只把高度归零,<img> 必须留在 DOM 里:重挂一次就是一张图一个网络往返
-    // (/user/images 不带 maxAge,Firefox 更是 no-store),公网连 ST 时会白屏一拍。
+    // Collapsing only zeroes the height; the <img> must stay in the DOM: each remount is one network round trip per image
+    // (/user/images has no maxAge, and Firefox is even no-store), so over the public internet to ST it would flash white.
     await click(alphaHead);
     expect(find(root, '.gal-fold-wrap')[0].props.class).toContain('is-collapsed');
     expect(find(root, 'img')).toHaveLength(53);
@@ -249,30 +249,30 @@ describe('gallery on-demand rendering', () => {
   });
 });
 
-// 体积统计暂时禁用:作者不满意「逐张 HEAD 读 Content-Length」的方案(见 index.vue 的 load())。
-// 以下用例原样保留,恢复 measureSizes 调用时去掉 .skip 即可。
+// Size statistics are disabled for now: the author is unhappy with the "one HEAD per image to read Content-Length" approach (see load() in index.vue).
+// The cases below are kept as-is; when restoring the measureSizes call, just remove .skip.
 describe.skip('gallery size readout', () => {
   it('sums measured bytes per group and in total, sizing every image including unrendered ones', async () => {
     const root = await mount();
-    // 58 张全都量过(懒加载只是渲染策略,体积统计必须覆盖整组,否则角标随下拉往上跳)
+    // All 58 measured (lazy loading is only a rendering strategy; size statistics must cover the whole group, otherwise the badge jumps up as you scroll)
     expect(vi.mocked(probeUserImage)).toHaveBeenCalledTimes(58);
     expect(find(root, '.gal-size').map(text)).toEqual(['53 KB', '5.0 KB']);
     expect(text(find(root, '.gal-count')[0])).toContain('58 KB');
-    // 量全了就不带「≥」,也不再显示「还在量」的加号
+    // Fully measured, so no "≥", and no more "still measuring" plus sign
     expect(find(root, '.gal-size').some(span => text(span).includes('≥'))).toBe(false);
     expect(find(root, '.gal-measuring')).toHaveLength(0);
   });
 
   it('marks partial sums with ≥ and never counts an unmeasurable file as zero', async () => {
-    // 探不到大小的那些(HEAD 失败 / 缺 Content-Length)一律不计入,而不是当 0 字节累加:
-    // 谎报 0 会让「量不到」看起来像「量到了,就是空的」。
+    // Those whose size can't be probed (HEAD failed / missing Content-Length) are never counted, rather than added as 0 bytes:
+    // falsely reporting 0 would make "couldn't measure" look like "measured, and it's empty".
     vi.mocked(probeUserImage).mockImplementation(async src =>
       src.includes(encodeURIComponent(alpha))
         ? (src.endsWith('image-0.png') ? { exists: true, size: 2048 } : null)
         : { exists: true, size: null },
     );
     const root = await mount();
-    // Alpha 只量出一张 → 带 ≥;Beta 一张都没量出来 → 整个角标不显示(而非 0 B)
+    // Alpha measured only one → carries ≥; Beta measured none → the whole badge isn't shown (rather than 0 B)
     expect(find(root, '.gal-size').map(text)).toEqual(['≥ 2.0 KB']);
     expect(text(find(root, '.gal-count')[0])).toContain('2.0 KB');
   });
@@ -285,7 +285,7 @@ describe.skip('gallery size readout', () => {
     );
     await click(find(root, '.gal-icon-btn')[0]);
     await flush();
-    // 只有新增的那一张要量
+    // Only the one new image needs measuring
     expect(vi.mocked(probeUserImage)).toHaveBeenCalledTimes(59);
     expect(find(root, '.gal-size').map(text)).toEqual(['54 KB', '5.0 KB']);
   });
@@ -294,12 +294,12 @@ describe.skip('gallery size readout', () => {
 describe('gallery size readout disabled', () => {
   it('issues no HEAD probes and renders no size UI', async () => {
     const root = await mount();
-    // 进页零体积探测;刷新也不该冒出来——请求数随图库线性增长正是暂时停用它的原因
+    // Zero size probes on entering the page; none should appear on refresh either; request count growing linearly with the gallery is exactly why it is paused
     expect(vi.mocked(probeUserImage)).not.toHaveBeenCalled();
     await click(find(root, '.gal-icon-btn')[0]);
     await flush();
     expect(vi.mocked(probeUserImage)).not.toHaveBeenCalled();
-    // 分组角标、总计体积、测量中的「+」一律不出现
+    // Group badges, total size and the measuring "+" never appear
     expect(find(root, '.gal-size')).toHaveLength(0);
     expect(find(root, '.gal-measuring')).toHaveLength(0);
     expect(text(find(root, '.gal-count')[0])).not.toContain('KB');
@@ -307,7 +307,7 @@ describe('gallery size readout disabled', () => {
 });
 
 describe('gallery multi-select delete', () => {
-  /** 进入选择态并展开 Alpha。 */
+  /** Enter selection mode and expand Alpha. */
   async function selectMode(): Promise<TestNode> {
     const root = await mount();
     await click(find(root, '.gal-select-toggle')[0]);
@@ -326,7 +326,7 @@ describe('gallery multi-select delete', () => {
     await click(find(root, '.gal-select-toggle')[0]);
     await click(find(root, '.gal-thumb')[0]);
     await flush();
-    // 选择态下点图只勾选,不再放大
+    // In selection mode clicking an image only ticks it, no longer enlarging
     expect(vi.mocked(openLightbox)).toHaveBeenCalledTimes(1);
     expect(find(root, '.gal-thumb')[0].props.class).toContain('is-selected');
     expect(text(find(root, '.gal-actionbar-count')[0])).toContain('1');
@@ -336,7 +336,7 @@ describe('gallery multi-select delete', () => {
     const root = await selectMode();
     await click(find(root, '.gal-thumb')[0]);
     await click(find(root, '.gal-thumb')[2]);
-    // 先把 Alpha 翻到第二批:删除后不能把用户翻出来的批次重置回 24 张
+    // First page Alpha to the second batch: deletion must not reset the batches the user paged out back to 24 images
     await click(find(root, '.gal-more')[0]);
     expect(find(root, 'img')).toHaveLength(48);
 
@@ -348,18 +348,18 @@ describe('gallery multi-select delete', () => {
       keyOf(alpha, 'image-0.png'),
       keyOf(alpha, 'image-2.png'),
     ]);
-    // 就地摘除:53 → 51,且没有重新拉目录(重新 load 会把展开态和批次全重置)
+    // Removed in place: 53 → 51, with no refetch of the folder (reloading would reset the expanded state and batches)
     expect(vi.mocked(listUserImages)).toHaveBeenCalledTimes(2);
     expect(find(root, '.gal-badge').map(text)).toEqual(['51', '5']);
-    // 已显示张数(48)不变,后面的图往前补位——删两张不该让用户重新往下翻
+    // The shown count (48) is unchanged and later images move up to fill in; deleting two shouldn't make the user scroll down again
     expect(find(root, 'img')).toHaveLength(48);
     expect(text(find(root, '.gal-count')[0])).toContain('56 images');
-    // 体积显示已暂时禁用(见 load()):删除后就地渲染的列表里也不该出现任何体积角标
+    // Size display is disabled for now (see load()): no size badge should appear in the list rendered in place after deletion either
     expect(find(root, '.gal-size')).toHaveLength(0);
-    // 楼层卡片据此立刻降级,不必等它自己 404
+    // Floor cards degrade immediately from this, without waiting for their own 404
     expect(isImageMissing(`user/images/${alpha}/image-0.png`)).toBe(true);
     expect(isImageMissing(`user/images/${alpha}/image-1.png`)).toBe(false);
-    // 选中项清空后自动退出选择态
+    // Selection mode exits automatically once selections are cleared
     expect(find(root, '.gal-actionbar')).toHaveLength(0);
   });
 
@@ -367,13 +367,13 @@ describe('gallery multi-select delete', () => {
     const root = await selectMode();
     expect(find(root, 'img')).toHaveLength(24);
     await change(find(root, '.gal-group-check')[0].children[0]);
-    // 懒加载只渲染了 24 张,但「全选这个角色」指的是这个角色的全部 53 张
+    // Lazy loading rendered only 24 images, but "select all of this character" means all 53 of this character's images
     expect(text(find(root, '.gal-actionbar-count')[0])).toContain('53');
 
     await click(find(root, '.bbi-btn-danger')[0]);
     await flush();
     expect(vi.mocked(deleteImageFileOnly)).toHaveBeenCalledTimes(53);
-    // 删空的分组整组消失
+    // Groups deleted until empty vanish entirely
     expect(find(root, '.gal-fold-trigger')).toHaveLength(1);
     expect(text(find(root, '.gal-count')[0])).toContain('1 characters');
   });
@@ -385,7 +385,7 @@ describe('gallery multi-select delete', () => {
     await click(find(root, '.bbi-btn-danger')[0]);
     await flush();
     expect(vi.mocked(deleteImageFileOnly)).not.toHaveBeenCalled();
-    // 取消不该顺手把选中项清掉:用户多半是想再核对一遍
+    // Cancelling shouldn't clear the selections along the way: the user most likely wants to check again
     expect(text(find(root, '.gal-actionbar-count')[0])).toContain('1');
     expect(find(root, '.gal-badge').map(text)).toEqual(['53', '5']);
   });
@@ -400,7 +400,7 @@ describe('gallery multi-select delete', () => {
     await click(find(root, '.bbi-btn-danger')[0]);
     await flush();
 
-    // 成功的摘掉、失败的留在列表里且仍勾着,用户可以直接重试
+    // Successes are removed; failures stay in the list still ticked, so the user can retry directly
     expect(find(root, '.gal-badge').map(text)).toEqual(['52', '5']);
     expect(isImageMissing(`user/images/${alpha}/image-0.png`)).toBe(true);
     expect(isImageMissing(`user/images/${alpha}/image-1.png`)).toBe(false);
@@ -414,14 +414,14 @@ describe('gallery multi-select delete', () => {
     await click(find(root, '.gal-thumb')[0]);
     await click(find(root, '.gal-select-toggle')[0]);
     await click(find(root, '.gal-select-toggle')[0]);
-    // 留着上次的选中项,下次进来会对着一批不记得为何选中的图按删除
+    // Keeping last time's selections would mean next time pressing delete on a batch of images nobody remembers selecting
     expect(text(find(root, '.gal-actionbar-count')[0])).toContain('0');
     expect(find(root, '.gal-thumb')[0].props.class).not.toContain('is-selected');
   });
 
   it('puts the action bar right below the toolbar, not after the (possibly very long) list', async () => {
-    // 呼出它的「选择」钮在工具条里。操作条若摆在列表末尾,角色多时按下去屏幕上什么都不动,
-    // 像没生效;吸顶则一按就看见。这条锁的是顺序——CSS 的 sticky 单测看不见,但 DOM 顺序看得见。
+    // The "Select" button that summons it is in the toolbar. If the action bar sat at the end of the list, with many characters pressing it would change nothing on screen,
+    // looking ineffective; sticky at the top, it is visible the moment it's pressed. This locks down the order: unit tests can't see CSS sticky, but they can see DOM order.
     const root = await mount();
     await click(find(root, '.gal-select-toggle')[0]);
     const page = find(root, '.bbi-page')[0];

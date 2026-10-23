@@ -19,7 +19,7 @@ describe('uploadUserImage', () => {
     mocks.context = fakeContext();
   });
 
-  it('按 /api/images/upload 协议提交(folder → ch_name),返回落盘路径', async () => {
+  it('submits per the /api/images/upload protocol (folder → ch_name) and returns the saved path', async () => {
     const fetchMock = vi.fn((url: string, init: any) => {
       expect(url).toBe('/api/images/upload');
       const body = JSON.parse(init.body);
@@ -41,7 +41,7 @@ describe('uploadUserImage', () => {
     expect(path).toBe('/user/images/柏宝绘_画师串/art_1.jpg');
   });
 
-  it('服务端报错 → ImageStoreError 带状态码', async () => {
+  it('server error → ImageStoreError with the status code', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(new Response('{"error":"bad"}', { status: 400 }))),
@@ -52,14 +52,14 @@ describe('uploadUserImage', () => {
     });
   });
 
-  it('200 但响应缺 path → 报错(不让调用方拿到空路径存进设置)', async () => {
+  it('200 but the response lacks path → error (the caller must not get an empty path to store in settings)', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}', { status: 200 }))));
     await expect(uploadUserImage('f', 'n', 'QUJD', 'jpg')).rejects.toBeInstanceOf(
       ImageStoreError,
     );
   });
 
-  it('上下文不可用 → 直接抛,不发请求', async () => {
+  it('context unavailable → throws directly without sending a request', async () => {
     mocks.context = null;
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -75,7 +75,7 @@ describe('deleteUserImage', () => {
     mocks.context = fakeContext();
   });
 
-  it('删除成功 → true;404 → false(文件本就不存在,无需清理)', async () => {
+  it('delete succeeded → true; 404 → false (the file never existed, nothing to clean up)', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
@@ -92,7 +92,7 @@ describe('deleteUserImage', () => {
     await expect(deleteUserImage('/user/images/f/a.jpg')).resolves.toBe(false);
   });
 
-  it('其它失败 → ImageStoreError', async () => {
+  it('other failures → ImageStoreError', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(new Response('oops', { status: 500 }))),
@@ -109,7 +109,7 @@ describe('probeUserImage', () => {
     mocks.context = fakeContext();
   });
 
-  it('HEAD 取 Content-Length,不下载图片本身', async () => {
+  it('HEAD reads Content-Length without downloading the image itself', async () => {
     const fetchMock = vi.fn((url: string, init: any) => {
       expect(url).toBe('/user/images/f/a.jpg');
       expect(init.method).toBe('HEAD');
@@ -119,13 +119,13 @@ describe('probeUserImage', () => {
     await expect(probeUserImage('/user/images/f/a.jpg')).resolves.toEqual({ exists: true, size: 311300 });
   });
 
-  it('404 → exists:false(服务端明确说没有)', async () => {
+  it('404 → exists:false (the server says clearly it is not there)', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(null, { status: 404 }))));
     await expect(probeUserImage('/user/images/f/a.jpg')).resolves.toEqual({ exists: false });
   });
 
-  it('网络错误/5xx → null:分不清,绝不能当成「已删除」', async () => {
-    // 把一次掉线记成删除,会让用户网一抖就看见满屏「文件已删除」
+  it('network error/5xx → null: indistinguishable, never to be taken as deleted', async () => {
+    // Recording a dropped connection as a deletion would show users a screen full of "File deleted" whenever their network blips
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
     await expect(probeUserImage('/user/images/f/a.jpg')).resolves.toBeNull();
 
@@ -133,12 +133,12 @@ describe('probeUserImage', () => {
     await expect(probeUserImage('/user/images/f/a.jpg')).resolves.toBeNull();
   });
 
-  it('缺 Content-Length 仍算存在,size 为 null', async () => {
+  it('missing Content-Length still counts as existing, with size null', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))));
     await expect(probeUserImage('/user/images/f/a.jpg')).resolves.toEqual({ exists: true, size: null });
   });
 
-  it('超时中止 → null', async () => {
+  it('timeout abort → null', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((_url: string, init: any) =>

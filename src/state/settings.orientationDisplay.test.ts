@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * 0.3.1 新增的三项设置:画幅锁(NAI 渠道级一份、ComfyUI 每套工作流各一份)、
- * NAI「生成自然语言」、楼层图片显示大小。
+ * Three settings added in 0.3.1: the frame lock (one at the NAI channel level, one per ComfyUI workflow),
+ * NAI "Generate Natural Language", and floor image display size.
  *
- * 看点:
- * 1. 老配置缺字段一律落默认,不做迁移。画幅锁默认「自动」、NAI 自然语言默认开,都等于升级前的行为;
- *    显示大小默认「中」是刻意的——升级前的「铺满楼层宽度」正是要修的问题,想要回去在下拉里选。
- * 2. 画幅锁的判据只此一处(activeOrientationLock),按当前后端取对应那份,两份互不串。
+ * What to watch:
+ * 1. Old configs missing fields all fall to defaults, with no migration. The frame lock defaults to "Auto" and NAI natural language defaults to on, both equal to pre-upgrade behaviour;
+ *    display size defaulting to "Medium" is deliberate: the pre-upgrade "fill the floor width" is exactly the problem being fixed, and anyone wanting it back picks it in the dropdown.
+ * 2. The frame lock criterion lives in one place only (activeOrientationLock), taking the one for the current backend; the two never cross.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -34,8 +34,8 @@ beforeEach(() => {
   vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
 });
 
-describe('画幅锁 / NAI 自然语言 / 显示大小 · 读取兜底', () => {
-  it('老配置缺这些字段 → 不锁方向、NAI 照写自然语言、显示大小「中」', async () => {
+describe('frame lock / NAI natural language / display size · read fallbacks', () => {
+  it('old configs missing these fields → orientation not locked, NAI still writes natural language, display size Medium', async () => {
     const { settings } = await hydrateWith({
       nai: { model: 'nai-diffusion-4-5-full' },
       comfyui: { workflows: [{ id: 'wf_a', name: 'A', workflow: '' }], activeWorkflowId: 'wf_a' },
@@ -47,7 +47,7 @@ describe('画幅锁 / NAI 自然语言 / 显示大小 · 读取兜底', () => {
     expect(settings.ui.imageDisplaySize).toBe('medium');
   });
 
-  it('合法值原样保留,各套工作流的锁各管各的', async () => {
+  it('valid values kept as-is; each workflow has its own lock', async () => {
     const { settings } = await hydrateWith({
       nai: { naturalLanguage: false, orientationLock: 'landscape' },
       comfyui: {
@@ -70,7 +70,7 @@ describe('画幅锁 / NAI 自然语言 / 显示大小 · 读取兜底', () => {
     expect(settings.ui.imageDisplaySize).toBe('full');
   });
 
-  it('脏值 → 各自回落默认,不抛错', async () => {
+  it('dirty values → each falls back to its default without throwing', async () => {
     const { settings } = await hydrateWith({
       nai: { naturalLanguage: 'no', orientationLock: 'sideways' },
       comfyui: {
@@ -85,20 +85,20 @@ describe('画幅锁 / NAI 自然语言 / 显示大小 · 读取兜底', () => {
     expect(settings.ui.imageDisplaySize).toBe('medium');
   });
 
-  it('更老的单套 ComfyUI 配置折成预设时,同样不锁方向', async () => {
+  it('when an even older single ComfyUI config is folded into a preset, orientation is likewise not locked', async () => {
     const { settings } = await hydrateWith({ comfyui: { workflow: '{}', naturalLanguage: true } });
     expect(settings.comfyui.workflows).toHaveLength(1);
     expect(settings.comfyui.workflows[0].orientationLock).toBe('auto');
   });
 
-  it('新建的工作流预设默认不锁', async () => {
+  it('newly created workflow presets are unlocked by default', async () => {
     const { newComfyWorkflow } = await import('@/state/settings');
     expect(newComfyWorkflow().orientationLock).toBe('auto');
   });
 });
 
-describe('activeOrientationLock:按当前后端取对应那份', () => {
-  it('NAI 取渠道级,ComfyUI 取当前工作流;切工作流即切走锁', async () => {
+describe('activeOrientationLock: takes the one for the current backend', () => {
+  it('NAI takes the channel level, ComfyUI the current workflow; switching workflow switches the lock', async () => {
     const { settings, activeOrientationLock } = await hydrateWith({
       defaultBackend: 'nai',
       nai: { orientationLock: 'portrait' },
@@ -121,7 +121,7 @@ describe('activeOrientationLock:按当前后端取对应那份', () => {
 });
 
 describe('imageDisplayMaxHeight', () => {
-  it('小/中/大按高度封顶 400/600/800,铺满不封顶', async () => {
+  it('small/medium/large cap height at 400/600/800, fill has no cap', async () => {
     const { imageDisplayMaxHeight } = await import('@/state/settings');
     expect(imageDisplayMaxHeight('small')).toBe(400);
     expect(imageDisplayMaxHeight('medium')).toBe(600);

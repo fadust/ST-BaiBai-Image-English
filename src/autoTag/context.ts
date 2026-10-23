@@ -5,20 +5,20 @@ import { stripCustomTags } from '@/autoTag/clean';
 import { settings } from '@/state/settings';
 
 /**
- * 独立请求的上下文装配:世界书 / 角色卡描述 / user 人设。
- * 逻辑与柏宝书(src/memory/engine.ts 的 fetchWorldInfo / fetchCharCard / fetchUserPersona)
- * 保持一致——柏宝书已在生产环境踩过坑,副 API 侧直接复用同款口径:
- *   - 世界书:checkWorldInfo 拿条目对象 → 逐条展宏(+ST-Prompt-Template 执行 EJS) → 独立 system 消息;
- *   - 角色卡:characters[characterId] 的 description/personality/scenario;
- *   - 人设:{{persona}} 宏。
- * 任一块取不到 → 返回空串,不影响主流程。
+ * Context assembly for standalone requests: lorebook / character card description / user persona.
+ * The logic matches BaiBai Book (fetchWorldInfo / fetchCharCard / fetchUserPersona in src/memory/engine.ts).
+ * BaiBai Book has already hit the pitfalls in production, so the secondary API reuses the same rules:
+ *   - lorebook: checkWorldInfo returns entry objects → expand macros per entry (+ run EJS via ST-Prompt-Template) → separate system message;
+ *   - character card: description/personality/scenario of characters[characterId];
+ *   - persona: the {{persona}} macro.
+ * If any block can't be fetched → return an empty string; the main flow is unaffected.
  */
 
-/* ============ 扫描文本清洗(对齐柏宝书 clampToTimeTags 的核心行为) ============ */
+/* ============ Scan-text cleanup (matches the core behaviour of BaiBai Book's clampToTimeTags) ============ */
 
 const RE_THINK_BLOCK = /<think(?:ing)?\b[\s\S]*?<\/think(?:ing)?>/gi;
 
-/** 删柏宝书托管的尾部旁注块(bbs_items/bbs_vars,开/闭标签独占行配对)。 */
+/** Removes BaiBai Book's managed trailing side-note blocks (bbs_items/bbs_vars, open/close tags paired on their own lines). */
 function stripManagedBlock(s: string, tag: string): string {
   const openRe = new RegExp(`^[ \\t]*<${tag}\\b[^>]*>[ \\t]*$`, 'm');
   const closeRe = new RegExp(`^[ \\t]*</${tag}>[ \\t]*$`, 'm');
@@ -29,7 +29,7 @@ function stripManagedBlock(s: string, tag: string): string {
     const rest = out.slice(start + open[0].length);
     const close = rest.match(closeRe);
     if (!close) {
-      // 落单开标签:只删标签本身,内容保留
+      // Stray open tag: remove only the tag itself, keep the content
       out = out.slice(0, start) + out.slice(start + open[0].length);
       continue;
     }
@@ -44,37 +44,37 @@ function stripManagedTags(s: string): string {
 }
 
 /**
- * 世界书扫描文本清洗:整块删噪声标签,再裁剪到 <bbs_start>…</bbs_end> 正文段。
- * 与柏宝书 clampToTimeTags 同口径(含其用户自定义标签配置,名单走共享存储)。
+ * Lorebook scan-text cleanup: removes noise tags as whole blocks, then trims to the <bbs_start>…</bbs_end> story section.
+ * Same rule as BaiBai Book's clampToTimeTags (including its user-defined tag configuration; the list uses shared storage).
  */
 function cleanScanText(mes: string): string {
   let s = String(mes ?? '')
-    .replace(RE_THINK_BLOCK, '') // 思维链
-    .replace(/<!--[\s\S]+?-->/g, '') // HTML 注释
-    .replace(/<horae[\s\S]*?>[\s\S]*?<\/horae[\s\S]*?>/gi, ''); // 旧 horae 格式
-  s = stripCustomTags(s, settings.excludes.customStripTags); // 用户自定义标签(与柏宝书同名单)
+    .replace(RE_THINK_BLOCK, '') // Thought chain
+    .replace(/<!--[\s\S]+?-->/g, '') // HTML comments
+    .replace(/<horae[\s\S]*?>[\s\S]*?<\/horae[\s\S]*?>/gi, ''); // Old horae format
+  s = stripCustomTags(s, settings.excludes.customStripTags); // User-defined tags (same list as BaiBai Book)
   s = stripManagedTags(s);
 
-  // 最后一个 <bbs_start> 的位置:全局扫一遍取末次
+  // Position of the last <bbs_start>: scan globally and take the final occurrence
   const startRe = /<bbs_start\b/gi;
   let lastStart = -1;
   for (let m = startRe.exec(s); m; m = startRe.exec(s)) lastStart = m.index;
   if (lastStart >= 0) s = s.slice(lastStart);
-  // 第一个 </bbs_end>(在已裁过前缀的串里找)
+  // The first </bbs_end> (searched in the string already trimmed of its prefix)
   const endMatch = s.match(/<\/bbs_end>/i);
   if (endMatch && endMatch.index !== undefined) {
     s = s.slice(0, endMatch.index + endMatch[0].length);
   }
-  // 规范空白
+  // Normalise whitespace
   return s
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-/* ============ 世界书 ============ */
+/* ============ Lorebook ============ */
 
-/** 把去空后的分段去重、join。世界书激活各来源统一收口于此(与柏宝书一致)。 */
+/** Deduplicates and joins segments after removing empty ones. Every lorebook activation source funnels through here (same as BaiBai Book). */
 function joinWorldInfoChunks(chunks: string[]): string {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -89,8 +89,8 @@ function joinWorldInfoChunks(chunks: string[]): string {
 }
 
 /**
- * 本轮待扫描文本:各楼正文清洗后,带人名前缀帮助关键词命中角色名。
- * 与柏宝书 buildScanText 同构。
+ * Text to scan this round: each floor's text cleaned, with a speaker-name prefix to help keywords hit character names.
+ * Same shape as BaiBai Book's buildScanText.
  */
 function buildScanText(chat: STMessage[], targets: number[], name1: string, name2: string): string[] {
   return targets
@@ -103,15 +103,15 @@ function buildScanText(chat: STMessage[], targets: number[], name1: string, name
     .filter(Boolean);
 }
 
-// ST 内部:WI 实际预算 = world_info_budget(默认25%) × maxContext,超出即截断条目(蓝灯也不例外)。
-// 摘要场景要「激活的一条都不漏」,故传一个极大的 maxContext,让预算大到不可能溢出。
+// ST internally: the real WI budget = world_info_budget (default 25%) × maxContext; entries beyond it are cut (blue-light ones included).
+// Summarisation needs "not one activated entry missed", so a huge maxContext is passed, making the budget too large to overflow.
 const HUGE_WI_CONTEXT = 1_000_000_000;
 
 /**
- * 渲染世界书条目内容,让副 API 拿到「执行后」的成品而非原文:
- *   ① substituteParams 展开 {{宏}};
- *   ② 若装了 ST-Prompt-Template(提示词模板)且文本含 <% %>,调其执行器跑 EJS。
- * 复刻柏宝书 renderWorldInfoContent 的顺序(先宏后 EJS)。
+ * Renders lorebook entry content so the secondary API gets the "executed" result rather than the raw text:
+ *   ① substituteParams expands {{macros}};
+ *   ② if ST-Prompt-Template (the prompt template plugin) is installed and the text contains <% %>, its executor runs EJS.
+ * Reproduces the order of BaiBai Book's renderWorldInfoContent (macros first, then EJS).
  */
 async function renderWorldInfoContent(
   content: string,
@@ -119,14 +119,14 @@ async function renderWorldInfoContent(
   floor: number | undefined,
 ): Promise<string> {
   const ctx = getContext();
-  // ① 展宏(substituteParams 不存在时保持原文)
+  // ① Expand macros (keep the raw text when substituteParams doesn't exist)
   let text = typeof ctx?.substituteParams === 'function' ? ctx.substituteParams(content) : content;
-  // ② 无 EJS 标签则无需调模板插件(省去 prepareContext/sandbox 开销)
+  // ② Without EJS tags the template plugin needn't be called (saving prepareContext/sandbox overhead)
   if (!text.includes('<%')) return text;
   const ejs = getEjsTemplate();
-  if (!ejs) return text; // 未装 ST-Prompt-Template:只做了展宏
+  if (!ejs) return text; // ST-Prompt-Template not installed: only macros were expanded
   try {
-    // 第二参 end=floor:让 getvar 以「截止该楼」的变量快照求值;undefined 时接口默认取最新楼
+    // Second argument end=floor: evaluates getvar against the variable snapshot "as of that floor"; when undefined the API defaults to the latest floor
     const env = await ejs.prepareContext({ world_info: entry }, floor);
     const out = await ejs.evalTemplate(text, env);
     if (typeof out === 'string') text = out;
@@ -137,9 +137,9 @@ async function renderWorldInfoContent(
 }
 
 /**
- * 降级路径:走 ST 暴露的 getWorldInfoPrompt(只拿拼好的字符串)。
- * 仅当 checkWorldInfo 取不到时使用——拿不到条目对象,无法逐条渲染,但至少请求照常带世界书,不崩。
- * 蓝灯/相关条目可能落在 before、after、depth(@深度)、作者注 任一位置,全部提取。
+ * Fallback path: uses ST's exposed getWorldInfoPrompt (only a pre-joined string).
+ * Only used when checkWorldInfo is unavailable: no entry objects, so no per-entry rendering, but the request still carries the lorebook without crashing.
+ * Blue-light/relevant entries may land in before, after, depth (@depth) or author's note; all are extracted.
  */
 async function fetchWorldInfoViaPrompt(
   scanText: string[],
@@ -157,17 +157,17 @@ async function fetchWorldInfoViaPrompt(
   }
   for (const e of res.anBefore ?? []) if (typeof e === 'string') chunks.push(e);
   for (const e of res.anAfter ?? []) if (typeof e === 'string') chunks.push(e);
-  // 逐块渲染(展宏 + EJS);此路径拿不到条目对象,EJS 仅带当前状态上下文(无 world_info),但仍按 refFloor 取变量
+  // Render block by block (macros + EJS); this path has no entry objects, so EJS only gets the current state context (no world_info), but variables are still read at refFloor
   const rendered = await Promise.all(chunks.map(c => renderWorldInfoContent(c, undefined, refFloor)));
   return joinWorldInfoChunks(rendered);
 }
 
 /**
- * 按本轮待扫描文本激活世界书条目(关键词触发 + constant 蓝灯),返回设定文本。
- * 优先走 checkWorldInfo:返回**条目对象**,可逐条渲染成品(展宏 + EJS),
- * 并据此按「整本排除」+「条目名规则」(共享存储名单,与柏宝书同口径)过滤掉不需要的条目。
- * checkWorldInfo 取不到(旧版/路径变动)→ 降级到 getWorldInfoPrompt(不过滤,但至少带书,不崩)。
- * 无激活条目 / 角色卡无世界书 / 出错 → 返回空串(不影响主流程)。
+ * Activates lorebook entries from this round's scan text (keyword triggers + constant blue-light entries) and returns the settings text.
+ * Prefers checkWorldInfo: it returns **entry objects**, which can be rendered entry by entry (macros + EJS),
+ * and filtered by "whole-book exclusion" + "entry-name rules" (shared-storage lists, same rule as BaiBai Book) to drop unwanted entries.
+ * checkWorldInfo unavailable (old version/path change) → falls back to getWorldInfoPrompt (no filtering, but at least carries the book without crashing).
+ * No activated entries / character card without a lorebook / error → returns an empty string (the main flow is unaffected).
  */
 export async function fetchWorldInfo(
   chat: STMessage[],
@@ -177,7 +177,7 @@ export async function fetchWorldInfo(
 ): Promise<string> {
   const scanText = buildScanText(chat, targets, name1, name2);
   if (!scanText.length) return '';
-  // 变量时点代表楼:取本批**最后一个 target 楼**。EJS 里 getvar 据此读该楼的历史变量快照。
+  // Floor representing the variable timepoint: the **last target floor** of this batch. getvar in EJS reads that floor's historical variable snapshot.
   const refFloor = targets.length ? targets[targets.length - 1] : undefined;
   try {
     const check = await getCheckWorldInfo();
@@ -186,9 +186,9 @@ export async function fetchWorldInfo(
     const res = await check(scanText, HUGE_WI_CONTEXT, true);
     const activated = res?.allActivatedEntries;
     if (!activated) return '';
-    // allActivatedEntries 可能是 Set<entry> 或 Map<key,entry>,统一取 values;
-    // 再排成 ST 主提示词同款顺序(扫描命中序不含排序,与柏宝书同口径),
-    // 然后按共享排除名单过滤(整本/条目名),最后逐条渲染(展宏 + 执行 EJS)。
+    // allActivatedEntries may be a Set<entry> or Map<key,entry>; take values either way;
+    // then order them like ST's main prompt (scan-hit order has no sorting; same rule as BaiBai Book),
+    // then filter by the shared exclusion lists (whole book/entry name), and finally render each entry (macros + EJS).
     const entries = sortWorldInfoEntriesLikeST(
       activated instanceof Map ? [...activated.values()] : [...activated],
     );
@@ -204,18 +204,18 @@ export async function fetchWorldInfo(
   }
 }
 
-/* ============ 角色卡描述 + user 人设(与柏宝书 fetchCharCard / fetchUserPersona 一致) ============ */
+/* ============ Character card description + user persona (same as BaiBai Book's fetchCharCard / fetchUserPersona) ============ */
 
 /**
- * 取当前角色卡的人设字段(description / personality / scenario)。
- * 有些卡把人设写在角色描述而非世界书里,tag 生成也需据此理解角色长相与言行。
- *   - 三个字段都尝试,空的自动跳过;
- *   - 字段里可能含 {{char}}/{{user}} 宏,用 substituteParams 展开;
- *   - 群聊(characterId 为空)暂不带——多成员合并逻辑复杂,与柏宝书一致。
- * 取不到角色 / 全空 → 返回空串(降级,不影响主流程)。
+ * Gets the current character card's persona fields (description / personality / scenario).
+ * Some cards put the persona in the character description rather than a lorebook, and tag generation also needs it to understand the character's looks and behaviour.
+ *   - all three fields are tried; empty ones are skipped automatically;
+ *   - fields may contain {{char}}/{{user}} macros, expanded with substituteParams;
+ *   - group chats (empty characterId) are left out for now: merging multiple members is complex; same as BaiBai Book.
+ * Character unavailable / all empty → returns an empty string (degrades; the main flow is unaffected).
  */
 export function fetchCharCard(context: STContext): string {
-  if (!context || context.groupId) return ''; // 群聊暂不带
+  if (!context || context.groupId) return ''; // Group chats left out for now
   const idx = context.characterId;
   if (idx === undefined || idx === null || idx === '') return '';
   const ch = context.characters?.[Number(idx)] as Record<string, unknown> | undefined;
@@ -235,20 +235,20 @@ export function fetchCharCard(context: STContext): string {
 }
 
 /**
- * 取当前用户人设(persona / 用户设定)。
- * 走 ST 稳定宏 {{persona}}(= power_user.persona_description),substituteParams 展开即得;
- * 不去翻 power_user 全局,保持「只通过 context 接触宿主」。
- * tag 生成需要知道主角是谁(外貌/身份),否则画面里的主角只能靠猜。
- * 未设置 persona / 取不到 → 空串(降级,不影响主流程)。
+ * Gets the current user persona (persona / user settings).
+ * Uses ST's stable macro {{persona}} (= power_user.persona_description), expanded with substituteParams;
+ * doesn't dig into the global power_user, keeping "only touch the host through context".
+ * Tag generation needs to know who the protagonist is (appearance/identity), otherwise the protagonist in the image can only be guessed.
+ * No persona set / unavailable → empty string (degrades; the main flow is unaffected).
  */
 export function fetchUserPersona(context: STContext): string {
   if (!context || typeof context.substituteParams !== 'function') return '';
   return context.substituteParams('{{persona}}').trim();
 }
 
-/* ============ 系统消息包装(与柏宝书 prompts.ts 的 build*System 文案一致) ============ */
+/* ============ System message wrappers (same text as the build*System functions in BaiBai Book's prompts.ts) ============ */
 
-/** 把世界书设定包成独立 system 消息的内容(空设定时调用方应跳过) */
+/** Wraps the lorebook settings as the content of a separate system message (callers should skip it when empty) */
 export function buildWorldInfoSystem(worldInfo: string): string {
   return `【World setting (activated lorebook; read-only reference)】
 Be sure to be consistent with the following settings, and do not make up contradictory content; but the setting itself is not what happened this round, so do not write it into the output.
@@ -256,7 +256,7 @@ Be sure to be consistent with the following settings, and do not make up contrad
 ${worldInfo.trim()}`;
 }
 
-/** 把角色卡描述包成独立 system 消息(有些卡人设写在角色描述而非世界书里,tag 生成也需据此理解角色)。 */
+/** Wraps the character card description as a separate system message (some cards put the persona in the description rather than a lorebook, and tag generation needs it to understand the character). */
 export function buildCharCardSystem(charCard: string): string {
   return `【Character setting (character card; read-only reference)】
 The following is the character setting of the current character, which is used to help you understand the appearance, words and deeds of the character; it is not something that happened this round, so do not write it into the output.
@@ -264,7 +264,7 @@ The following is the character setting of the current character, which is used t
 ${charCard.trim()}`;
 }
 
-/** 把用户人设(persona)包成独立 system 消息(用于理解「主角是谁」)。 */
+/** Wraps the user persona as a separate system message (to understand "who the protagonist is"). */
 export function buildPersonaSystem(persona: string): string {
   return `【Protagonist persona (user-controlled protagonist; read-only reference)】
 The following is the character setting of the protagonist (i.e. the "User/User" side in the dialogue) to help you understand the identity and appearance of the protagonist; it does not happen in this round, so do not write it into the output.

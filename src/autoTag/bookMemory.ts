@@ -1,11 +1,11 @@
 /**
- * 柏宝书角色状态读取与格式化。
+ * Reads and formats BaiBai Book character state.
  *
- * 画图场景只关心「角色特征对不对」,不关心剧情上下文:快照不再整个塞进提示词,
- * 只解析成**角色参考块**——主角档案 + 重要角色(常驻,与柏宝书注入端同款全量档)。
- * 其余角色用名字去目标正文里查:正文中出现才发送(柏宝书在场判定可能有滞后,
- * 角色已到场但记录未更新,以正文为准),同样发全量——因为它可能实际就在场。
- * 历史剧情、时间地点、物品、计划等与画面无关,一律不注入。
+ * Image planning only cares whether character traits are right, not about plot context: the snapshot is no longer stuffed whole into the prompt,
+ * but parsed into a **character reference block**: protagonist profile + important characters (always included, the same full profile as BaiBai Book's injection side).
+ * Other characters are looked up by name in the target text: sent only if they appear in it (BaiBai Book's presence check can lag,
+ * so a character may have arrived before the record updates; the story text wins), also in full, because they may actually be present.
+ * Past plot, time and place, items, plans and the like are irrelevant to the image and are never injected.
  */
 
 interface BookFloor {
@@ -32,20 +32,20 @@ interface BookApi {
   getContextAtFloor?(options: { floor: number }): BookFloorContext;
 }
 
-/** 参考块中涉及的单个角色(结构化),供角色固定外貌 tag 库做锚定匹配。 */
+/** A single character in the reference block (structured), used for anchor matching against the fixed-appearance tag library. */
 export interface BookRole {
-  /** 角色名:NPC 为柏宝书 name;主角为调用方给的名字(缺省「主角」)。 */
+  /** Character name: BaiBai Book's name for NPCs; for the protagonist, the name given by the caller (default "protagonist"). */
   name: string;
-  /** 柏宝书记录的固定外貌原文(主角 appearance / NPC desc);未记录为空串。 */
+  /** Original fixed-appearance text recorded by BaiBai Book (protagonist appearance / NPC desc); empty string if not recorded. */
   desc: string;
   isProtagonist: boolean;
 }
 
 export interface BookMemoryContext {
   timing: 'before_latest' | 'after_latest';
-  /** 解析后的角色参考文本块,可直接拼进提示词。 */
+  /** Parsed character reference text block, ready to drop into the prompt. */
   text: string;
-  /** 本次参考块涉及的角色(与 text 同一批过滤口径)。 */
+  /** Characters covered by this reference block (filtered by the same rules as text). */
   roles: BookRole[];
 }
 
@@ -54,7 +54,7 @@ function getBookApi(): BookApi | null {
   return api?.apiVersion === 1 ? api : null;
 }
 
-/* ============ 快照 → 角色参考文本 ============ */
+/* ============ Snapshot → character reference text ============ */
 
 function oneLine(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -79,8 +79,8 @@ function fmtProtagonist(protagonist: unknown): string {
 }
 
 /**
- * NPC 全量行,对齐柏宝书注入端在场档的字段;画图场景额外带固定外貌 desc
- * (柏宝书对主要角色从简外貌是因为主模型卡里已有,画图对颜值敏感,外貌必须给)。
+ * Full NPC line, matching the fields of BaiBai Book's present-character profile on its injection side; image planning also adds the fixed appearance desc
+ * (BaiBai Book keeps main characters' appearance brief because the main model's card already has it; image generation is sensitive to looks, so appearance must be given).
  */
 function fmtNpc(n: Record<string, unknown>): string {
   const name = oneLine(n.name);
@@ -110,7 +110,7 @@ function fmtNpcs(npcs: unknown, bodyText: string, roles: BookRole[]): string {
     const n = (raw ?? {}) as Record<string, unknown>;
     const name = oneLine(n.name);
     if (!name) continue;
-    // 重要角色常驻;随行角色永远在场;其余用名字去目标正文里查,出现才算参与本楼
+    // Important characters always included; following characters are always present; others are looked up by name in the target text and only count as taking part in this floor if they appear
     if (n.important === true || n.follow === true || bodyText.includes(name)) {
       lines.push(`- ${fmtNpc(n)}`);
       roles.push({ name, desc: oneLine(n.desc), isProtagonist: false });
@@ -119,7 +119,7 @@ function fmtNpcs(npcs: unknown, bodyText: string, roles: BookRole[]): string {
   return lines.length ? `Important role:\n${lines.join('\n')}` : '';
 }
 
-/** 把快照解析成角色参考文本 + 结构化角色列表(空角色信息 → 空串,调用方视为未提供)。 */
+/** Parses the snapshot into character reference text + a structured character list (no character info → empty string, which the caller treats as not provided). */
 function formatSnapshotRoles(
   snapshot: BookSnapshot,
   bodyText: string,
@@ -138,7 +138,7 @@ function formatSnapshotRoles(
   return { text: lines.join('\n'), roles };
 }
 
-/* ============ 文本包装 ============ */
+/* ============ Text wrapping ============ */
 
 const ROLE_NOTE = '【 character reference (the latest status of BaiBai Book synchronization, read-only reference) 】\n';
 
@@ -146,14 +146,14 @@ function buildMemoryText(roles: string): string {
   return `${ROLE_NOTE}${roles}`;
 }
 
-/* ============ 读取入口 ============ */
+/* ============ Read entry point ============ */
 
 /**
- * 读取柏宝书角色状态并解析成角色参考文本。
- * @param floor 目标楼
- * @param bodyText 目标楼正文原文(用于判定不在场角色是否实际参与本楼)
- * @param protagonistName 主角显示名(一般传 user 名;缺省「主角」,仅作角色 tag 库的匹配键)
- * 柏宝书不可用 / 无角色信息 / 读取失败 → 返回 null(调用方降级为仅发送正文)。
+ * Reads BaiBai Book's character state and parses it into character reference text.
+ * @param floor target floor
+ * @param bodyText raw text of the target floor (used to judge whether characters not present actually take part in this floor)
+ * @param protagonistName protagonist display name (usually the user name; defaults to "protagonist", used only as the character tag library's match key)
+ * BaiBai Book unavailable / no character info / read failure → returns null (the caller degrades to sending only the text).
  */
 export function readBookMemory(
   floor: number,
@@ -167,13 +167,13 @@ export function readBookMemory(
     let timing: BookMemoryContext['timing'] = 'before_latest';
 
     if (typeof api.getContextAtFloor === 'function') {
-      // 优先走 getContextAtFloor:前后快照由柏宝书一次性对齐 revision,内部已保证一致。
+      // Prefer getContextAtFloor: BaiBai Book aligns the before/after snapshots' revision in one go, guaranteeing consistency internally.
       const data = api.getContextAtFloor({ floor });
       const valid = !!data.floorData?.memory?.valid;
       timing = valid ? 'after_latest' : 'before_latest';
       snapshot = valid ? data.snapshotAfter : data.snapshotBefore;
     } else {
-      // 降级:旧版公共 API,按 D1/D2 规则逐次尝试对齐 revision
+      // Fallback: the old public API, trying to align revisions step by step per rules D1/D2
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const floorData = api.getFloor(floor);
         timing = floorData.memory.valid ? 'after_latest' : 'before_latest';

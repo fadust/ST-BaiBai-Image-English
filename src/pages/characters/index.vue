@@ -31,11 +31,11 @@ import { getContext } from '@/st/context';
 import { computed, ref } from 'vue';
 
 /**
- * 角色管理 —— 两层固定外貌库:
- * - 全局库:跨所有聊天生效的只读模板,AI 永不修改,仅手动维护(适合玩家角色等固定形象)。
- * - 本聊天库:仅当前聊天,柏宝书自动建档、AI 随剧情变更;同名时优先于全局。
- * 外貌按字段记录(sex/hair/eyes/...),拼接结果即最终 tag;生成 tag 时 AI 照抄库中字段,
- * 残留的 @角色名 占位符由插件兜底替换 —— 外貌稳定不漂移。
+ * Character management: two layers of fixed-appearance libraries:
+ * - global library: read-only templates applying across all chats; the AI never changes them, maintained by hand only (suited to fixed looks such as the player character).
+ * - this chat's library: current chat only; BaiBai Book creates profiles automatically and the AI changes them with the story; same names take precedence over global.
+ * Appearance is recorded by field (sex/hair/eyes/...), and the joined result is the final tag; when generating tags the AI copies the library fields,
+ * and leftover @name placeholders are replaced by the plugin as a fallback, so the appearance stays stable without drifting.
  */
 
 type Scope = 'chat' | 'global';
@@ -47,19 +47,19 @@ interface Draft {
   nl: string;
 }
 
-// editingName:正在编辑的已有条目名;null = 新建。弹窗开关以 draft 是否存在为准。
+// editingName: name of the existing entry being edited; null = new. Whether the dialog is open is decided by whether draft exists.
 const editingName = ref<string | null>(null);
-// editingScope:被编辑条目所在层;draftScope:草稿保存到哪层(仅新建时可选)。
+// editingScope: layer of the entry being edited; draftScope: layer the draft saves to (only selectable when creating).
 const editingScope = ref<Scope>('chat');
 const draftScope = ref<Scope>('chat');
 const draft = ref<Draft | null>(null);
-// 草稿来源:手改内容即转 manual;「从柏宝书重新生成」后转 book。
+// Draft source: manual edits switch it to manual; "Regenerate from BaiBai Book" switches it to book.
 const draftSource = ref<CharTagEntry['source']>('manual');
 const draftDesc = ref('');
 const regenerating = ref(false);
-// 弹窗内历史面板开关
+// History panel toggle inside the dialog
 const historyOpen = ref(false);
-// 回滚确认
+// Rollback confirmation
 const confirmRollbackOpen = ref(false);
 const pendingRollback = ref<{ name: string; record: CharTagChangeRecord } | null>(null);
 
@@ -74,13 +74,13 @@ const FIELD_PLACEHOLDERS: Record<CharTagField, string> = {
   outfit: 'Fixed attire, optional',
 };
 
-/** 全局库名字集(响应式),用于分区与「覆盖」徽标。 */
+/** Set of global library names (reactive), for sections and the "override" badge. */
 const globalNameSet = computed(() => new Set(globalCharTagLib.entries.map(entry => entry.name)));
 
 /**
- * 本聊天分区 = 派生库里「属于本聊天」的条目:
- * 本聊天基线里的(含覆盖全局的同名条目)+ 非全局的(AI 楼层建档等)。
- * 纯全局条目只出现在全局分区。
+ * This chat's section = entries in the derived library that "belong to this chat":
+ * those in this chat's baseline (including same-name entries overriding global) + non-global ones (profiles created on AI floors, etc.).
+ * Purely global entries only appear in the global section.
  */
 const chatEntries = computed(() =>
   charTagLib.entries.filter(
@@ -88,7 +88,7 @@ const chatEntries = computed(() =>
   ),
 );
 
-/** 是否整串模式:有 raw 且没有字段。 */
+/** Whole-string mode: has raw and no fields. */
 const draftIsRaw = computed(
   () => !!draft.value && !!draft.value.raw.trim() && CHAR_TAG_FIELDS.every(f => !draft.value!.fields[f].trim()),
 );
@@ -99,13 +99,13 @@ const previewTag = computed(() => {
   return buildEntryTag({ fields: d.fields, raw: d.raw });
 });
 
-/** 正在编辑的本聊天条目的实时历史(回滚后随之刷新);全局条目不记历史。 */
+/** Live history of the chat entry being edited (refreshes after rollback); global entries keep no history. */
 const editingHistory = computed<CharTagChangeRecord[]>(() => {
   if (!editingName.value || editingScope.value !== 'chat') return [];
   return findCharTag(editingName.value)?.history ?? [];
 });
 
-/** 卡片上的字段 chips:有字段用字段,整串模式回退 raw 文本(模板里分支)。 */
+/** Field chips on the card: fields if present; whole-string mode falls back to the raw text (branched in the template). */
 function chipsOf(entry: CharTagEntry): { label: string; value: string }[] {
   const chips: { label: string; value: string }[] = [];
   for (const f of CHAR_TAG_FIELDS) {
@@ -140,8 +140,8 @@ function addEntry(scope: Scope = 'chat') {
   historyOpen.value = false;
 }
 
-/* —— 分区折叠(参照柏宝书「计划/悬念」)——
- * 标题行兼作折叠开关;折叠态是本机视图偏好,走 localStorage、不进设置(跨设备同步没意义)。 */
+/* —— Section collapsing (modelled on BaiBai Book's "Plans/Suspense") ——
+ * The title row doubles as the collapse toggle; collapsed state is a local view preference, stored in localStorage, not in settings (syncing across devices is pointless). */
 const COLLAPSE_KEYS: Record<Scope, string> = {
   global: 'bbi.ui.charGlobalCollapsed.v1',
   chat: 'bbi.ui.charChatCollapsed.v1',
@@ -157,7 +157,7 @@ function persistCollapsed(key: string, value: boolean) {
   try {
     localStorage.setItem(key, value ? '1' : '0');
   } catch {
-    /* localStorage 不可用时仅本次会话生效 */
+    /* When localStorage is unavailable it only lasts for this session */
   }
 }
 const globalCollapsed = ref(loadCollapsed(COLLAPSE_KEYS.global));
@@ -167,7 +167,7 @@ function toggleFold(scope: Scope) {
   target.value = !target.value;
   persistCollapsed(COLLAPSE_KEYS[scope], target.value);
 }
-// 无条目即无可折叠:不显示箭头与计数,也强制展开(避免删空后卡在收拢的空态)
+// No entries means nothing to collapse: no arrow or count, and forced open (avoids getting stuck in a collapsed empty state after deleting everything)
 const globalFoldable = computed(() => globalCharTagLib.entries.length > 0);
 const globalShown = computed(() => !globalCollapsed.value || !globalFoldable.value);
 const chatFoldable = computed(() => chatEntries.value.length > 0);
@@ -180,7 +180,7 @@ function closeEntry() {
   historyOpen.value = false;
 }
 
-/** 手动编辑过的字段 → 条目归手动(但仍可被 AI 变更接管) */
+/** Manually edited field → the entry becomes manual (but the AI can still take it over with changes) */
 function markManual() {
   draftSource.value = 'manual';
   draftDesc.value = '';
@@ -214,7 +214,7 @@ function confirmEntry() {
   if (ok) closeEntry();
 }
 
-/* —— 删除:二次确认 —— */
+/* —— Delete: second confirmation —— */
 const confirmDeleteOpen = ref(false);
 function askRemove() {
   confirmDeleteOpen.value = true;
@@ -227,7 +227,7 @@ function confirmRemove() {
   closeEntry();
 }
 
-/* —— 提升为全局 / 复制到本聊天 —— */
+/* —— Promote to global / copy to this chat —— */
 const confirmPromoteOpen = ref(false);
 function askPromote() {
   confirmPromoteOpen.value = true;
@@ -236,7 +236,7 @@ function confirmPromote() {
   confirmPromoteOpen.value = false;
   if (!editingName.value) return;
   if (promoteCharTagToGlobal(editingName.value)) {
-    toastr.success(`「${editingName.value}"Has been promoted to global character, all chats take effect`, 'BaiBai Image');
+    toastr.success(`"${editingName.value}" promoted to a global character; it applies in all chats`, 'BaiBai Image');
   }
   closeEntry();
 }
@@ -245,12 +245,12 @@ function copyToChat() {
   if (!editingName.value) return;
   const name = editingName.value;
   if (copyGlobalCharTagToChat(name)) {
-    toastr.success(`Already put "${name}"Copy to this chat, and then this chat will be subject to the copy.`, 'BaiBai Image');
+    toastr.success(`Copied "${name}" to this chat; from now on this chat uses the copy.`, 'BaiBai Image');
   }
   closeEntry();
 }
 
-/* —— 从柏宝书最新状态建档:取最新楼的角色参考,找到同名角色的外貌记录,批量转换接口转字段 —— */
+/* —— Create a profile from BaiBai Book's latest state: take the latest floor's character reference, find the same-name character's appearance record, convert to fields via the batch conversion endpoint —— */
 async function regenerateFromBook() {
   const d = draft.value;
   if (!d) return;
@@ -291,7 +291,7 @@ async function regenerateFromBook() {
   }
 }
 
-/* —— 历史展示与回滚(仅本聊天条目) —— */
+/* —— History display and rollback (this chat's entries only) —— */
 function fieldLabel(field: CharTagChangeRecord['field']): string {
   if (field === 'new') return 'Create a file';
   if (field === 'raw') return 'whole string';
@@ -333,7 +333,7 @@ function sourceLabel(entry: CharTagEntry): string {
       The appearance library keeps characters consistent. Image planning copies their saved features; legacy @name references use the latest saved appearance.
     </p>
 
-    <!-- ===== 全局角色库 ===== -->
+    <!-- ===== Global character library ===== -->
     <div class="bbi-char-section">
       <div class="bbi-char-section-head">
         <button
@@ -353,7 +353,7 @@ function sourceLabel(entry: CharTagEntry): string {
           <Icon name="plus" />
         </button>
       </div>
-      <!-- grid 1fr↔0fr 收展:高度自适应、无需写死 max-height -->
+      <!-- grid 1fr↔0fr expand/collapse: height adapts, no hard-coded max-height needed -->
       <div class="bbi-fold-wrap" :class="{ 'is-collapsed': !globalShown }">
         <div class="bbi-fold-inner">
           <p class="bbi-field-hint">
@@ -387,7 +387,7 @@ function sourceLabel(entry: CharTagEntry): string {
       </div>
     </div>
 
-    <!-- ===== 本聊天角色 ===== -->
+    <!-- ===== This chat's characters ===== -->
     <div class="bbi-char-section">
       <div class="bbi-char-section-head">
         <button
@@ -452,7 +452,7 @@ function sourceLabel(entry: CharTagEntry): string {
       </div>
     </div>
 
-    <!-- ===== 角色编辑弹窗 ===== -->
+    <!-- ===== Character editor dialog ===== -->
     <ModalMask :open="!!draft" @close="closeEntry">
       <div v-if="draft" class="bbi-modal bbi-char-modal" role="dialog" aria-modal="true" aria-label="Edit character">
         <header class="bbi-modal-head">
@@ -465,7 +465,7 @@ function sourceLabel(entry: CharTagEntry): string {
           <button class="bbi-icon-mini" type="button" title="Close" @click="closeEntry"><Icon name="close" /></button>
         </header>
 
-        <!-- 作用域:仅新建时可选;已有条目换层用底部「提升为全局 / 复制到本聊天」 -->
+        <!-- Scope: only selectable when creating; existing entries change layer via "Promote to global / Copy to this chat" at the bottom -->
         <div v-if="!editingName" class="bbi-modal-field">
           <span class="bbi-modal-label">save to</span>
           <div class="bbi-segmented">
@@ -548,7 +548,7 @@ function sourceLabel(entry: CharTagEntry): string {
           <span v-if="draftIsRaw" class="bbi-char-preview-mode">Whole string mode</span>
         </div>
 
-        <!-- 变更历史:仅本聊天条目;全局条目无历史(AI 不可改,手动编辑不留痕) -->
+        <!-- Change history: this chat's entries only; global entries have no history (the AI can't change them, and manual edits leave no trace) -->
         <div v-if="editingHistory.length" class="bbi-char-history">
           <button class="bbi-char-history-toggle" type="button" @click="historyOpen = !historyOpen">
             <span class="bbi-char-history-caret" :class="{ 'is-open': historyOpen }"><Icon name="chevron" /></span>
@@ -633,7 +633,7 @@ function sourceLabel(entry: CharTagEntry): string {
       </div>
     </ModalMask>
 
-    <!-- ===== 回滚确认 ===== -->
+    <!-- ===== Rollback confirmation ===== -->
     <ConfirmDialog
       v-model:open="confirmRollbackOpen"
       title="Rollback changes"
@@ -653,7 +653,7 @@ function sourceLabel(entry: CharTagEntry): string {
 </template>
 
 <style scoped>
-/* —— 计数药丸:与设置页版本号同款观感 —— */
+/* —— Count pill: same look as the version number on the settings page —— */
 .bbi-count {
   border: 0;
   padding: 7px 12px;
@@ -666,7 +666,7 @@ function sourceLabel(entry: CharTagEntry): string {
   line-height: 1;
 }
 
-/* —— 分区 —— */
+/* —— Sections —— */
 .bbi-char-section {
   display: flex;
   flex-direction: column;
@@ -680,8 +680,8 @@ function sourceLabel(entry: CharTagEntry): string {
   gap: 12px;
 }
 
-/* —— 折叠开关(参照柏宝书「计划/悬念」)——
- * 标题行整体可点:左箭头 + 标题 + 计数标。无框透明,折叠是辅助操作,标题仍是主体。 */
+/* —— Collapse toggle (modelled on BaiBai Book's "Plans/Suspense") ——
+ * The whole title row is clickable: left arrow + title + count badge. Borderless and transparent; collapsing is a secondary action, the title stays the focus. */
 .bbi-fold-head {
   flex: 1 1 auto;
   min-width: 0;
@@ -698,7 +698,7 @@ function sourceLabel(entry: CharTagEntry): string {
 .bbi-fold-head.is-static {
   cursor: default;
 }
-/* 折叠箭头:展开朝下,收拢转 -90° 朝右。描边继承 currentColor(muted),hover 整行点亮强调色。 */
+/* Collapse arrow: points down when expanded, rotated -90° to the right when collapsed. Stroke inherits currentColor (muted); hovering the row lights it with the accent colour. */
 .bbi-fold-caret {
   flex: 0 0 auto;
   color: var(--bbi-ink-muted);
@@ -712,7 +712,7 @@ function sourceLabel(entry: CharTagEntry): string {
   color: var(--bbi-accent);
 }
 
-/* 可收展容器:grid 1fr↔0fr,高度随内容自适应,无需写死 max-height */
+/* Expandable container: grid 1fr↔0fr, height follows content, no hard-coded max-height needed */
 .bbi-fold-wrap {
   display: grid;
   grid-template-rows: 1fr;
@@ -729,7 +729,7 @@ function sourceLabel(entry: CharTagEntry): string {
   gap: 8px;
 }
 
-/* 区头右侧小「+」:透明底,hover 才点亮,不喷宾夺主 */
+/* Small "+" on the right of the section header: transparent background, lit only on hover, so it doesn't steal attention */
 .bbi-add-mini {
   flex: 0 0 auto;
   display: inline-flex;
@@ -758,7 +758,7 @@ function sourceLabel(entry: CharTagEntry): string {
   font-size: 12.5px;
 }
 
-/* —— 角色卡片网格 —— */
+/* —— Character card grid —— */
 .bbi-char-grid {
   list-style: none;
   margin: 0;
@@ -814,7 +814,7 @@ function sourceLabel(entry: CharTagEntry): string {
   gap: 6px;
 }
 
-/* —— 徽标药丸:全局=实心强调;柏宝书/AI=强调浅底;手动=弱化;覆盖=警示色 —— */
+/* —— Badge pills: global = solid accent; BaiBai Book/AI = light accent background; manual = muted; override = warning colour —— */
 .bbi-char-pill {
   font-size: 11px;
   font-weight: 600;
@@ -845,7 +845,7 @@ function sourceLabel(entry: CharTagEntry): string {
   border-color: transparent;
 }
 
-/* —— 字段 chips:两行封顶,超出裁切 —— */
+/* —— Field chips: capped at two lines, overflow clipped —— */
 .bbi-char-chips {
   display: flex;
   flex-wrap: wrap;
@@ -863,7 +863,7 @@ function sourceLabel(entry: CharTagEntry): string {
   border: 1px solid var(--bbi-line);
   white-space: nowrap;
 }
-/* 整串模式:mono 小字两行截断 */
+/* Whole-string mode: small mono text truncated to two lines */
 .bbi-char-raw {
   font-family: var(--bbi-font-mono);
   font-size: 12px;
@@ -883,12 +883,12 @@ function sourceLabel(entry: CharTagEntry): string {
   color: var(--bbi-ink-muted);
 }
 
-/* —— 弹窗加宽,容纳两列字段表单 —— */
+/* —— Wider dialog to fit a two-column field form —— */
 .bbi-char-modal {
   max-width: 600px;
 }
 
-/* —— 字段表单:两列网格,固定着装独占一行 —— */
+/* —— Field form: two-column grid; the fixed outfit takes a row of its own —— */
 .bbi-char-form {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -909,7 +909,7 @@ function sourceLabel(entry: CharTagEntry): string {
   color: var(--bbi-ink-soft);
 }
 
-/* —— 弹窗内历史面板 —— */
+/* —— History panel inside the dialog —— */
 .bbi-char-history {
   display: flex;
   flex-direction: column;
@@ -985,7 +985,7 @@ function sourceLabel(entry: CharTagEntry): string {
   color: var(--bbi-ink-muted);
 }
 
-/* —— 最终 tag 预览 —— */
+/* —— Final tag preview —— */
 .bbi-char-preview {
   display: flex;
   align-items: center;

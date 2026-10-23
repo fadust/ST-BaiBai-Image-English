@@ -9,13 +9,13 @@ import {
 } from '@/backends/size';
 
 describe('normalizeOrientation', () => {
-  it('认标准值与大小写/空白变体', () => {
+  it('recognises standard values and case/whitespace variants', () => {
     expect(normalizeOrientation('portrait')).toBe('portrait');
     expect(normalizeOrientation('landscape')).toBe('landscape');
     expect(normalizeOrientation('  LANDSCAPE  ')).toBe('landscape');
   });
 
-  it('认常见同义写法与中文', () => {
+  it('recognises common synonyms and Chinese', () => {
     expect(normalizeOrientation('horizontal')).toBe('landscape');
     expect(normalizeOrientation('wide')).toBe('landscape');
     expect(normalizeOrientation('横屏')).toBe('landscape');
@@ -24,7 +24,7 @@ describe('normalizeOrientation', () => {
     expect(normalizeOrientation('vertical')).toBe('portrait');
   });
 
-  it('认比例/尺寸写法,按宽高关系判定', () => {
+  it('recognises ratio/size forms, judging by the width/height relation', () => {
     expect(normalizeOrientation('16:9')).toBe('landscape');
     expect(normalizeOrientation('9:16')).toBe('portrait');
     expect(normalizeOrientation('1216x832')).toBe('landscape');
@@ -32,7 +32,7 @@ describe('normalizeOrientation', () => {
     expect(normalizeOrientation('1:1')).toBe('portrait');
   });
 
-  it('缺失或无法识别一律降级为竖屏(维持改动前的固定默认)', () => {
+  it('missing or unrecognised always degrades to portrait (keeping the fixed default from before the change)', () => {
     expect(normalizeOrientation(undefined)).toBe('portrait');
     expect(normalizeOrientation(null)).toBe('portrait');
     expect(normalizeOrientation('')).toBe('portrait');
@@ -44,20 +44,20 @@ describe('normalizeOrientation', () => {
 });
 
 describe('parseSize', () => {
-  it('解析各种分隔符', () => {
+  it('parses various separators', () => {
     expect(parseSize('832×1216')).toEqual({ width: 832, height: 1216 });
     expect(parseSize('1216x832')).toEqual({ width: 1216, height: 832 });
     expect(parseSize('1024 * 1024')).toEqual({ width: 1024, height: 1024 });
   });
 
-  it('解析不出或超范围返回 null,由调用方决定报错还是降级', () => {
+  it('unparseable or out of range returns null; the caller decides between an error and degrading', () => {
     expect(parseSize('')).toBeNull();
     expect(parseSize('竖版')).toBeNull();
     expect(parseSize('8000×8000')).toBeNull();
     expect(parseSize('32×32')).toBeNull();
   });
 
-  it('不强制 64 的倍数(那是 NAI 专属限制,由 parseResolution 另外把关)', () => {
+  it('does not force multiples of 64 (that is an NAI-only limit, checked separately by parseResolution)', () => {
     expect(parseSize('830×1216')).toEqual({ width: 830, height: 1216 });
   });
 });
@@ -65,29 +65,29 @@ describe('parseSize', () => {
 describe('pickSize', () => {
   const pair = { portraitSize: '832×1216', landscapeSize: '1216×832' };
 
-  it('按方向取对应那一格', () => {
+  it('takes the cell for the orientation', () => {
     expect(pickSize(pair, 'portrait')).toBe('832×1216');
     expect(pickSize(pair, 'landscape')).toBe('1216×832');
   });
 
-  it('未填返回空串,交由调用方回落', () => {
+  it('returns an empty string when unset, leaving the fallback to the caller', () => {
     expect(pickSize({ portraitSize: '  ', landscapeSize: '' }, 'portrait')).toBe('');
     expect(pickSize({ portraitSize: '', landscapeSize: '' }, 'landscape')).toBe('');
   });
 });
 
 describe('normalizeOrientationLock', () => {
-  it('只认两个方向值', () => {
+  it('only recognises the two orientation values', () => {
     expect(normalizeOrientationLock('portrait')).toBe('portrait');
     expect(normalizeOrientationLock('landscape')).toBe('landscape');
     expect(normalizeOrientationLock('auto')).toBe('auto');
   });
 
-  it('老数据缺字段或乱值一律 auto(维持改动前由 AI 判定的行为)', () => {
+  it('old data with missing fields or junk values is always auto (keeping the pre-change behaviour of letting the AI decide)', () => {
     expect(normalizeOrientationLock(undefined)).toBe('auto');
     expect(normalizeOrientationLock(null)).toBe('auto');
     expect(normalizeOrientationLock('')).toBe('auto');
-    // 不做 normalizeOrientation 那套宽松识别:这是用户点选的设置,不是模型的自由输出
+    // No lenient recognition like normalizeOrientation: this is a setting the user clicked, not the model's free output
     expect(normalizeOrientationLock('横屏')).toBe('auto');
     expect(normalizeOrientationLock('LANDSCAPE')).toBe('auto');
     expect(normalizeOrientationLock(true)).toBe('auto');
@@ -95,12 +95,12 @@ describe('normalizeOrientationLock', () => {
 });
 
 describe('effectiveOrientation', () => {
-  it('auto 时用 tag 里记的方向', () => {
+  it('auto uses the orientation recorded in the tag', () => {
     expect(effectiveOrientation('auto', 'portrait')).toBe('portrait');
     expect(effectiveOrientation('auto', 'landscape')).toBe('landscape');
   });
 
-  it('锁定时无视 tag 里记的方向', () => {
+  it('locked ignores the orientation recorded in the tag', () => {
     expect(effectiveOrientation('portrait', 'landscape')).toBe('portrait');
     expect(effectiveOrientation('landscape', 'portrait')).toBe('landscape');
     expect(effectiveOrientation('landscape', 'landscape')).toBe('landscape');

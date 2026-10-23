@@ -1,13 +1,13 @@
 /**
- * 把已落盘的生图结果另存到本地。
+ * Saves a stored generation result to the local device.
  *
- * 图片是**同源真实文件**(/user/files/bbi_*.png),故 `<a download>` 直接可用,
- * 不必先 fetch 成 blob——省一次全尺寸传输,也避开 blob URL 的生命周期管理。
+ * Images are **same-origin real files** (/user/files/bbi_*.png), so `<a download>` works directly
+ * without fetching into a blob first. That saves a full-size transfer and avoids managing blob URL lifetimes.
  *
- * 两个容易踩的点:
- * - `<a>` 必须先挂进 document 再点:部分浏览器忽略未入文档节点上的合成点击;
- * - 移动端 Safari 不认 download 属性,会退化成「新标签打开」——此时用户仍可长按保存,
- *   属可接受降级(卡片与灯箱都另有长按保存路径,见 Lightbox.vue 顶部注释)。
+ * Two pitfalls:
+ * - the `<a>` must be attached to the document before clicking: some browsers ignore synthetic clicks on detached nodes;
+ * - mobile Safari ignores the download attribute and falls back to "open in new tab". Users can still long-press to save,
+ *   an acceptable degradation (cards and the lightbox have their own long-press save path; see the top comment in Lightbox.vue).
  */
 export function saveImageFile(src: string, filename?: string): void {
   if (!src) return;

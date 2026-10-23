@@ -6,14 +6,14 @@ import { getPage } from '@/pages/registry';
 import { closePanel, cycleTheme, lastOpenedAt, modalHost, THEMES, ui } from '@/state/ui';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 
-// 题首主题按钮:显示「下一个」主题的图标与名,点击即切换到它
+// Title-bar theme button: shows the icon and name of the "next" theme; clicking switches to it
 const nextTheme = computed(() => {
   const i = THEMES.findIndex(t => t.value === ui.theme);
   return THEMES[(i + 1) % THEMES.length];
 });
 
-// 是否窄屏(移动端):用于 nav 'auto' 的方向判定 + 抽屉手势开关。
-// matchMedia 变化 Vue 不会自动追踪,用 ref 桥接成响应式。
+// Whether the screen is narrow (mobile): used for nav 'auto' orientation + the drawer gesture switch.
+// Vue doesn't track matchMedia changes automatically; a ref bridges it into reactivity.
 const isNarrow = window.matchMedia('(max-width: 640px)');
 const narrowFlag = ref(isNarrow.matches);
 const onMq = (e: MediaQueryListEvent) => (narrowFlag.value = e.matches);
@@ -28,8 +28,8 @@ const navPlacement = computed<'top' | 'bottom'>(() => {
 
 const current = computed(() => getPage(ui.activePage));
 
-// —— 遮罩点击关闭:仅当按下与松开都在遮罩本身。
-// 避免:1) 移动端打开手势的合成 click 穿透秒关;2) 窗内按下拖到窗外误关。
+// —— Mask click closes: only when both press and release happen on the mask itself.
+// Avoids: 1) the synthetic click from the mobile open gesture passing through and closing instantly; 2) pressing inside the window, dragging outside and closing by mistake.
 let pressedOnOverlay = false;
 
 function onOverlayPointerDown(e: PointerEvent) {
@@ -42,12 +42,12 @@ function onOverlayClick(e: MouseEvent) {
   pressedOnOverlay = false;
 }
 
-// —— 移动端:下滑关闭抽屉 ——
-const dragY = ref(0); // 当前下拉位移(px)
+// —— Mobile: swipe down to close the drawer ——
+const dragY = ref(0); // Current pull-down offset (px)
 const dragging = ref(false);
 let startY = 0;
 let activePointer: number | null = null;
-const CLOSE_THRESHOLD = 110; // 超过此位移松手即关闭
+const CLOSE_THRESHOLD = 110; // Releasing beyond this offset closes
 
 function onHandleDown(e: PointerEvent) {
   if (!narrowFlag.value) return;
@@ -59,7 +59,7 @@ function onHandleDown(e: PointerEvent) {
 
 function onHandleMove(e: PointerEvent) {
   if (!dragging.value || e.pointerId !== activePointer) return;
-  // 只跟随向下的位移
+  // Only follows downward offset
   dragY.value = Math.max(0, e.clientY - startY);
 }
 
@@ -73,7 +73,7 @@ function onHandleUp(e: PointerEvent) {
   dragY.value = 0;
 }
 
-// 抽屉跟手样式:拖动时禁用过渡,松手时回弹有过渡
+// Drawer follow-the-finger style: transitions off while dragging, on for the spring-back after release
 const windowStyle = computed(() => {
   if (!narrowFlag.value || dragY.value === 0) return undefined;
   return {
@@ -85,10 +85,10 @@ const windowStyle = computed(() => {
 
 <template>
   <div class="bbi-root" :data-theme="ui.theme">
-    <!-- 弹窗 Teleport 宿主:.bbi-root 直接子级,在 .bbi-body 滚动容器之外。
-         各页弹窗 Teleport 到此,避开 iOS「可滚动祖先内 fixed 后代定位错乱」(详见 state/ui.ts)。 -->
+    <!-- Dialog Teleport host: direct child of .bbi-root, outside the .bbi-body scroll container.
+         Dialogs from every page teleport here, avoiding iOS's "fixed descendants misplaced inside a scrollable ancestor" (see state/ui.ts). -->
     <div ref="modalHost"></div>
-    <!-- 悬浮球:留在 shadow 内才能用 --bbi-* 主题变量;自身 position:fixed 贴边,不受 host 影响 -->
+    <!-- Floating orb: must stay inside the shadow root to use the --bbi-* theme variables; it is position:fixed to the edge itself, unaffected by the host -->
     <FloatingOrb v-if="ui.showOrb" />
     <Transition name="bbi-fade">
       <div
@@ -99,12 +99,12 @@ const windowStyle = computed(() => {
         @keydown.esc="closePanel"
         tabindex="-1"
       >
-        <!-- 窗口常驻于遮罩内(不独立 v-if、不嵌套 Transition):
-             嵌套 Transition 在父子 v-if 同时翻转时,子的 leave 不会触发(实测窗口直接随父被移除,
-             无任何动画)。改由遮罩 Transition 的 class 作后代选择器驱动窗口的进出场动画
-             (见 <style> 里 .bbi-fade-enter-from/.bbi-fade-leave-to 下的 .bbi-window)。 -->
+        <!-- The window lives permanently inside the mask (no separate v-if, no nested Transition):
+             with nested Transitions, when parent and child v-if flip at the same time the child's leave doesn't fire (measured: the window was removed with the parent,
+             with no animation at all). Instead the mask Transition's classes drive the window's enter/leave animation as descendant selectors
+             (see .bbi-window under .bbi-fade-enter-from/.bbi-fade-leave-to in <style>). -->
         <div class="bbi-window" :style="windowStyle" role="dialog" aria-modal="true" aria-label="BaiBai Image">
-            <!-- 移动端抓手:可下滑关闭 -->
+            <!-- Mobile grab handle: swipe down to close -->
             <div
               v-if="navPlacement !== 'top' || narrowFlag"
               class="bbi-grabber"
@@ -116,7 +116,7 @@ const windowStyle = computed(() => {
               <span class="bbi-grabber-bar"></span>
             </div>
 
-            <!-- 题首 -->
+            <!-- Title bar -->
             <header class="bbi-head">
               <span class="bbi-brand-name">BaiBai Image</span>
               <div class="bbi-head-actions">
@@ -145,7 +145,7 @@ const windowStyle = computed(() => {
 </template>
 
 <style scoped>
-/* —— 移动端抓手:桌面隐藏 —— */
+/* —— Mobile grab handle: hidden on desktop —— */
 .bbi-grabber {
   display: none;
 }
@@ -194,7 +194,7 @@ const windowStyle = computed(() => {
   outline-offset: 2px;
 }
 
-/* —— 过渡:遮罩淡入淡出,窗口靠遮罩的过渡 class 联动(见下) —— */
+/* —— Transitions: the mask fades in/out; the window follows via the mask's transition classes (see below) —— */
 .bbi-fade-enter-active,
 .bbi-fade-leave-active {
   transition: opacity var(--bbi-dur) var(--bbi-ease);
@@ -204,9 +204,9 @@ const windowStyle = computed(() => {
   opacity: 0;
 }
 
-/* 窗口进出场:由遮罩 Transition 的 class 作后代选择器驱动(窗口自身不再套 Transition——
-   父子 v-if 同时翻转时子 Transition 的 leave 不触发,实测窗口会无动画直接被移除)。
-   进出场两端同款 transform → 对称。PC 微升+略放大;移动端在 media query 里改成滑回底部。 */
+/* Window enter/leave: driven by the mask Transition's classes as descendant selectors (the window no longer has its own Transition:
+   when parent and child v-if flip together, the child Transition's leave doesn't fire; measured, the window was removed without animation).
+   The same transform at both ends → symmetrical. On PC a slight rise + slight scale; on mobile the media query changes it to sliding back to the bottom. */
 .bbi-fade-enter-from .bbi-window,
 .bbi-fade-leave-to .bbi-window {
   opacity: 0;
@@ -228,15 +228,15 @@ const windowStyle = computed(() => {
   transform: translateY(-6px);
 }
 
-/* 窗口过渡:进出场(transform+opacity)与拖动回弹(transform)共用;
-   拖动跟手时由内联 style 的 transition:none 覆盖,松手回弹再走这条。 */
+/* Window transition: shared by enter/leave (transform+opacity) and drag spring-back (transform);
+   while dragging, an inline transition:none overrides it; the spring-back after release uses this one again. */
 .bbi-window {
   transition:
     transform var(--bbi-dur) var(--bbi-ease),
     opacity var(--bbi-dur) var(--bbi-ease);
 }
 
-/* ============ 移动端:抓手 + 抽屉上滑入场 ============ */
+/* ============ Mobile: grab handle + drawer slide-up entrance ============ */
 @media (max-width: 640px) {
   .bbi-grabber {
     display: flex;
@@ -256,17 +256,17 @@ const windowStyle = computed(() => {
   .bbi-head {
     padding: 4px 16px 12px;
   }
-  /* 抽屉从底部滑入 / 滑回底部(纯位移,不淡透明) */
+  /* Drawer slides in from / back to the bottom (pure translation, no fading) */
   .bbi-fade-enter-from .bbi-window,
   .bbi-fade-leave-to .bbi-window {
     opacity: 1;
     transform: translateY(100%) scale(1);
   }
-  /* 遮罩离场延后淡出:让抽屉先滑回底部,背景殿后再撤,否则窗口随遮罩一起被拉透明,
-     滑动过程看不见(窗口是遮罩子元素,父 opacity 会合成到子)。 */
+  /* The mask's leave fade is delayed: the drawer slides back to the bottom first and the backdrop leaves after; otherwise the window turns transparent with the mask,
+     and the slide can't be seen (the window is a child of the mask, and the parent's opacity composites onto the child). */
   .bbi-fade-leave-active {
     transition: opacity 0.16s var(--bbi-ease) 0.18s;
   }
-  /* 窗口滑回底部要走完整 --bbi-dur,不被上面遮罩的短时长牵连(各自 transition 独立,这里仅强调) */
+  /* The window's slide back to the bottom runs the full --bbi-dur, unaffected by the mask's shorter duration above (each transition is independent; just emphasised here) */
 }
 </style>

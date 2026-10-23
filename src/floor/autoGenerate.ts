@@ -1,24 +1,24 @@
 /**
- * 「写入 tag 后自动生成图片」握手(autoTag.autoGenerate,默认开)。
+ * Handshake for "auto-generate images after tags are written" (autoTag.autoGenerate, on by default).
  *
- * 时序:runner 写入 tag 前为每个新槽位挂上标记 → applyMessageText 内部触发
- * MESSAGE_EDITED / MESSAGE_UPDATED → 楼层重渲染、卡片水合挂载 →
- * 卡片 onMounted 消费本槽位标记并自动开始生成。
+ * Sequence: before writing tags, the runner marks each new slot → applyMessageText internally fires
+ * MESSAGE_EDITED / MESSAGE_UPDATED → the floor re-renders and cards hydrate and mount →
+ * the card's onMounted consumes its slot's mark and starts generating.
  *
- * 标记一次性:消费即删,重水合不会重复触发;楼层懒渲染(群聊等)时标记暂存,
- * 等楼层真正渲染再消费;切聊天/删楼时整体清空,避免污染其它聊天或旧槽位。
+ * Marks are one-shot: consumed means deleted, so re-hydration never triggers twice. When floors render lazily (group chats etc.)
+ * marks wait until the floor actually renders; on chat switch/floor deletion they are all cleared, so they never leak into other chats or old slots.
  *
- * 两种模式(mode):
- * - 'auto':自动流程(runner 写完 tag)。仅在「这条提示词还没有图」时才开跑,
- *   已有结果/在途任务时让位给用户手动操作。
- * - 'force':用户明确点了「应用并重新生成」(提示词编辑弹窗)。无条件开跑 ——
- *   来回改回旧提示词时该桶可能已有历史(phase=ready),但用户要的就是新图。
+ * Two modes (mode):
+ * - 'auto': the automatic flow (runner finished writing tags). Only starts when "this prompt has no image yet";
+ *   if a result or an in-flight task exists, it yields to the user's manual actions.
+ * - 'force': the user explicitly clicked "Apply and regenerate" (prompt editor dialog). Always starts:
+ *   after editing back to an old prompt the bucket may already have history (phase=ready), but the user wants a new image.
  */
 
-/** 标记模式:见文件头注释。 */
+/** Mark mode: see the file header comment. */
 export type AutoGenerateMode = 'auto' | 'force';
 
-/** 卡片展示相位(与 Card.vue 的 Phase 同构;这里只列判定用得到的)。 */
+/** Card display phase (same shape as Phase in Card.vue; only the values used for checks are listed). */
 export type AutoGeneratePhase = 'pending' | 'queued' | 'generating' | 'ready' | 'stale' | 'error';
 
 const flags = new Map<string, AutoGenerateMode>();
@@ -37,7 +37,7 @@ export function markForAutoGenerate(
   flags.set(key(chatId, messageId, swipeId, seq), mode);
 }
 
-/** 消费本槽位的自动生成标记:有则删除并返回其模式(只触发一次),无则 null。 */
+/** Consumes this slot's auto-generate mark: if present, deletes it and returns its mode (fires only once); otherwise null. */
 export function consumeAutoGenerate(
   chatId: string,
   messageId: number,
@@ -52,23 +52,23 @@ export function consumeAutoGenerate(
 }
 
 /**
- * 该不该真的开跑。**刻意做成纯函数**:Card.vue 没有单测(仓里没装 jsdom /
- * @vue/test-utils,vitest 跑在 node 环境),判定留在组件里就锁不住。
+ * Whether to actually start. **Deliberately a pure function**: Card.vue has no unit tests (the repo has no jsdom /
+ * @vue/test-utils installed, and vitest runs in a node environment), so a check left inside the component couldn't be locked down.
  *
- * 'auto' 放过 pending 与 **stale**:stale 的含义正是「tag 变了、当前提示词还没有图」,
- * 这恰恰是该自动出图的时刻。曾经这里只放 pending,导致楼层「重新生成 tag」在已出过图的
- * 楼层上静默失效(新 tag 写进去了、卡片却停在旧图不动);多 tag 楼层更怪 —— 有旧图的
- * 槽位被拦、纯新增的槽位照跑,看起来「一半在生成一半不动」。
+ * 'auto' lets through pending and **stale**: stale means exactly "the tag changed and the current prompt has no image yet",
+ * which is precisely when an image should be generated automatically. This once let only pending through, so a floor's "regenerate tags"
+ * silently did nothing on floors that already had images (new tags were written, but the card stayed on the old image); multi-tag floors were stranger still: slots
+ * with old images were blocked while brand-new slots ran, so it looked like "half generating, half frozen".
  *
- * ready / queued / generating / error 仍然不放:已有本提示词的结果、已有在途任务,
- * 或上一轮刚失败(重试交给用户点,免得错误配置下自动重试打满后端)。
+ * ready / queued / generating / error are still not let through: a result for this prompt already exists, a task is already in flight,
+ * or the last round just failed (retrying is left to the user's click, so a bad config doesn't auto-retry and flood the backend).
  */
 export function shouldAutoGenerate(mode: AutoGenerateMode, phase: AutoGeneratePhase): boolean {
   if (mode === 'force') return true;
   return phase === 'pending' || phase === 'stale';
 }
 
-/** 撤销某楼层的全部标记(写回正文失败时调用)。 */
+/** Revokes all marks for a floor (called when writing back the text fails). */
 export function clearAutoGenerateForFloor(chatId: string, messageId: number): void {
   const prefix = `${chatId}|${messageId}|`;
   for (const k of [...flags.keys()]) {
@@ -76,7 +76,7 @@ export function clearAutoGenerateForFloor(chatId: string, messageId: number): vo
   }
 }
 
-/** 清空全部标记(切聊天 / 删楼后的全量重建时调用)。 */
+/** Clears all marks (called on a full rebuild after switching chats / deleting floors). */
 export function clearAutoGenerateFlags(): void {
   flags.clear();
 }

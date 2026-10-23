@@ -2,28 +2,28 @@ import { onSettingsReady, settings } from '@/state/settings';
 import { reactive, ref, watch } from 'vue';
 
 /**
- * 弹窗 Teleport 宿主:由 App.vue 挂在 .bbi-root 的直接子级(在 .bbi-body 滚动容器之外)。
- * 所有 .bbi-modal-mask 弹窗都 Teleport 到这里,避开 iOS Safari 的老问题——
- * 「可滚动祖先内的 position:fixed 后代」会相对滚动内容而非视口定位,设置页滚动后弹窗顶出屏幕。
- * 仍在 shadow root 内,scoped 样式与 --bbi-* 主题变量照常生效(故不能用 Teleport to="body")。
+ * Teleport host for dialogs: mounted by App.vue as a direct child of .bbi-root (outside the .bbi-body scroll container).
+ * All .bbi-modal-mask dialogs teleport here, avoiding an old iOS Safari problem:
+ * "position:fixed descendants inside a scrollable ancestor" are positioned relative to the scrolled content instead of the viewport, so after scrolling the settings page, dialogs got pushed off screen.
+ * Still inside the shadow root, so scoped styles and --bbi-* theme variables work as usual (hence Teleport to="body" can't be used).
  */
 export const modalHost = ref<HTMLElement | null>(null);
 
-/** 导航位置:auto = PC 顶部、移动端底部 */
+/** Navigation position: auto = top on PC, bottom on mobile */
 export type NavPosition = 'top' | 'bottom' | 'auto';
 
 /**
- * 主题。新增主题只需:
- *   1) theme.css 里加一套 .bbi-root[data-theme='xxx'] 变量;
- *   2) 这里给 ThemeName 加上 'xxx',并往 THEMES 注册表加一条。
- * 设置页与题首切换按钮都从 THEMES 自动读取,无需再改别处。
+ * Themes. To add a theme:
+ *   1) add a set of .bbi-root[data-theme='xxx'] variables in theme.css;
+ *   2) add 'xxx' to ThemeName here and register an entry in THEMES.
+ * The settings page and the title-bar switch button both read THEMES automatically; nothing else needs changing.
  */
 export type ThemeName = 'day' | 'night' | 'pastel' | 'green' | 'st';
 
 export interface ThemeDef {
   value: ThemeName;
   label: string;
-  /** Icon 组件名,见 components/Icon.vue */
+  /** Icon component name, see components/Icon.vue */
   icon: string;
 }
 
@@ -37,27 +37,27 @@ export const THEMES: ThemeDef[] = [
 
 interface UiState {
   open: boolean;
-  /** 当前分页 id,对应 registry 里的 key */
+  /** Current page id, matching a key in the registry */
   activePage: string;
   theme: ThemeName;
   navPosition: NavPosition;
-  /** 移动端:再点当前页导航按钮即关窗(默认开,怕误触可关) */
+  /** Mobile: tapping the current page's nav button again closes the window (on by default; can be turned off to avoid mis-taps) */
   navTapClose: boolean;
-  /** 在 ST 顶栏注入快速打开按钮(默认关) */
+  /** Inject a quick-open button into ST's top bar (off by default) */
   showTopBar: boolean;
-  /** 屏幕边缘悬浮球(默认关) */
+  /** Screen-edge floating orb (off by default) */
   showOrb: boolean;
-  /** 悬浮球自定义图标(ST 服务器图片路径;空=默认画笔图标) */
+  /** Custom floating-orb icon (ST server image path; empty = default brush icon) */
   orbImage: string;
-  /** 悬浮球形状:bookmark / circle / square */
+  /** Floating-orb shape: bookmark / circle / square */
   orbShape: OrbShape;
-  /** 悬浮球静止不透明度(百分比 20–100) */
+  /** Floating-orb idle opacity (percent, 20–100) */
   orbOpacity: number;
-  /** 悬浮球基准尺寸(px,32–80) */
+  /** Floating-orb base size (px, 32–80) */
   orbSize: number;
 }
 
-/** 悬浮球形状 */
+/** Floating-orb shape */
 export type OrbShape = 'bookmark' | 'circle' | 'square';
 export const ORB_SHAPES: { value: OrbShape; label: string }[] = [
   { value: 'bookmark', label: 'Bookmark' },
@@ -68,8 +68,8 @@ function validOrbShape(s: string): OrbShape {
   return s === 'bookmark' || s === 'circle' || s === 'square' ? s : 'bookmark';
 }
 
-// activePage(上次停在哪一页)是纯本机临时导航态,跨设备同步无意义、且翻页即回写服务器太频繁,
-// 故仍存本机 localStorage;主题/导航位置是真·设置,改存进 settings.ui(→ ST 跨设备同步)。
+// activePage (the page last visited) is purely local temporary navigation state; syncing it across devices is pointless, and writing to the server on every page change is too frequent,
+// so it stays in local localStorage; theme/navigation position are real settings and are stored in settings.ui (→ ST cross-device sync).
 const PAGE_STORAGE_KEY = 'bbi.ui.page.v1';
 
 function loadActivePage(): string {
@@ -80,7 +80,7 @@ function loadActivePage(): string {
   }
 }
 
-// 主题合法性校验:settings.ui.theme 是裸字符串,可能来自旧版本/被手改坏,落到 ui 前先校验。
+// Theme validity check: settings.ui.theme is a bare string that may come from an old version or be hand-edited wrong, so validate before passing to ui.
 function validTheme(t: string): ThemeName {
   return THEMES.some(x => x.value === t) ? (t as ThemeName) : 'day';
 }
@@ -88,7 +88,7 @@ function validNav(n: string): NavPosition {
   return n === 'top' || n === 'bottom' || n === 'auto' ? n : 'auto';
 }
 
-// 先用 settings 当前值建 ui(import 阶段多为默认;hydrate 完成后由 onSettingsReady 回灌真值)。
+// Build ui from the current settings values first (mostly defaults at import time; onSettingsReady restores the real values after hydrate).
 export const ui = reactive<UiState>({
   open: false,
   activePage: loadActivePage(),
@@ -103,7 +103,7 @@ export const ui = reactive<UiState>({
   orbSize: settings.ui.orbSize,
 });
 
-// settings 跨设备同步值就绪后,把主题/导航回灌进 ui(覆盖 import 阶段的默认)
+// Once settings' cross-device values are ready, restore theme/navigation into ui (overriding the import-time defaults)
 onSettingsReady(() => {
   ui.theme = validTheme(settings.ui.theme);
   ui.navPosition = validNav(settings.ui.navPosition);
@@ -116,7 +116,7 @@ onSettingsReady(() => {
   ui.orbSize = settings.ui.orbSize;
 });
 
-// ui 改变 → 写回 settings.ui(由 settings 的 watch 防抖落盘、跨设备同步);activePage 仍存本机。
+// ui changes → written back to settings.ui (settings' watch saves with debounce and syncs across devices); activePage still stays local.
 watch(
   () => [
     ui.theme,
@@ -147,14 +147,14 @@ watch(
     try {
       localStorage.setItem(PAGE_STORAGE_KEY, ui.activePage);
     } catch {
-      /* localStorage 不可用时静默 */
+      /* Silent when localStorage is unavailable */
     }
   },
 );
 
 /**
- * 窗口最近一次打开的时间戳。用于在打开瞬间忽略遮罩关闭——
- * 移动端打开手势末尾合成的 click 会穿透到刚渲染的遮罩,造成"秒关"。
+ * Timestamp of the window's most recent opening. Used to ignore mask-close clicks at the moment of opening:
+ * on mobile, the click synthesised at the end of the opening gesture passes through to the freshly rendered mask, causing an "instant close".
  */
 export let lastOpenedAt = 0;
 
@@ -168,7 +168,7 @@ export function closePanel() {
   ui.open = false;
 }
 
-/** 题首按钮:在所有已注册主题间循环切换 */
+/** Title-bar button: cycles through all registered themes */
 export function cycleTheme() {
   const i = THEMES.findIndex(t => t.value === ui.theme);
   ui.theme = THEMES[(i + 1) % THEMES.length].value;

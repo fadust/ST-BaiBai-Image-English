@@ -42,40 +42,40 @@ import { getContext } from '@/st/context';
 import { formatPromptText } from '@/st/imageTagRegex';
 
 /**
- * 楼层生图卡片(DESIGN-FLOOR-UI.md §8)。
+ * Floor image card (DESIGN-FLOOR-UI.md §8).
  *
- * 【重要】本组件是**纯展示层**,不持有运行态。
- * 卡片的生命周期由外部水合决定:任一槽位出图成功都会 hydrateMessage 重水合,
- * 而重水合卸载**整楼**卡片;ST 重渲染楼层时锚点 DOM 也会重建。
- * 运行态(生成中/错误/在途请求)一律存 floor/genState.ts 的模块级 store,按槽位 key 认领,
- * 组件重建后立刻读回——否则会出现「一张图完成,其余卡片的『生成中…』集体消失并退回 pending」
- * (标记已消费,不会自动重跑)。改这里前先读 genState.ts 顶部注释。
+ * [Important] This component is a **pure display layer** and holds no runtime state.
+ * Card lifetimes are decided by external hydration: a successful image on any slot re-hydrates via hydrateMessage,
+ * and re-hydration unmounts the **whole floor's** cards; when ST re-renders a floor the anchor DOM is rebuilt too.
+ * Runtime state (generating/error/in-flight request) always lives in the module-level store in floor/genState.ts, claimed by slot key,
+ * and read back as soon as the component is rebuilt; otherwise "one image finishes, and every other card's 'Generating…' vanishes and falls back to pending"
+ * (the marks were consumed and won't rerun automatically). Read the top comment in genState.ts before changing this.
  *
- * 展示态分两层:
- * - 运行态(store):queued / generating / error —— 跨重建存活;
- * - 派生态(props):ready(有本提示词历史)/ stale(仅有旧提示词结果)/ pending —— 每次由 props 算出。
+ * Display state has two layers:
+ * - runtime state (store): queued / generating / error, surviving rebuilds;
+ * - derived state (props): ready (history for this prompt) / stale (only old-prompt results) / pending, computed from props each time.
  */
 
 const props = defineProps<{
-  /** tag 原文解析出的 tag 部分(danbooru 短 tag;展示与生成用)。 */
+  /** Tag part parsed from the raw tag (short danbooru tags; for display and generation). */
   prompt: string;
-  /** tag 原文解析出的自然语言部分(无则空串;生成时写入 %nl% 占位符)。 */
+  /** Natural-language part parsed from the raw tag (empty string if none; written into the %nl% placeholder at generation). */
   nl: string;
-  /** tag 原文解析出的动态负面部分(无则空串;生成时写入 %negative_prompt% 占位符)。 */
+  /** Dynamic negative part parsed from the raw tag (empty string if none; written into the %negative_prompt% placeholder at generation). */
   negative: string;
   characters: ImageCharacterPrompt[];
-  /** 画幅方向(模型判定,随 tag 持久化):决定用渠道配置里的竖屏还是横屏尺寸;渠道锁了横竖时以锁为准(见 effectiveSize)。 */
+  /** Frame orientation (decided by the model, persisted with the tag): picks the channel's portrait or landscape size; a channel orientation lock wins (see effectiveSize). */
   size: Orientation;
-  /** tag 原文(含 <bbi_image> 壳):生成提交与 promptHash 的输入。 */
+  /** Raw tag text (including the <bbi_image> wrapper): input for generation submission and promptHash. */
   tag: string;
   messageId: number;
   seq: number;
   swipeId: number;
-  /** 当前提示词同槽位的全部历史(时间正序,最新在末尾)。 */
+  /** All history for the current prompt in this slot (chronological, newest last). */
   history: BbiImageEntry[];
-  /** 无匹配历史时,旧提示词同槽位的最新结果(stale)。 */
+  /** With no matching history, the latest result of an old prompt in this slot (stale). */
   staleEntry: BbiImageEntry | null;
-  /** 所在聊天 id(水合时传入):槽位 key 的一部分,不再各自去 getContext 取。 */
+  /** Chat id it belongs to (passed in at hydration): part of the slot key, so it no longer calls getContext separately. */
   chatId: string;
 }>();
 
@@ -85,27 +85,27 @@ const key = computed(() => slotKey(props.chatId, props.messageId, props.swipeId,
 const hash = computed(() => promptHash(props.tag));
 
 /**
- * 文件仍在的那部分历史。**卡片一律用它,不用 props.history**。
+ * The part of the history whose files still exist. **Cards always use this, never props.history**.
  *
- * 图库现在能直接删 user/images 下的文件,而那张图的指针还留在本楼的 extra 里
- * (图库按目录列图、指针在某个聊天里,两者无反向索引,扫全库反查不可行——
- * 见 floor/missingImages.ts 顶部)。破指针不过滤掉的话:翻页器会多出翻得到却是空的格子,
- * 折叠条的「N 张」也跟着虚高。
+ * The gallery can now delete files under user/images directly, while the image's pointer stays in this floor's extra
+ * (the gallery lists by folder and pointers live in some chat, with no reverse index between them, and scanning everything is infeasible;
+ * see the top of floor/missingImages.ts). Without filtering broken pointers, the pager would gain cells you can page to but that are empty,
+ * and the collapsed bar's "N images" would be inflated too.
  *
- * 过滤只看**已确认 404**的图(missingImages 册),不是猜的:没被标记的图一律当作还在。
+ * Filtering only removes images **confirmed as 404** (the missingImages register), never guesses: unmarked images are always treated as present.
  */
 const liveHistory = computed(() => props.history.filter(entry => !isImageMissing(entry.path)));
-/** 旧提示词结果同样要对账:它的文件一样可能被图库删掉。 */
+/** Old-prompt results need reconciling too: their files may also be deleted by the gallery. */
 const liveStale = computed(() =>
   props.staleEntry && !isImageMissing(props.staleEntry.path) ? props.staleEntry : null,
 );
 
-/** 翻页位置:默认最新一张。history 变化(新图落盘 / 删掉破指针)后自动跟到最新。 */
+/** Pager position: defaults to the newest. When history changes (new image saved / broken pointer removed) it follows the newest automatically. */
 const index = ref(liveHistory.value.length ? liveHistory.value.length - 1 : 0);
 watch(
   () => liveHistory.value.length,
   length => {
-    // 删掉的若是当前这张,index 会越界 → 钳回最后一张;新图落盘则跟到最新
+    // If the deleted one was the current one, index goes out of range → clamp back to the last; when a new image is saved, follow the newest
     index.value = length ? length - 1 : 0;
   },
 );
@@ -113,31 +113,31 @@ watch(
 const promptOpen = ref(false);
 
 /**
- * 折叠态:存模块级 store 按槽位 key 认领(组件随时被水合重建,ref 会丢),
- * 未手动设置过的槽位回落到设置项「楼层图片默认折叠」。见 floor/collapseState.ts。
+ * Collapsed state: stored in the module-level store and claimed by slot key (the component is rebuilt by hydration at any time, losing refs);
+ * slots never set manually fall back to the setting "Collapse floor images by default". See floor/collapseState.ts.
  */
 const collapsed = computed<boolean>({
   get: () => isCollapsed(key.value, settings.ui.autoCollapseImages),
   set: value => setCollapsed(key.value, value),
 });
 
-/** 触屏收纳菜单(⋯ 钮)的展开态;桌面 hover 一排直达,不用它。 */
+/** Expanded state of the touch overflow menu (⋯ button); desktop hover shows the row directly and doesn't use it. */
 const menuOpen = ref(false);
 
-/** 运行态记录(可能为 undefined = 无在途任务)。 */
+/** Runtime record (may be undefined = no in-flight task). */
 const record = computed(() => getGenRecord(key.value));
 
 /**
- * 「AI 重写提示词」的请求在途(模块级 store,见 floor/tagPlanState.ts)。
- * 与出图运行态刻意分开:它跑的是 LLM 请求,取消/并发语义与出图各自独立。
+ * An "AI rewrite prompt" request is in flight (module-level store, see floor/tagPlanState.ts).
+ * Deliberately separate from image runtime state: it runs an LLM request, with cancel/concurrency semantics independent of image generation.
  */
 const planning = computed(() => isTagPlanning(key.value));
 
 const phase = computed<Phase>(() => {
   const running = record.value;
   if (running) return running.phase;
-  // 用存活口径:图被图库删光后该退回 pending 给出「生成图片」入口,
-  // 而不是顶着 ready 显示一张破图(那样连重新生成都点不了)。
+  // Uses the surviving set: once the gallery deletes every image it should fall back to pending and offer "Generate image",
+  // rather than staying ready and showing a broken image (which couldn't even be regenerated).
   if (liveHistory.value.length) return 'ready';
   if (liveStale.value) return 'stale';
   return 'pending';
@@ -145,33 +145,33 @@ const phase = computed<Phase>(() => {
 
 const error = computed(() => record.value?.error ?? '');
 const queueAhead = computed(() => record.value?.queueAhead ?? null);
-/** 限流退避中(NAI 自动重试);非 null 时状态文案优先报它。 */
+/** Backing off from rate limits (NAI automatic retry); when non-null the status text reports this first. */
 const retryInfo = computed(() => record.value?.retry ?? null);
 
 const comfyActive = computed(() => settings.defaultBackend === 'comfyui');
 const naiActive = computed(() => settings.defaultBackend === 'nai');
 /**
- * 后端是否已配齐(决定给「生成图片」按钮还是配置引导)。
- * 判据在 generate.ts 的 backendStatus 里,与真正出图、与公开接口同源——
- * 曾经这里自己判一套,改了 ComfyUI 简易模式的校验就得两处同步改。
+ * Whether the backend is fully configured (decides between the "Generate image" button and setup guidance).
+ * The criterion is backendStatus in generate.ts, the same source as actual generation and the public API;
+ * this place once had its own check, so changing ComfyUI simple-mode validation meant editing two places.
  */
 const configured = computed(() => backendStatus().configured);
 
 /**
- * 实际出图方向:当前渠道锁了横竖就按锁(settings.ts 的 activeOrientationLock),否则按 tag 里记的。
- * generate.ts 出图时本就会按锁改写;这里再算一遍,是让历史记录与无图占位的比例跟真正出的图
- * 一致——否则锁了横屏,占位还按 tag 里的竖屏留出一大块。tag 原文不改(改了 promptHash 就变)。
+ * Actual output orientation: if the current channel locks orientation, use the lock (activeOrientationLock in settings.ts), otherwise what the tag recorded.
+ * generate.ts already applies the lock at generation; computing it again here keeps history records and the no-image placeholder's ratio consistent with the image
+ * actually produced; otherwise with landscape locked, the placeholder would still reserve a big portrait block per the tag. The raw tag isn't changed (that would change promptHash).
  */
 const effectiveSize = computed(() => effectiveOrientation(activeOrientationLock(), props.size));
 
 /**
- * 设置项「楼层图片显示大小」:图片显示高度上限(px;null = 铺满楼层宽度,0.3.0 及以前的样子)。
- * 只经 data-capped + CSS 变量交给 card.css 处理,不量图片尺寸。
+ * Setting "Floor image display size": maximum image display height (px; null = fill the floor width, how it looked in 0.3.0 and earlier).
+ * Passed to card.css only via data-capped + a CSS variable; image dimensions are never measured.
  */
 const displayMaxHeight = computed(() => imageDisplayMaxHeight(settings.ui.imageDisplaySize));
 
 const current = computed(() => liveHistory.value[index.value] ?? null);
-/** 提示词全文:复制、灯箱、展开区共用。口径与图库同源(st/imageTagRegex.ts)。 */
+/** Full prompt text: shared by copy, the lightbox and the expanded area. Same source as the gallery (st/imageTagRegex.ts). */
 const promptText = computed(() =>
   formatPromptText({
     tag: props.prompt,
@@ -181,14 +181,14 @@ const promptText = computed(() =>
   }),
 );
 /**
- * 当前展示的结果。**刻意不看运行态**:生成失败/重绘中都该继续显示上一张图,
- * 否则「有图 → 点重绘 → 失败」会让图凭空消失(只剩一行报错),看着像把图弄丢了。
+ * The result currently displayed. **Deliberately ignores runtime state**: on failure/while redrawing the previous image should keep showing;
+ * otherwise "has an image → click redraw → fails" would make the image vanish (leaving only an error line), looking as if it was lost.
  */
 const shownEntry = computed(() => (liveHistory.value.length ? current.value : liveStale.value));
 const imageSrc = computed(() => shownEntry.value?.path ?? '');
 /**
- * 灯箱展示用:提示词 + 只读元信息(画师串/vibe/采样参数)。
- * 与卡片内可编辑的 `promptText` 分开 —— 元信息只读,绝不能混进可写回的 tag 文本。
+ * For the lightbox: prompt + read-only metadata (artist string/vibes/sampling parameters).
+ * Kept apart from the card's editable `promptText`: metadata is read-only and must never mix into the tag text that gets written back.
  */
 const lightboxPrompt = computed(() => {
   const meta = shownEntry.value?.meta;
@@ -196,10 +196,10 @@ const lightboxPrompt = computed(() => {
 });
 
 /**
- * `<img>` 加载失败:确认确实是 404 再落册,让上面那些 live* 把它摘掉。
+ * `<img>` failed to load: confirm a real 404 before recording it, so the live* values above drop it.
  *
- * 不一 error 就当删除——error 分不清「文件没了」和「网断了」(详见 missingImages.ts)。
- * 确认失败时什么都不做:破图占位留着,下次重挂 <img> 会自然重试。
+ * Not every error means deletion: error can't tell "file gone" from "network down" (see missingImages.ts).
+ * If confirmation fails nothing happens: the broken-image placeholder stays, and the next <img> remount naturally retries.
  */
 async function onImageError(): Promise<void> {
   const path = imageSrc.value;
@@ -211,14 +211,14 @@ const downloadFileName = (entry: BbiImageEntry): string => {
   const characterName = context?.chat[props.messageId]?.name || context?.name2 || '';
   return imageDownloadFileName(entry.path, characterName, entry.generationId);
 };
-/** 展示的图是否属于旧提示词(有旧结果但当前提示词还没出过图)。 */
+/** Whether the displayed image belongs to an old prompt (old results exist but the current prompt has produced no image yet). */
 const isStale = computed(() => !liveHistory.value.length && !!liveStale.value);
-/** 生成中/排队中仍显示上一张(若有),避免卡片塌空;骨架叠在其上。 */
+/** While generating/queued, the previous image (if any) still shows so the card doesn't collapse; the skeleton overlays it. */
 const busy = computed(() => phase.value === 'generating' || phase.value === 'queued');
-/** 历史翻页:多于一张且不忙才给(按存活张数,破指针不占格)。 */
+/** History pager: only when there is more than one image and not busy (counted by surviving images; broken pointers take no cell). */
 const pageable = computed(() => liveHistory.value.length > 1 && !busy.value && !planning.value);
 
-/** 有过结果、但文件已被删光(通常是在图库里删的)。据此给一句说明,免得像凭空丢图。 */
+/** Had results, but all files were deleted (usually from the gallery). A note is shown so it doesn't look like images vanished for no reason. */
 const filesGone = computed(
   () =>
     !busy.value &&
@@ -228,7 +228,7 @@ const filesGone = computed(
 );
 
 const statusLabel = computed(() => {
-  // 退避优先:请求已经失败过、正在等重试,不能继续报「生成中」骗人
+  // Backoff first: the request already failed and is waiting to retry, so it must not keep claiming "Generating"
   const retry = retryInfo.value;
   if (retry) return `Request is restricted, see later ${retry.attempt}/${retry.max} retries…`;
   if (phase.value === 'queued') return 'Queuing up…';
@@ -237,7 +237,7 @@ const statusLabel = computed(() => {
   return 'Generating...';
 });
 
-/** 折叠条主文案:生成中报进度;出错报原因;有图给提示词摘要(区分同楼多图);空槽位显示待生成。 */
+/** Main text of the collapsed bar: progress while generating; the reason on error; a prompt summary when there is an image (telling apart several images on one floor); pending for an empty slot. */
 const barText = computed(() => {
   if (planning.value) return 'AI Rewrite prompt word…';
   if (busy.value) return statusLabel.value;
@@ -247,7 +247,7 @@ const barText = computed(() => {
   return 'To be generated';
 });
 
-/** 无图且后端未就绪时,占位区中央的配置引导。 */
+/** Configuration guide in the middle of the placeholder area when there is no image and the backend isn't ready. */
 const pendingHint = computed(() => {
   if (!comfyActive.value && !naiActive.value)
     return 'The image rendering backend is not selected. Please go to the "Backend" page of BaiBai Image to select the image rendering channel.';
@@ -260,8 +260,8 @@ async function generate(): Promise<void> {
   if (busy.value || planning.value || !configured.value) return;
   const slot = key.value;
   const currentHash = hash.value;
-  // 本次任务的输入全部就地取值:请求在途时本组件很可能已被重水合销毁
-  // (任一兄弟槽位出图都会触发全楼重建),销毁后再读 props 不可靠。
+  // Every input for this task is read on the spot: while the request is in flight this component may well be destroyed by re-hydration
+  // (any sibling slot finishing an image triggers a whole-floor rebuild), and reading props after destruction isn't reliable.
   const job = {
     messageId: props.messageId,
     swipeId: props.swipeId,
@@ -273,17 +273,17 @@ async function generate(): Promise<void> {
     characters: props.characters.map(character => ({ ...character })),
     size: effectiveSize.value,
   };
-  // NAI 需要闸门排队 → 先显示「排队中」;ComfyUI 有服务端队列,直接进 generating
+  // NAI must queue at the gate → show "Queued" first; ComfyUI has a server queue, so go straight to generating
   const { signal, token } = beginGen(slot, currentHash, naiActive.value ? 'queued' : 'generating');
-  // 历史记录 id:在 seed 确定后才登记(见下),故这里先置空,catch 里据此判断要不要收尾。
+  // History record id: registered only once the seed is fixed (see below), so it starts empty here and catch uses it to decide whether to wrap up.
   let historyId: number | null = null;
 
   try {
-    // 发起时就确定种子(NAI 面板种子 > 0 时用固定值;否则随机),随结果落盘进 extra
-    // (entry.seed),历史翻页可查/可复用。口径在 generate.ts,与公开接口同源。
+    // The seed is fixed at the start (the NAI panel's fixed value when its seed > 0; random otherwise) and saved into extra with the result
+    // (entry.seed), so history paging can look it up/reuse it. The rule is in generate.ts, from the same source as the public API.
     const seed = decideSeed(settings.defaultBackend);
-    // 历史埋点:seed 已定、请求将发,此刻登记。图片本身不进 store(dataURL 会爆内存,
-    // 且图随后就落盘进 ST 了)——只留元信息 + 楼层坐标,够回溯「这张图是怎么来的」。
+    // History instrumentation: the seed is fixed and the request is about to go, so register now. The image itself doesn't go into the store (data URLs would blow up memory,
+    // and the image is saved into ST right after); only metadata + floor coordinates are kept, enough to trace "how this image was made".
     historyId = safeHistory(() =>
       beginImage({
         backend: naiActive.value ? 'nai' : 'comfyui',
@@ -298,27 +298,27 @@ async function generate(): Promise<void> {
         seq: job.seq,
       }),
     );
-    // 闸门、后端分派都在 generateImage 里(公开接口走同一条路,见 generate.ts);
-    // 本组件只把进度回调接到自己的槽位运行态上。
+    // The gate and backend dispatch are all inside generateImage (the public API takes the same path; see generate.ts);
+    // this component only wires the progress callback to its own slot's runtime state.
     const { result, meta } = await generateImage({ ...job, seed }, signal, {
       onStart: () => setGenPhase(slot, token, 'generating'),
       onQueue: ahead => setQueueAhead(slot, token, ahead),
       onRetry: retry => setGenRetry(slot, token, retry),
     });
-    // 图已经拿到手:此时若发现本任务已被取代(取消后重绘 / reconcile),不要落盘,
-    // 否则会把旧提示词的结果写进 extra,并触发一次多余的重水合打断新任务。
+    // The image is in hand: if this task has been superseded by now (cancel then redraw / reconcile), don't save it,
+    // otherwise the old prompt's result would be written into extra and trigger a needless re-hydration that interrupts the new task.
     if (!isCurrentGen(slot, token)) {
       result.revoke();
-      // 图出来了却被丢弃,历史里记成「已取消」——否则这条会永远停在「进行中」。
+      // The image came out but was discarded; record it in history as "Cancelled", otherwise this entry would stay "In progress" forever.
       if (historyId !== null) safeHistory(() => failImage(historyId!, '', true));
       return;
     }
-    // 落盘:图片进 ST 文件系统 + extra 写指针。成功后重水合,
-    // 卡片从 extra 恢复为 ready(blob/dataURL 生命周期随之结束)。
+    // Save: the image goes into ST's file system + the pointer into extra. Re-hydrate on success,
+    // and the card is restored from extra as ready (ending the blob/data URL lifetime).
     await saveImageResult(job.messageId, job.swipeId, job.seq, job.tag, seed, result, meta);
     result.revoke();
     if (historyId !== null) safeHistory(() => finishImage(historyId!));
-    // 先清运行态再重水合:重水合会重建本组件,清完才不会带着 generating 复活
+    // Clear runtime state before re-hydrating: re-hydration rebuilds this component, and only once cleared won't it come back still generating
     clearGen(slot, token);
     const ctx = getContext();
     if (ctx) hydrateMessage(job.messageId, ctx);
@@ -342,8 +342,8 @@ function cancel(): void {
 function openImage(): void {
   const entry = shownEntry.value;
   if (!entry) return;
-  // 就地取值:灯箱挂在插件 shadow root,**活得比本卡片长**——任一兄弟槽位出图都会
-  // 重水合销毁本组件,而灯箱还开着。回调里再读 props 就是读已销毁实例,故全部先快照。
+  // Read on the spot: the lightbox hangs on the plugin shadow root and **outlives this card**: any sibling slot finishing an image
+  // re-hydrates and destroys this component while the lightbox is still open. Reading props in a callback would read a destroyed instance, so snapshot everything first.
   const at = { messageId: props.messageId, swipeId: props.swipeId };
   openLightbox({
     src: entry.path,
@@ -354,9 +354,9 @@ function openImage(): void {
 }
 
 /**
- * 打开提示词编辑弹窗。与灯箱同一条纪律:弹窗挂插件 shadow root、**活得比本卡片长**,
- * 楼层坐标与内容一律先快照(任一兄弟槽位出图都会重水合销毁本组件)。
- * 提示词的真源是正文,故写回与后续重水合都在 promptEditor.ts 里做,本组件不参与。
+ * Opens the prompt editor dialog. Same discipline as the lightbox: the dialog hangs on the plugin shadow root and **outlives this card**,
+ * so floor coordinates and content are always snapshotted first (any sibling slot finishing an image re-hydrates and destroys this component).
+ * The prompt's source of truth is the text, so write-back and the following re-hydration both happen in promptEditor.ts; this component takes no part.
  */
 function openEditor(): void {
   openPromptEditor({
@@ -374,33 +374,33 @@ function openEditor(): void {
       characters: props.characters.map(character => ({ ...character })),
       size: props.size,
     },
-    // 存活口径:文案要许诺「改回提示词即可找回」,被图库删掉的图找不回来,不能算进去
+    // What counts as alive: the wording promises "change the prompt back to recover it", and images deleted from the gallery can't be recovered, so they don't count
     historyCount: liveHistory.value.length,
     configured: configured.value,
   });
 }
 
 /**
- * 取消在途的「AI 重写提示词」。
+ * Cancels an in-flight "AI rewrite prompt".
  *
- * 入口在提示词编辑弹窗里(floor/promptEditor.ts),不在卡片上 —— 手改与 AI 改是同一件事。
- * 但**请求不属于那个弹窗**:用户关掉弹窗后重写照跑,故卡片这边仍要显示进度并留取消口,
- * 否则关了窗就只剩一张悄悄变化的图、没处叫停。展示态读 tagPlanState,中止靠 runner
- * 的每楼请求锁。
+ * The entry is in the prompt editor dialog (floor/promptEditor.ts), not on the card: editing by hand and by AI are the same thing.
+ * But **the request doesn't belong to that dialog**: after the user closes the dialog the rewrite keeps running, so the card still shows progress and keeps a cancel point,
+ * otherwise once the dialog closed there would only be an image quietly changing with no way to stop it. Display state reads tagPlanState; aborting relies on the runner's
+ * per-floor request lock.
  */
 function cancelReplan(): void {
   cancelFloorTags(props.messageId);
 }
 
-/** 删除当前展示的这一条结果(DESIGN-FLOOR-UI.md §8.2)。 */function removeCurrent(): void {
+/** Deletes the result currently shown (DESIGN-FLOOR-UI.md §8.2). */function removeCurrent(): void {
   const target = shownEntry.value;
   if (!target) return;
   void removeEntry(target, { messageId: props.messageId, swipeId: props.swipeId });
 }
 
 /**
- * 删除一条结果。楼层坐标由调用方传入而非现场读 props:
- * 本函数可能在组件销毁后才真正执行(灯箱回调 + 确认弹窗都是异步的)。
+ * Deletes one result. Floor coordinates are passed in by the caller rather than read from props on the spot:
+ * this function may only really run after the component is destroyed (the lightbox callback + confirm dialog are both async).
  */
 async function removeEntry(
   target: BbiImageEntry,
@@ -413,7 +413,7 @@ async function removeEntry(
     tone: 'danger',
   });
   if (!ok) return;
-  // stale 的图存在别的 hash 桶里,删除要用它自己的 promptHash,不能用当前 tag 的
+  // Stale images are in another hash bucket, so deletion must use their own promptHash, not the current tag's
   const bucketHash = promptHash(target.prompt);
   const removed = await deleteImageResult(
     at.messageId,
@@ -433,23 +433,23 @@ async function copyPrompt(): Promise<void> {
   await copyText(promptText.value, 'Prompt word has been copied');
 }
 
-/** 另存当前展示的这张图(与灯箱共用 download.ts,免得两份逻辑漂移)。 */
+/** Saves the image currently shown (shares download.ts with the lightbox, so the two logics can't drift apart). */
 function downloadCurrent(): void {
   const entry = shownEntry.value;
   if (!entry) return;
   saveImageFile(entry.path, downloadFileName(entry));
 }
 
-// 提示词变更对账放 watch 而非 onMounted:差分水合(hydrate.ts)下同锚点卡片是
-// props patch 而非重挂,onMounted 不会再跑;tag 一变必须立刻作废旧提示词的任务。
+// Prompt-change reconciliation goes in watch, not onMounted: under diff hydration (hydrate.ts) a same-anchor card gets a
+// props patch, not a remount, so onMounted won't run again; once the tag changes, the old prompt's task must be voided immediately.
 watch(hash, current => reconcileGen(key.value, current), { immediate: true });
 
 onMounted(() => {
-  // 「写入 tag 后自动生成图片」:本槽位带着标记水合挂载 → 消费标记并直接开始生成。
-  // **标记一律先消费再判断**:留着它会在日后同槽位重现(比如用户删掉旧图)时被新卡片
-  // 误认领,凭空开跑一次用户没点过的生成。判定本身抽成 shouldAutoGenerate 纯函数
-  // (本组件没有单测,留在这儿锁不住),口径见 floor/autoGenerate.ts。
-  // 未配置后端时不跑(卡片维持 pending,显示配置引导);标记同样已消费掉。
+  // "Generate images automatically after writing tags": this slot mounts during hydration carrying the mark → consume the mark and start generating right away.
+  // **The mark is always consumed before the check**: if kept, when the same slot reappears later (e.g. the user deletes the old image) a new card would
+  // claim it by mistake and start a generation the user never clicked. The check itself is extracted into the pure function shouldAutoGenerate
+  // (this component has no unit tests, so it couldn't be locked down here); for the rule see floor/autoGenerate.ts.
+  // Don't run when no backend is configured (the card stays pending and shows the configuration guide); the mark is consumed all the same.
   if (!props.chatId) return;
   const mode = consumeAutoGenerate(props.chatId, props.messageId, props.swipeId, props.seq);
   if (!mode) return;
@@ -460,16 +460,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- 沉浸式设计:图即卡片。无边框/无背景面板/无品牌栏,控件悬浮在图上,
-       桌面 hover 浮现、触屏常驻淡显;提示词收进悬浮按钮唤起的面板,平时零占位。 -->
+  <!-- Immersive design: the image is the card. No border/background panel/brand bar; controls float over the image,
+       appearing on hover on desktop and always faintly visible on touch; the prompt lives in a panel opened by a floating button, taking no space normally. -->
   <div
     class="bbi-figure"
     :data-phase="phase"
     :data-capped="displayMaxHeight ? '1' : ''"
     :style="displayMaxHeight ? { '--bbi-figure-max-h': `${displayMaxHeight}px` } : undefined"
   >
-    <!-- 折叠态:收成一条细条,职责只有「占位 + 展开」——整条点击展开,
-         生成中/出错在条上给状态但不放操作按钮(要操作先展开)。 -->
+    <!-- Collapsed state: shrinks to a thin bar whose only job is "placeholder + expand": clicking anywhere expands it;
+         generating/error states show on the bar, but no action buttons (expand first to act). -->
     <button
       v-if="collapsed"
       class="bbi-figure__bar"
@@ -488,8 +488,8 @@ onMounted(() => {
       <Icon name="chevron" :size="13" class="bbi-figure__bar-chevron" />
     </button>
 
-    <!-- 折叠容器:常驻 DOM(grid-template-rows 1fr→0fr 过渡做高度动画),折叠时只是
-         高度归零 + 淡出,<img> 不卸载——展开瞬间图就在,不会重新发起请求。 -->
+    <!-- Collapse container: always in the DOM (grid-template-rows 1fr→0fr transition animates the height); collapsing only
+         zeroes the height + fades out, and <img> isn't unmounted, so the image is there the instant it expands, without a new request. -->
     <div class="bbi-figure__collapse" :data-collapsed="collapsed ? '1' : ''">
       <div class="bbi-figure__collapse-inner">
     <div class="bbi-figure__stage" :data-size="effectiveSize" :data-placeholder="imageSrc ? '' : '1'">
@@ -502,26 +502,26 @@ onMounted(() => {
         @error="onImageError"
       />
 
-      <!-- 无图时的生成中:骨架微光扫过占位底 -->
+      <!-- Generating with no image: a skeleton shimmer sweeps over the placeholder -->
       <div v-if="busy && !imageSrc" class="bbi-figure__skeleton" />
 
-      <!-- 生成中遮罩:绝对定位盖在整个舞台上(有图=磨砂盖住旧图,无图=压住骨架)。
-           居中 spinner + 状态 + 取消,不再像旧版那样作为 flex 子项跟图片并排互挤。 -->
+      <!-- Generating overlay: absolutely positioned over the whole stage (with an image = frosted over the old image; without = over the skeleton).
+           Centred spinner + status + cancel, no longer squeezed side by side with the image as a flex child like the old version. -->
       <div v-if="busy" class="bbi-figure__busy">
         <span class="bbi-figure__spin" />
         <span class="bbi-figure__busy-text">{{ statusLabel }}</span>
         <button class="bbi-figure__cancel" type="button" @click="cancel">Cancel</button>
       </div>
 
-      <!-- 提示词重写遮罩(AI 重写提示词):还是同一张图,只盖一层进度与取消;
-           与出图遮罩互斥(replan/generate 的守卫保证两者不同时在途) -->
+      <!-- Prompt rewrite overlay (AI rewrite prompt): still the same image, with only a progress-and-cancel layer on top;
+           mutually exclusive with the generating overlay (replan/generate guards ensure they are never in flight together) -->
       <div v-else-if="planning" class="bbi-figure__busy">
         <span class="bbi-figure__spin" />
         <span class="bbi-figure__busy-text">AI Rewrite prompt word…</span>
         <button class="bbi-figure__cancel" type="button" @click="cancelReplan">Cancel</button>
       </div>
 
-      <!-- 无图且空闲:生成入口 / 配置引导 -->
+      <!-- No image and idle: generate entry / setup guidance -->
       <div v-if="!imageSrc && !busy" class="bbi-figure__pending">
         <button v-if="configured" class="bbi-figure__generate" type="button" @click="generate">
           <Icon name="palette" :size="15" />
@@ -530,11 +530,11 @@ onMounted(() => {
         <p v-else class="bbi-figure__hint">{{ pendingHint }}</p>
       </div>
 
-      <!-- 提示词已改:角标提示,不再整图压暗 -->
+      <!-- Prompt changed: a corner badge, no longer darkening the whole image -->
       <span v-if="isStale && !busy && !planning" class="bbi-figure__badge">old prompt words</span>
 
-      <!-- 悬浮操作组:⋯ 收纳钮钉在右上角常驻淡显;桌面 hover、触屏点开,菜单都在其左侧横向排开
-           (窄图放不下就折行),点任意操作后自动收起(图片平时只有一颗小点) -->
+      <!-- Floating action group: the ⋯ overflow button is pinned top right, always faintly visible; on desktop hover or touch tap, the menu lays out horizontally to its left
+           (wrapping if the image is narrow) and collapses automatically after any action (normally the image only shows a small dot) -->
       <span v-if="!busy && !planning" class="bbi-figure__actions" :data-open="menuOpen ? '1' : ''">
         <button
           class="bbi-fab bbi-figure__more"
@@ -604,7 +604,7 @@ onMounted(() => {
         </span>
       </span>
 
-      <!-- 翻页器:叠在图片右下角的胶囊 -->
+      <!-- Pager: a pill overlaid at the image's bottom right -->
       <span v-if="pageable" class="bbi-figure__pager">
         <button class="bbi-figure__pager-btn" type="button" :disabled="index <= 0" @click="index--">◀</button>
         <span class="bbi-figure__pager-count">{{ index + 1 }}/{{ liveHistory.length }}</span>
@@ -619,7 +619,7 @@ onMounted(() => {
       </span>
     </div>
 
-    <!-- 状态行:仅出错 / 提示词已改时出现,平时零占位 -->
+    <!-- Status line: only appears on errors / prompt changes; takes no space normally -->
     <p v-if="phase === 'error'" class="bbi-figure__status bbi-figure__status--error">
       {{ error
       }}<button v-if="configured" class="bbi-figure__retry" type="button" @click="generate">
@@ -629,12 +629,12 @@ onMounted(() => {
     <p v-else-if="isStale && !busy && !planning" class="bbi-figure__status bbi-figure__status--warn">
       The prompt word has been modified, and the picture above was generated by the old prompt word; click Redraw in the upper right corner and press the new prompt word to produce the picture.
     </p>
-    <!-- 文件被删(通常是在图库里删的):记录还在但图没了,明说一句免得像凭空丢图 -->
+    <!-- Files deleted (usually from the gallery): records remain but the images are gone; say so plainly so it doesn't look like images vanished for no reason -->
     <p v-else-if="filesGone" class="bbi-figure__status bbi-figure__status--warn">
       The picture file has been deleted (deleted in the gallery); you can click above to regenerate it.
     </p>
 
-    <!-- 提示词面板:悬浮 文本按钮唤起,复制按钮跟着面板走 -->
+    <!-- Prompt panel: opened by the floating text button; the copy button travels with the panel -->
     <div v-if="promptOpen && promptText" class="bbi-figure__prompt-box">
       <pre class="bbi-figure__prompt">{{ promptText }}</pre>
       <button class="bbi-figure__prompt-copy" type="button" title="copy prompt word" @click="copyPrompt">

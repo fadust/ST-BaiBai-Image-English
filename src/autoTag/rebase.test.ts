@@ -16,12 +16,12 @@ function image(sourceLine: number, tag: string): ImageInsertion {
   };
 }
 
-/** 按 runner 的口径:模型看到的 segment 列表来自请求开始时的正文。 */
+/** Per the runner's rule: the segment list the model sees comes from the text at the start of the request. */
 function plan(text: string, stripTags: string[] = []) {
   return prepareTargetText(text, stripTags).segments;
 }
 
-/** 落点断言看的是「tag 贴在哪一句之后」,比行号更接近用户能观察到的结果。 */
+/** Placement assertions look at "which sentence the tag sticks after", closer than line numbers to what users can observe. */
 function lineAfterTag(text: string, tag: string): string {
   const lines = text.split('\n');
   const index = lines.findIndex(line => line.includes(`<bbi_image>${tag}`));
@@ -29,7 +29,7 @@ function lineAfterTag(text: string, tag: string): string {
 }
 
 describe('rebaseImagePositions', () => {
-  it('正文没变:位置分毫不动', () => {
+  it('text unchanged: positions do not move at all', () => {
     const text = '第一句\n第二句\n第三句';
     const segments = plan(text);
     const result = rebaseImagePositions(text, segments, [image(1, 'a')], []);
@@ -37,7 +37,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report).toEqual({ anchored: 1, remapped: 0, drifted: 0 });
   });
 
-  it('别的插件在末尾追加内容:骨架全命中,位置不动', () => {
+  it('another plugin appends content at the end: the skeleton fully matches, positions do not move', () => {
     const before = '第一句\n第二句\n第三句';
     const after = `${before}\n<statusbar>好感度 +1</statusbar>\n追加的旁注`;
     const segments = plan(before);
@@ -46,7 +46,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report.anchored).toBe(2);
   });
 
-  it('别的插件在开头插入内容:位置整体平移,仍贴在原来那句之后', () => {
+  it('another plugin inserts content at the start: positions shift as a whole, still right after the original sentence', () => {
     const before = '第一句\n第二句\n第三句';
     const after = `插进来的新首句\n${before}`;
     const segments = plan(before);
@@ -56,7 +56,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report.anchored).toBe(1);
   });
 
-  it('八股句被改写:tag 跟着落到改写后的那一句之后(核心场景)', () => {
+  it('a stock phrase is rewritten: the tag follows to after the rewritten sentence (the core scenario)', () => {
     const before = '第一句\n【状态】好感度:低\n第三句';
     const after = '第一句\n【状态】好感度:中等偏上\n第三句';
     const segments = plan(before);
@@ -66,7 +66,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report).toEqual({ anchored: 0, remapped: 1, drifted: 0 });
   });
 
-  it('全文被润色(每句都改了措辞):逐句对位,一张都不丢', () => {
+  it('the whole text is polished (every sentence reworded): aligned sentence by sentence, not one image lost', () => {
     const before = '她走进房间\n窗外下着雨\n他抬起头';
     const after = '她缓步走进了房间\n窗外正下着细雨\n他慢慢抬起头';
     const segments = plan(before);
@@ -78,7 +78,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report.remapped).toBe(2);
   });
 
-  it('锚点句整句被删:顺延到前一段,不丢 tag', () => {
+  it('the anchor sentence is deleted entirely: carried to the previous paragraph, the tag is not lost', () => {
     const before = '第一句\n第二句\n第三句';
     const after = '第一句\n第三句';
     const segments = plan(before);
@@ -88,7 +88,7 @@ describe('rebaseImagePositions', () => {
     expect(result?.report.drifted).toBe(1);
   });
 
-  it('多张图保持叙事顺序单调', () => {
+  it('multiple images keep narrative order monotonic', () => {
     const before = '一\n二\n三\n四';
     const after = '一\n二改了\n三\n四';
     const segments = plan(before);
@@ -103,35 +103,35 @@ describe('rebaseImagePositions', () => {
     expect(lines).toEqual([0, 1, 3]);
   });
 
-  it('落点只取清洗后的叙事行:tag 不会掉进追加的状态栏块里', () => {
+  it('landing points only use cleaned narrative lines: tags never drop into an appended status-bar block', () => {
     const before = '第一句\n第二句';
     const after = '第一句\n<snow>\n块内第一行\n块内第二行\n</snow>\n第二句';
     const segments = plan(before, ['snow']);
     const result = rebaseImagePositions(after, segments, [image(1, 'a')], ['snow']);
     const injected = injectImageTags(after, result!.images);
     expect(lineAfterTag(injected, 'a')).toBe('第二句');
-    // 块内部不得被劈开
+    // The inside of a block must not be split
     expect(injected).toContain('<snow>\n块内第一行\n块内第二行\n</snow>');
   });
 
-  it('正文被清空/只剩噪声:返回 null 交调用方放弃', () => {
+  it('text emptied/only noise left: returns null so the caller gives up', () => {
     const segments = plan('第一句\n第二句');
     expect(rebaseImagePositions('', segments, [image(0, 'a')], [])).toBeNull();
     expect(rebaseImagePositions('<snow>只剩状态栏</snow>', segments, [image(0, 'a')], ['snow']))
       .toBeNull();
   });
 
-  it('没有图片时直接返回空结果(不碰正文)', () => {
+  it('with no images it returns an empty result directly (text untouched)', () => {
     const result = rebaseImagePositions('随便', plan('随便'), [], []);
     expect(result).toEqual({ images: [], report: { anchored: 0, remapped: 0, drifted: 0 } });
   });
 
-  it('sourceLine 不属于给定 segment 列表:视为调用方错误,返回 null', () => {
+  it('sourceLine not in the given segment list: treated as a caller error, returns null', () => {
     const segments = plan('第一句\n第二句');
     expect(rebaseImagePositions('第一句\n第二句', segments, [image(99, 'a')], [])).toBeNull();
   });
 
-  it('重复句子不会全部塌到同一行', () => {
+  it('repeated sentences do not all collapse onto the same line', () => {
     const before = '同一句\n中间\n同一句';
     const after = '同一句\n中间改了\n同一句';
     const segments = plan(before);

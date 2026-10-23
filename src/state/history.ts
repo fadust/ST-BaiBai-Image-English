@@ -5,65 +5,65 @@ import type { ImageCharacterPrompt } from '@/autoTag/protocol';
 import type { Orientation } from '@/backends/size';
 
 /**
- * 请求历史(副 API 推理 + 生图)的模块级内存 store。
+ * Module-level in-memory store of request history (secondary API inference + image generation).
  *
- * **刻意不持久化**:刷新页面即清空,不进 settings、不落 localStorage。
- * 这是调试辅助——出问题时回看这一轮发了什么、收到什么,而不是要长期保存的资产。
- * 想留证据请在页面里复制出去。
+ * **Deliberately not persisted**: cleared on page reload; not in settings, not in localStorage.
+ * It is a debugging aid, for looking back at what this round sent and received when something goes wrong, not an asset to keep long-term.
+ * To keep evidence, copy it out from the page.
  *
- * 为什么放模块级而非组件里:请求由 autoTag/Card 等处发起,历史页可能压根没打开过;
- * 记录必须活得比任何组件都长。与 floor/genState.ts 同构。
+ * Why module-level rather than in a component: requests are started by autoTag/Card and others, and the history page may never have been opened;
+ * records must outlive every component. Same shape as floor/genState.ts.
  *
- * 【重要】本模块的所有写入函数都必须是「不会抛」的:调用方在真实业务路径上
- * (发请求、出图),历史记录失败绝不能连累主流程。故 record() 内部吞异常,
- * 且调用方仍应用 safe*() 包装(见 api/client.ts 的用法)。
+ * [Important] Every write function in this module must be "never throws": callers are on real business paths
+ * (sending requests, generating images), and a history failure must never drag down the main flow. So record() swallows exceptions internally,
+ * and callers should still wrap with safe*() (see usage in api/client.ts).
  */
 
-/** 条数上限。副 API 的提示词很大(世界书+角色库+正文),不封顶几十条就是几十 MB。 */
+/** Record cap. Secondary API prompts are large (lorebook + character library + story text); uncapped, a few dozen records means dozens of MB. */
 const MAX_RECORDS = 50;
 
 /**
- * 单条文本留存上限。超出截断并标注原长——
- * buildAutoTagMessages 拼出的 system 提示词轻松上万字,50 条全量留存内存吃不消。
+ * Per-record text cap. Longer text is truncated with the original length noted:
+ * the system prompt built by buildAutoTagMessages easily exceeds ten thousand characters, and keeping 50 in full is too much memory.
  */
 const MAX_CONTENT = 20_000;
 
 export type HistoryKind = 'llm' | 'image';
 
-/** running 是进行中;aborted 是用户主动取消(与 error 分开,不是故障)。 */
+/** running = in progress; aborted = user cancelled (separate from error; not a fault). */
 export type HistoryStatus = 'running' | 'ok' | 'error' | 'aborted';
 
 interface BaseRecord {
-  /** 自增序号,**不用 Date.now()**:同一毫秒内并发的多个请求会撞成同一 id。 */
+  /** Incrementing sequence number, **not Date.now()**: several concurrent requests within the same millisecond would collide on one id. */
   id: number;
   kind: HistoryKind;
   status: HistoryStatus;
   startedAt: number;
-  /** 完成后才有;进行中为 null。 */
+  /** Only present once finished; null while running. */
   durationMs: number | null;
-  /** status='error' 时的错误信息,其余为空串。 */
+  /** Error message when status='error'; empty string otherwise. */
   error: string;
 }
 
 export interface LlmRecord extends BaseRecord {
   kind: 'llm';
-  /** 用途标签:'自动 tag' / '角色外貌转换' / 'ComfyUI 工作流配置' 等,由调用点传入。 */
+  /** Purpose label such as 'Auto tag' / 'Character appearance transformation' / 'ComfyUI workflow configuration', passed in by the call site. */
   source: string;
-  /** 渠道名;未指派渠道(跟随主 API)时为 FOLLOW_MAIN_API。 */
+  /** Channel name; FOLLOW_MAIN_API when no channel is assigned (following the main API). */
   channelName: string;
   model: string;
   stream: boolean;
-  /** 完整提示词(已按 MAX_CONTENT 截断)。 */
+  /** Full prompt (truncated per MAX_CONTENT). */
   messages: ChatMsg[];
-  /** 返回正文(已截断)。 */
+  /** Returned text (truncated). */
   response: string;
   promptTokens: number | null;
   completionTokens: number | null;
   /**
-   * token 数是否为本地估算。
-   * 真值只在「自建渠道 + 非流式」时拿得到(ST 代理原样透传上游 usage);
-   * 流式与跟随主 API 只能用 ST 分词器估——而它用的是**主界面当前模型**的分词器,
-   * 与副 API 渠道模型未必同源。故 UI 必须用 ≈ 区分,不能与真值混显。
+   * Whether the token count is a local estimate.
+   * Real values are only available with "own channel + non-streaming" (the ST proxy passes upstream usage through unchanged);
+   * streaming and following the main API can only estimate with ST's tokenizer, which is the tokenizer of **the main screen's current model**,
+   * not necessarily the same as the secondary API channel's model. So the UI must distinguish it with ≈ and never mix it with real values.
    */
   tokensEstimated: boolean;
 }
@@ -71,7 +71,7 @@ export interface LlmRecord extends BaseRecord {
 export interface ImageRecord extends BaseRecord {
   kind: 'image';
   backend: 'nai' | 'comfyui';
-  /** NAI 模型名 / ComfyUI 当前工作流预设名。 */
+  /** NAI model name / current ComfyUI workflow preset name. */
   model: string;
   prompt: string;
   nl: string;
@@ -79,51 +79,51 @@ export interface ImageRecord extends BaseRecord {
   characters: ImageCharacterPrompt[];
   seed: number;
   size: Orientation;
-  /** 楼层坐标:详情里据此指回是哪一楼哪个槽位。图片本身不存(见文件头)。 */
+  /** Floor coordinates: the details use them to point back to which floor and slot. The image itself is not stored (see the file header). */
   floor: number;
   seq: number;
 }
 
 export type HistoryRecord = LlmRecord | ImageRecord;
 
-/** 跟随主 API 时的渠道名占位。 */
+/** Channel-name placeholder when following the main API. */
 export const FOLLOW_MAIN_API = 'Follow main API';
 
 /**
- * 全部记录,**新的在前**(页面直接 v-for,不用每次 reverse)。
- * 因此「丢最旧」= 从尾部 pop。
+ * All records, **newest first** (the page uses v-for directly without reversing each time).
+ * So "drop the oldest" = pop from the end.
  */
 export const records = reactive<HistoryRecord[]>([]);
 
 let nextId = 1;
 
-/** 超长文本截断并标注原长;短文本原样返回(不产生新字符串)。 */
+/** Truncates overly long text and notes its original length; short text is returned as-is (no new string). */
 export function truncate(text: string): string {
   if (typeof text !== 'string') return '';
   if (text.length <= MAX_CONTENT) return text;
   return `${text.slice(0, MAX_CONTENT)}\n…(truncated, original length ${text.length} characters)`;
 }
 
-/** 中日韩表意文字/假名/谚文/全角标点:这些大致 1 字 = 1 token。 */
+/** CJK ideographs/kana/hangul/full-width punctuation: roughly 1 character = 1 token for these. */
 const CJK_PATTERN =
   /[　-〿぀-ヿ㐀-䶿一-鿿가-힯豈-﫿＀-￯]/;
 
 /**
- * 单段文本的 token 粗估(同步、纯本地)。
+ * Rough token estimate for one text segment (synchronous, purely local).
  *
- * 为什么不用 ST 的 getTokenCountAsync:那是异步 HTTP(打 /api/tokenizers/…),
- * 展开一条 8 段的记录就是 8 个请求;而这里的数字只用于**段与段之间比大小**
- * (「哪段把提示词撑爆了」),不需要精确。
+ * Why not ST's getTokenCountAsync: that is async HTTP (hitting /api/tokenizers/…),
+ * so expanding an 8-segment record would be 8 requests; and these numbers are only used for **comparing segments against each other**
+ * ("which segment blew up the prompt"), so precision isn't needed.
  *
- * 口径:中日韩按 1 字 1 token,其余(拉丁字母/数字/符号)按 4 字符 1 token——
- * BPE 分词器的通用经验值。**必然与真实用量有出入**,故 UI 上一律带 ≈ 显示,
- * 也不要拿各段之和去对标题行那个真值(那是上游 usage,口径不同)。
+ * Rule: CJK at 1 character per token, everything else (Latin letters/digits/symbols) at 4 characters per token,
+ * the usual rule of thumb for BPE tokenizers. **It will differ from real usage**, so the UI always shows it with ≈,
+ * and the sum of segments shouldn't be compared with the real value on the title row (that is upstream usage, measured differently).
  */
 export function roughTokens(text: string): number {
   if (!text) return 0;
   let cjk = 0;
   let rest = 0;
-  // for...of 按码点遍历,代理对(emoji/罕见汉字)算一个字符而非两个
+  // for...of iterates by code point, so a surrogate pair (emoji/rare CJK character) counts as one character, not two
   for (const ch of text) {
     if (CJK_PATTERN.test(ch)) cjk++;
     else rest++;
@@ -136,15 +136,15 @@ function truncateMessages(messages: ChatMsg[]): ChatMsg[] {
   return messages.map(m => ({ role: m.role, content: truncate(m.content) }));
 }
 
-/** 压入一条并维持封顶。新记录进头部,超出时从尾部(最旧)丢弃。 */
+/** Pushes one record and keeps the cap. New records go to the head; on overflow the tail (oldest) is dropped. */
 function push(record: HistoryRecord): void {
   records.unshift(record);
   while (records.length > MAX_RECORDS) records.pop();
 }
 
 /**
- * 按 id 找记录。返回 undefined 表示已被挤出封顶——
- * 长请求期间若前面涌进 50 条新记录,它就没了,此时 finish/fail 是安全空操作。
+ * Finds a record by id. undefined means it was pushed out by the cap:
+ * if 50 new records arrive during a long request, it is gone, and finish/fail is then a safe no-op.
  */
 function find(id: number): HistoryRecord | undefined {
   return records.find(r => r.id === id);
@@ -158,7 +158,7 @@ export interface LlmBegin {
   messages: ChatMsg[];
 }
 
-/** 登记一次副 API 请求,返回 id 供后续 finish/fail。 */
+/** Registers one secondary API request and returns an id for a later finish/fail. */
 export function beginLlm(info: LlmBegin): number {
   const id = nextId++;
   push({
@@ -200,8 +200,8 @@ export function finishLlm(id: number, info: LlmFinish): void {
 }
 
 /**
- * 请求失败或被取消。aborted 与 error 分开:前者是用户主动取消,不是故障,
- * UI 用中性色而非红色。
+ * Request failed or was cancelled. aborted and error are separate: the former is a user cancel, not a fault,
+ * so the UI uses a neutral colour, not red.
  */
 export function failLlm(id: number, message: string, aborted = false): void {
   const record = find(id);
@@ -211,11 +211,11 @@ export function failLlm(id: number, message: string, aborted = false): void {
   record.error = aborted ? '' : message;
 }
 
-/** 估算 token 补录:请求已成功但真值拿不到时,估算结果晚于 finishLlm 到达。 */
+/** Late token estimate: when the request succeeded but the real value is unavailable, the estimate arrives after finishLlm. */
 export function patchLlmTokens(id: number, promptTokens: number | null, completionTokens: number | null): void {
   const record = find(id);
   if (record?.kind !== 'llm') return;
-  // 已有真值时不覆盖(非流式路径拿到了 usage,估算结果作废)
+  // Don't overwrite an existing real value (the non-streaming path got usage, so the estimate is void)
   if (!record.tokensEstimated && record.promptTokens !== null) return;
   record.promptTokens = promptTokens;
   record.completionTokens = completionTokens;
@@ -235,7 +235,7 @@ export interface ImageBegin {
   seq: number;
 }
 
-/** 登记一次生图请求。图片结果不进 store(dataURL 会爆内存,且图已落盘进 ST)。 */
+/** Registers one image request. Image results don't go into the store (data URLs would blow up memory, and the image is already saved into ST). */
 export function beginImage(info: ImageBegin): number {
   const id = nextId++;
   push({
@@ -278,25 +278,25 @@ export function failImage(id: number, message: string, aborted = false): void {
   record.error = aborted ? '' : message;
 }
 
-/** 清空(页面上的「清空」按钮)。 */
+/** Clears everything (the "Clear" button on the page). */
 export function clearHistory(): void {
   records.splice(0, records.length);
 }
 
-/** 测试用:复位到干净状态(含 id 计数器)。 */
+/** For tests: resets to a clean state (including the id counter). */
 export function resetHistory(): void {
   clearHistory();
   nextId = 1;
 }
 
-/** 测试用:暴露封顶常量,免得单测里写死数字与实现脱节。 */
+/** For tests: exposes the cap constant, so unit tests don't hardcode a number that drifts from the implementation. */
 export const HISTORY_LIMITS = { MAX_RECORDS, MAX_CONTENT } as const;
 
 /**
- * 埋点调用的统一包装:记录失败一律静默降级,**绝不向上抛**。
+ * Shared wrapper for instrumentation calls: recording failures always degrade silently and **never throw upward**.
  *
- * 历史是调试辅助,而调用点全在真实业务路径上(发请求、出图)——
- * 让记录逻辑把生图/tag 搞挂是本末倒置。所有 begin/finish/fail 都该经过这里。
+ * History is a debugging aid, while every call site is on a real business path (sending requests, generating images);
+ * letting recording logic break image or tag generation would put the cart before the horse. Every begin/finish/fail should go through here.
  */
 export function safeHistory<T>(fn: () => T): T | null {
   try {

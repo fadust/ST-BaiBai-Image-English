@@ -1,6 +1,6 @@
 /**
- * 检测更新:对比本地版本与远端 GitHub 仓库 manifest.json 的版本,
- * 有新版本则提示用户,确认后走 ST 扩展更新 API 自动更新并刷新。
+ * Update check: compares the local version with the version in the remote GitHub repo's manifest.json.
+ * If a newer version exists, prompts the user; on confirmation, updates through ST's extension update API and reloads.
  */
 
 import { getContext } from '@/st/context';
@@ -80,7 +80,7 @@ function extensionFolderName(): string {
       if (folder) return folder;
     }
   } catch {
-    // 解析失败时回退固定目录名。
+    // Fall back to a fixed folder name when parsing fails.
   }
   return 'ST-BaiBai-Image';
 }

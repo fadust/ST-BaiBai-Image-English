@@ -1,26 +1,26 @@
 <script setup lang="ts">
 /**
- * 弹窗遮罩外壳:统一承载各页弹窗的 .bbi-modal-mask 层 + 遮罩点击关闭。
+ * Dialog mask shell: hosts the .bbi-modal-mask layer for every page's dialogs + closing on mask click.
  *
- * Teleport 到 modalHost(.bbi-root 直接子级,在 .bbi-body 滚动容器之外):
- * 修复 iOS Safari 的老问题——「可滚动祖先内的 position:fixed 后代」会相对滚动内容、
- * 而非视口定位,导致设置页滚动后弹窗整体偏上、顶出屏幕(渠道弹窗最先暴露)。
- * 宿主仍在 shadow root 内,scoped 样式与 --bbi-* 主题变量照常生效,
- * 故 to 的是 shadow 内元素,而非会逃出 shadow 的 Teleport to="body"。
+ * Teleports to modalHost (direct child of .bbi-root, outside the .bbi-body scroll container),
+ * fixing an old iOS Safari problem: "position:fixed descendants inside a scrollable ancestor" are positioned relative to the scrolled content
+ * instead of the viewport, so after scrolling the settings page dialogs shifted up and off screen (the channel dialog exposed it first).
+ * The host is still inside the shadow root, so scoped styles and --bbi-* theme variables work as usual;
+ * hence the target is an element inside the shadow, not a Teleport to="body" that would escape it.
  *
- * 内容经 <slot> 投入,scoped data-v 标记随之保留,各页弹窗的独立类样式不受 Teleport 影响。
+ * Content is passed via <slot>, keeping scoped data-v markers, so each page dialog's own class styles are unaffected by Teleport.
  *
- * 显隐用 open prop(而非调用方在 <ModalMask> 上写 v-if):Transition 容器须常驻、由内部
- * v-if 切换弹窗,离场动画才能播(否则组件随父 v-if 一起卸载,leave 来不及触发)。
- * slot 是惰性函数,open=false 时走不到 <slot/>、不会求值,故 slot 里引用关闭后变 null 的
- * 对象(editingChannel.name 等)也不会报错——无需在各调用点加守卫。
+ * Visibility uses the open prop (rather than callers writing v-if on <ModalMask>): the Transition container must stay mounted and toggle the dialog
+ * with an inner v-if for the leave animation to play (otherwise the component unmounts with the parent's v-if before leave can fire).
+ * Slots are lazy functions; when open=false <slot/> is never reached or evaluated, so a slot referencing objects that become null after closing
+ * (editingChannel.name etc.) won't throw; no guards are needed at each call site.
  */
 import { modalHost } from '@/state/ui';
 
 defineProps<{
-  /** 弹窗是否显示 */
+  /** Whether the dialog is shown */
   open?: boolean;
-  /** 叠加在其它弹窗之上(更高 z-index),如渠道弹窗里再开删除确认 */
+  /** Stacks above other dialogs (higher z-index), e.g. a delete confirmation opened from the channel dialog */
   topLayer?: boolean;
 }>();
 
@@ -28,7 +28,7 @@ const emit = defineEmits<{ (e: 'close'): void }>();
 </script>
 
 <template>
-  <!-- modalHost 未就绪时就地渲染兜底,绝不丢弹窗 -->
+  <!-- Fallback: render in place when modalHost isn't ready, so a dialog is never lost -->
   <Teleport :to="modalHost" :disabled="!modalHost">
     <Transition name="bbi-modal">
       <div
@@ -44,7 +44,7 @@ const emit = defineEmits<{ (e: 'close'): void }>();
 </template>
 
 <style scoped>
-/* 叠加层:盖在普通弹窗之上(与 ConfirmDialog 的 -top 同级) */
+/* Overlay layer: covers ordinary dialogs (same level as ConfirmDialog's -top) */
 .bbi-modal-mask-top {
   z-index: 10002;
 }

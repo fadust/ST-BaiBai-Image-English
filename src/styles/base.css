@@ -1,10 +1,10 @@
 /*
- * 基础样式:作用域全部收在 .bbi-root 下,避免污染 ST 宿主页面。
- * 不写颜色字面量,一律取 theme.css 的变量。
+ * Base styles: everything is scoped under .bbi-root to avoid polluting the ST host page.
+ * No colour literals; always use the variables from theme.css.
  */
 
-/* shadow root 宿主:回到初始值,切断从 ST 继承下来的排版属性。
-   配合 index.ts 里 host 的内联 !important,双保险。 */
+/* Shadow root host: reset to initial values, cutting the typography properties inherited from ST.
+   Together with the host's inline !important in index.ts, a double safeguard. */
 :host {
   all: initial;
 }
@@ -22,11 +22,11 @@
   line-height: 1.6;
 }
 
-/* —— 遮罩层 —— */
+/* —— Overlay —— */
 .bbi-overlay {
   position: fixed;
-  /* 不用 inset 简写:部分移动端 WebView 不认,会让 overlay 高度塌成 auto,
-     进而使子级 height:100% 解析失败(高度为 0)。展开成四个属性更稳。 */
+  /* No inset shorthand: some mobile WebViews don't support it, collapsing the overlay height to auto,
+     which then makes the children's height:100% fail to resolve (height 0). Writing out the four properties is more robust. */
   top: 0;
   right: 0;
   bottom: 0;
@@ -43,7 +43,7 @@
   padding: 24px;
 }
 
-/* —— 窗口外壳 —— */
+/* —— Window shell —— */
 .bbi-window {
   position: relative;
   display: flex;
@@ -59,7 +59,7 @@
   overflow: hidden;
 }
 
-/* —— 内容区(分页容器) —— */
+/* —— Content area (page container) —— */
 .bbi-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -67,7 +67,7 @@
   padding: var(--bbi-page-pad);
 }
 
-/* —— 通用排版原子,供各分页复用 —— */
+/* —— Shared typography atoms, reused by every page —— */
 .bbi-title {
   font-weight: 600;
   font-size: 22px;
@@ -76,7 +76,7 @@
   margin: 0;
 }
 
-/* 区块/分页标题:比主标题(22px)小一号,跨页统一(摘要/悬念簿/物品/设置) */
+/* Section/page title: one size smaller than the main title (22px), unified across pages (summary/suspense book/items/settings) */
 .bbi-title-sub {
   font-size: 18px;
 }
@@ -87,7 +87,7 @@
   }
 }
 
-/* —— 通用按钮 —— */
+/* —— Shared buttons —— */
 .bbi-btn {
   display: inline-flex;
   align-items: center;
@@ -133,7 +133,7 @@
   opacity: 0.9;
 }
 
-/* —— 通用输入 —— */
+/* —— Shared inputs —— */
 .bbi-input {
   width: 100%;
   padding: 8px 10px;
@@ -157,16 +157,16 @@
   margin: var(--bbi-gap) 0;
 }
 
-/* —— 通用弹窗:供各分页复用(summary 编辑、settings 渠道编辑等)——
-   各页弹窗经 ModalMask 组件 Teleport 到 modalHost(.bbi-root 直接子级,在 .bbi-body
-   滚动容器之外),修复 iOS「可滚动祖先内 fixed 后代定位错乱」。宿主仍在 shadow root 内,
-   故 scoped 样式与 --bbi-* 变量照常生效——不可用会逃出 shadow 的 Teleport to="body"。 */
+/* —— Shared dialogs: reused by every page (summary editing, settings channel editing, etc.) ——
+   Page dialogs teleport via the ModalMask component to modalHost (a direct child of .bbi-root, outside the .bbi-body
+   scroll container), fixing iOS's "fixed descendants misplaced inside a scrollable ancestor". The host is still inside the shadow root,
+   so scoped styles and --bbi-* variables work as usual; Teleport to="body", which escapes the shadow, can't be used. */
 .bbi-modal-mask {
   position: fixed;
-  /* 必须显式 width/height 撑满视口,不能只靠 top/bottom:0——部分移动端 WebView 不认,
-     高度会塌成内容高(auto),align-items:center 随之失效、弹窗挤向顶部跑出屏幕。
-     与 .bbi-overlay 同款写法(见其注释)。teleport 出滚动容器后这点尤其关键:
-     之前嵌在 .bbi-body 里被滚动祖先撑高掩盖了,搬成视口级 fixed 后塌陷才暴露。 */
+  /* Width/height must be set explicitly to fill the viewport, not just top/bottom:0: some mobile WebViews don't honour that,
+     the height collapses to the content height (auto), align-items:center stops working, and the dialog is pushed to the top and off screen.
+     Same approach as .bbi-overlay (see its comment). This matters especially after teleporting out of the scroll container:
+     previously, nested in .bbi-body, the scrolling ancestor's height masked it; moved to viewport-level fixed, the collapse surfaced. */
   top: 0;
   right: 0;
   bottom: 0;
@@ -199,11 +199,11 @@
   box-shadow: var(--bbi-shadow);
 }
 
-/* 标题栏固定:弹窗内容超长时整体滚动,但标题+关闭键随 sticky 钉在顶部不跟滚。
-   负 margin 抵消 .bbi-modal 的 18px 内边距,让标题栏横向铺满、滚动时其不透明背景
-   盖住下方滚上来的内容(否则内容会从标题区透出)。padding 补回内边距。
-   top:-18px 而非 0:.bbi-modal 有 18px 内边距,其滚动视口顶边在内边距处(距窗口边 18px);
-   若 top:0,标题栏会吸附在视口顶边、上方露出 18px 缝隙让内容滚上来。-18px 抵消内边距,贴齐真实顶边。 */
+/* Pinned title bar: when dialog content is too long it scrolls as a whole, but the title + close button stay pinned at the top via sticky.
+   A negative margin cancels .bbi-modal's 18px padding, so the title bar spans the full width and its opaque background
+   covers content scrolling up underneath (otherwise content would show through the title area). Padding restores the inset.
+   top:-18px rather than 0: .bbi-modal has 18px padding, so its scrolling viewport's top edge is at the padding (18px from the window edge);
+   with top:0 the title bar would stick to the viewport top edge, leaving an 18px gap above for content to scroll through. -18px cancels the padding and sits flush with the real top edge. */
 .bbi-modal-head {
   position: sticky;
   top: -18px;
@@ -239,10 +239,10 @@
   gap: 10px;
 }
 
-/* —— 弹窗进出场:比窗口(--bbi-dur 0.28s)更快更利落,~0.15s,不墨迹。开关都带动画。
-   Vue Transition name="bbi-modal",由 ModalMask / ConfirmDialog 内部常驻的 Transition 驱动
-   (容器常驻、内部 v-if 切换弹窗,故离场也能播)。遮罩(.bbi-modal-mask)是过渡根元素,
-   卡片(.bbi-modal)靠后代选择器联动——与 App.vue 窗口同款手法。 */
+/* —— Dialog enter/leave: faster and crisper than the window (--bbi-dur 0.28s), ~0.15s, no dawdling. Both opening and closing animate.
+   Vue Transition name="bbi-modal", driven by the Transition kept mounted inside ModalMask / ConfirmDialog
+   (the container stays mounted and an inner v-if toggles the dialog, so leaving animates too). The mask (.bbi-modal-mask) is the transition root,
+   and the card (.bbi-modal) follows via descendant selectors, the same technique as the App.vue window. */
 .bbi-modal-enter-active,
 .bbi-modal-leave-active {
   transition: opacity 0.15s var(--bbi-ease);
@@ -276,12 +276,12 @@
   }
 }
 
-/* —— 隐藏滚动条(保留滚动能力):整个 UI 内统一 —— */
+/* —— Hide scrollbars (keeping scrollability): unified across the whole UI —— */
 .bbi-root * {
   scrollbar-width: none;
   /* Firefox */
   -ms-overflow-style: none;
-  /* 旧 Edge/IE */
+  /* Old Edge/IE */
 }
 
 .bbi-root *::-webkit-scrollbar {
@@ -291,7 +291,7 @@
   /* Chrome/Safari */
 }
 
-/* ============ 响应式:移动端整屏(底部抽屉式) ============ */
+/* ============ Responsive: full screen on mobile (bottom drawer) ============ */
 @media (max-width: 640px) {
   .bbi-overlay {
     padding: 0;
@@ -301,18 +301,18 @@
   .bbi-window {
     max-width: 100%;
     width: 100%;
-    /* 直接用视口高,不依赖父级百分比链 */
+    /* Use the viewport height directly, not relying on a chain of parent percentages */
     height: 96vh;
     height: 96dvh;
     max-height: 96vh;
     max-height: 96dvh;
     border: 0;
-    /* 仅顶部圆角:贴底的抽屉观感 */
+    /* Top corners rounded only: the look of a drawer attached to the bottom */
     border-radius: 18px 18px 0 0;
   }
 }
 
-/* ============ 尊重减少动效 ============ */
+/* ============ Respect reduced motion ============ */
 @media (prefers-reduced-motion: reduce) {
   .bbi-root * {
     animation-duration: 0.001ms !important;
@@ -321,13 +321,13 @@
 }
 
 /* ==========================================================================
-   页面骨架 & 表单语言(跨页通用,风格与柏宝书一致)
-   用法:页根 <section class="bbi-page"> → bbi-page-head(标题+右侧槽位)
-   → hr.bbi-rule → bbi-sections(若干 Collapsible 分组) → 组内 bbi-field。
-   页面自身不带 padding——边距由 .bbi-body 统一提供,避免「页中页」。
+   Page skeleton & form language (shared across pages, styled like BaiBai Book)
+   Usage: page root <section class="bbi-page"> → bbi-page-head (title + right-hand slot)
+   → hr.bbi-rule → bbi-sections (several Collapsible groups) → bbi-field inside groups.
+   Pages carry no padding themselves; margins come from .bbi-body, avoiding a "page within a page".
 
-   只放真·跨页复用的原子;单页专属外观(如设置页总开关卡)留在该页的
-   <style scoped> 里,别在这儿堆——柏宝书即此分工。
+   Only truly cross-page atoms go here; single-page looks (such as the settings page's master switch card) stay in that page's
+   <style scoped>, not piled up here; BaiBai Book divides it the same way.
    ========================================================================== */
 
 .bbi-page {
@@ -352,7 +352,7 @@
   gap: 12px;
 }
 
-/* —— 字段:标签行(左标签 + 右数值)+ 控件 + 提示 —— */
+/* —— Field: label row (label left + value right) + control + hint —— */
 .bbi-field {
   margin-bottom: 18px;
 }
@@ -377,8 +377,8 @@
   color: var(--bbi-accent);
 }
 
-/* 说明文字:独占整行(不塞进开关行里被控件挤成窄柱),折行位置才齐整。
-   跟在它说明的那一行之后,故上间距小、下间距大,读起来是「一段话」而非零散附注。 */
+/* Description text: takes a full row (not squeezed into a narrow column by a toggle row's control), so line breaks fall neatly.
+   It follows the row it describes, so top spacing is small and bottom spacing large; it reads as "one paragraph" rather than scattered notes. */
 .bbi-field-hint {
   margin: 0 0 14px;
   font-size: 12px;
@@ -388,14 +388,14 @@
 .bbi-field-hint:last-child {
   margin-bottom: 0;
 }
-/* 紧跟控件时补一点上间距(开关行/滑块自带下留白,不在此列) */
+/* A little top spacing when it directly follows a control (toggle rows/sliders have their own bottom spacing and are excluded) */
 .bbi-input + .bbi-field-hint,
 .bbi-segmented + .bbi-field-hint {
   margin-top: 8px;
 }
 
-/* —— 开关行:整行 <label>,点标题也能切换;控件靠右 ——
-   说明另起 <p class="bbi-field-hint">,不进本行。 */
+/* —— Toggle row: the whole row is a <label>, so clicking the title toggles too; control on the right ——
+   Descriptions go in a separate <p class="bbi-field-hint">, not in this row. */
 .bbi-switch-row {
   display: flex;
   align-items: center;
@@ -405,8 +405,8 @@
   cursor: pointer;
 }
 
-/* —— 数值行:与开关行同一套几何(左标签 / 右控件、同 padding),
-   让「填数字」和「拨开关」在同一栏里读作同一种行,不再是嵌进去的异形网格。 —— */
+/* —— Number row: the same geometry as the toggle row (label left / control right, same padding),
+   so "enter a number" and "flip a switch" read as the same kind of row in one column, not an odd grid embedded inside. —— */
 .bbi-num-row {
   display: flex;
   align-items: center;
@@ -415,7 +415,7 @@
   padding: 8px 0;
 }
 
-/* 下拉选择行:与开关/数字行同族,左标题右自绘下拉(BbiSelect) */
+/* Dropdown select row: same family as toggle/number rows, title left and custom dropdown (BbiSelect) right */
 .bbi-select-row {
   display: flex;
   align-items: center;
@@ -423,16 +423,16 @@
   gap: 12px;
   padding: 8px 0;
 }
-/* 数字输入框:窄、右对齐,数位随行右缘对齐(对齐柏宝书) */
+/* Number input: narrow, right-aligned, digits aligned to the row's right edge (matching BaiBai Book) */
 .bbi-num {
   max-width: 110px;
   text-align: right;
 }
 
-/* 原生复选框 + accent-color:轻、不抢戏。
-   大号滑动开关只留给「总开关」那一处主控,层级才分明。 */
+/* Native checkbox + accent-color: light, not stealing the show.
+   The large slide switch is reserved for the single "master switch", keeping the hierarchy clear. */
 .bbi-checkbox {
-  /* flex 行里长文本会把固定宽高的复选框挤扁 → 禁止收缩,保持标准方形 */
+  /* In a flex row, long text would squash the fixed-size checkbox → disallow shrinking to keep a standard square */
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
@@ -443,13 +443,13 @@
   cursor: default;
   opacity: 0.55;
 }
-/* 禁用项连同标签一起褪色,「点了没反应」才有解释 */
+/* Disabled items fade together with their label, so "clicked, nothing happened" has an explanation */
 .bbi-switch-row:has(.bbi-checkbox:disabled) {
   cursor: default;
   opacity: 0.6;
 }
 
-/* —— 分段选择器(主题/后端/位置等少量互斥项) —— */
+/* —— Segmented selector (a few mutually exclusive options such as theme/backend/position) —— */
 .bbi-segmented {
   display: inline-flex;
   gap: 4px;
@@ -494,7 +494,7 @@
   outline-offset: 1px;
 }
 
-/* —— 下拉:自绘小三角,去掉原生大留白箭头 —— */
+/* —— Dropdown: a small custom arrow, removing the native arrow with its large padding —— */
 .bbi-select {
   max-width: 100%;
   font-size: 13px;
@@ -507,7 +507,7 @@
   background-size: 14px;
 }
 
-/* —— 滑块:主题色,跨浏览器统一外观 —— */
+/* —— Slider: theme colour, consistent look across browsers —— */
 .bbi-range {
   width: 100%;
   height: 4px;
@@ -541,15 +541,15 @@
   outline-offset: 3px;
 }
 
-/* —— 小号按钮 —— */
+/* —— Small button —— */
 .bbi-btn-sm {
   padding: 6px 11px;
   font-size: 12px;
 }
 
-/* —— 状态药丸:「默认 / 已自定义」。默认 muted,已自定义转强调色。
-   设置页的自定义提示词列表与渠道页的提示词字段共用,故放全局
-   (scoped 样式过不了组件边界)。 —— */
+/* —— Status pill: "Default / Customised". Muted by default, accent colour when customised.
+   Shared by the settings page's custom prompt list and the channel page's prompt fields, so it is global
+   (scoped styles don't cross component boundaries). —— */
 .bbi-prompt-state {
   flex: 0 0 auto;
   font-size: 11px;
@@ -566,7 +566,7 @@
   border-color: transparent;
 }
 
-/* ============ 移动端:表单正文整体收一号,与窄屏标题节奏统一(对齐柏宝书) ============ */
+/* ============ Mobile: form text one size smaller overall, matching the narrow-screen title rhythm (like BaiBai Book) ============ */
 @media (max-width: 640px) {
   .bbi-field-label {
     font-size: 13px;

@@ -1,7 +1,7 @@
 /**
- * SillyTavern getContext() 的薄封装 + 类型。
- * 整个扩展只通过这里接触宿主,稳定且单点。
- * 运行时 getContext 挂在 window.SillyTavern 上(ST 的稳定扩展 API)。
+ * Thin wrapper + types for SillyTavern's getContext().
+ * The whole extension touches the host only through here: stable and single-point.
+ * At runtime getContext hangs off window.SillyTavern (ST's stable extension API).
  */
 
 export interface STMessage {
@@ -17,25 +17,25 @@ export interface STMessage {
 }
 
 /**
- * 是不是一条「剧情消息」——即 ST 的真·系统消息之外的一切,**含被 /hide 隐藏的普通楼**。
+ * Whether a message is a "story message": everything except ST's true system messages, **including normal floors hidden with /hide**.
  *
- * 判据只看 extra.type:ST 只给 narrator/comment/sys 这类真系统消息盖这个戳
- * (system-messages.js、slash-commands.js 的 /role system),而 /hide 只翻 is_system、
- * 不碰 extra(chats.js hideChatMessageRange)。所以隐藏的普通楼在这里是 true——
- * 隐藏的语义是「不进提示词」,不是「不是剧情」,ST 自己也这么认:messageFormatting
- * 对隐藏楼有一句 `// Let hidden messages have markdown`,强行把 isSystem 置回 false,
- * 好让它照常吃 markdown 与正则(我们的锚点正则也是靠这条才在隐藏楼生效)。
+ * The criterion is extra.type alone: ST only stamps it on true system messages such as narrator/comment/sys
+ * (system-messages.js, /role system in slash-commands.js), while /hide only flips is_system
+ * and never touches extra (hideChatMessageRange in chats.js). So hidden normal floors are true here:
+ * hiding means "not sent in the prompt", not "not story", and ST itself agrees: messageFormatting
+ * has `// Let hidden messages have markdown` for hidden floors, forcing isSystem back to false
+ * so they still get markdown and regexes (our anchor regex only works on hidden floors because of this).
  *
- * **只有这一份**:楼层按钮的显隐、自动 tag 的目标闸门、历史上下文的取舍共用它。
- * 各写一份的后果是活生生的 bug——旧版 actionButton 直接读 DOM 的 is_system 属性,
- * 隐藏楼一律不给按钮,而 runner 其实放行,用户看到的就是「有的楼没有按钮」。
+ * **There is only this one copy**: floor-button visibility, the auto-tag target gate and history-context selection all share it.
+ * Writing one each produced a real bug: the old actionButton read the DOM's is_system attribute directly,
+ * so hidden floors never got a button while the runner actually let them through; users saw "some floors have no button".
  */
 export function isStoryMessage(message: STMessage | undefined): message is STMessage {
   if (!message || typeof message.mes !== 'string' || !message.mes.trim()) return false;
   return !(message.is_system && typeof message.extra?.type === 'string');
 }
 
-/** 剧情消息里的 AI 楼(用户楼不算)。楼层按钮与自动 tag 的目标楼判据。 */
+/** AI floors among story messages (user floors excluded). The target-floor criterion for floor buttons and auto-tag. */
 export function isAiStoryMessage(message: STMessage | undefined): message is STMessage {
   return isStoryMessage(message) && !message.is_user;
 }
@@ -60,7 +60,7 @@ export interface STEventTypes {
   [k: string]: string;
 }
 
-/** 角色卡(只用到极少字段;avatar 是稳定唯一键,name 可能重名) */
+/** Character card (very few fields used; avatar is the stable unique key, name may be duplicated) */
 export interface STCharacter {
   name: string;
   avatar: string;
@@ -73,9 +73,9 @@ export interface STContext {
   name1: string;
   name2: string;
   characters?: STCharacter[];
-  /** 当前角色在 characters 中的索引(字符串/数字);群聊时为空 */
+  /** Index of the current character in characters (string/number); empty in group chats */
   characterId?: string | number;
-  /** 当前群组 id;非群聊为空 */
+  /** Current group id; empty outside group chats */
   groupId?: string;
   getCurrentChatId: () => string | undefined;
   getRequestHeaders: () => Record<string, string>;
@@ -87,14 +87,14 @@ export interface STContext {
     message: STMessage,
     options?: { rerenderMessage?: boolean },
   ) => unknown;
-  /** 扩展全局设置对象(= extension_settings,写进服务器 settings.json,跨设备同步)。ST 稳定 API。 */
+  /** Global extension settings object (= extension_settings, written to the server's settings.json, synced across devices). Stable ST API. */
   extensionSettings?: Record<string, unknown>;
-  /** 防抖保存全局设置(连同 extensionSettings 落盘到服务器)。ST 稳定 API。 */
+  /** Debounced save of global settings (writes extensionSettings to the server too). Stable ST API. */
   saveSettingsDebounced?: () => void;
   /**
-   * 用「当前主 API」(主界面正在用的聊天补全/文本补全设置)发一次性补全。来源 script.js,ST 稳定 API。
-   * prompt 传消息数组时只发这些消息、不带聊天历史/角色卡;api 缺省=main_api(用户当前主 API)。
-   * 内部走 sendOpenAIRequest('quiet', …),quiet 强制非流式,返回清洗后的整段文本。
+   * Sends a one-off completion with the "current main API" (the chat/text completion settings in use on the main screen). From script.js, stable ST API.
+   * When prompt is a message array, only those messages are sent, without chat history/character card; api defaults to main_api (the user's current main API).
+   * Internally uses sendOpenAIRequest('quiet', …); quiet forces non-streaming and returns the whole cleaned text.
    */
   generateRaw?: (params: {
     prompt: Array<{ role: string; content: string }> | string;
@@ -104,17 +104,17 @@ export interface STContext {
     prefill?: string;
     jsonSchema?: unknown;
   }) => Promise<string>;
-  /** 展开 {{char}}/{{user}} 等宏。带角色卡描述时,字段里可能含宏,需用它还原。ST 稳定 API。 */
+  /** Expands macros such as {{char}}/{{user}}. Character card fields may contain macros, so they are restored with it. Stable ST API. */
   substituteParams?: (content: string) => string;
   /**
-   * 用当前分词器数 token。ST 稳定 API(tokenizers.js)。
-   * 【口径】用的是**主界面当前 API/模型**的分词器,与副 API 渠道的模型未必同源,
-   * 故结果只能当估算(UI 上以 ≈ 标注),不能与上游返回的真实 usage 混为一谈。
+   * Counts tokens with the current tokenizer. Stable ST API (tokenizers.js).
+   * [Caveat] It uses the tokenizer of **the main screen's current API/model**, which may not match the secondary API channel's model,
+   * so the result is only an estimate (marked with ≈ in the UI) and must not be confused with the real usage returned upstream.
    */
   getTokenCountAsync?: (str: string, padding?: number) => Promise<number>;
   /**
-   * 按文本激活世界书条目(关键词触发 + constant 常驻)。ST 稳定 API(world-info.js)。
-   * chat 为待扫描文本数组(由旧到新);isDryRun=true 仅扫描不触发副作用事件。
+   * Activates lorebook entries from text (keyword triggers + constant entries). Stable ST API (world-info.js).
+   * chat is the array of texts to scan (oldest to newest); isDryRun=true only scans, without firing side-effect events.
    */
   getWorldInfoPrompt?: (
     chat: string[],
@@ -125,36 +125,36 @@ export interface STContext {
     worldInfoBefore?: string;
     worldInfoAfter?: string;
     worldInfoString?: string;
-    /** @深度条目:{depth, role, entries: string[]}。很多蓝灯条目在这里 */
+    /** @depth entries: {depth, role, entries: string[]}. Many blue-light (constant) entries are here */
     worldInfoDepth?: Array<{ depth?: number; role?: number; entries?: string[] }>;
-    /** 作者注前/后条目(content 字符串数组) */
+    /** Before/after author's note entries (array of content strings) */
     anBefore?: string[];
     anAfter?: string[];
   }>;
-  /** 全部已加载的世界书文件名(全局 + 角色绑定)。ST 稳定 API。 */
+  /** File names of all loaded lorebooks (global + character-bound). Stable ST API. */
   getWorldInfoNames?: () => string[];
-  /** 主上下文最大 token(给 getWorldInfoPrompt 的预算参数) */
+  /** Maximum tokens of the main context (budget parameter for getWorldInfoPrompt) */
   maxContext?: number;
-  // 兼容旧式命名
+  // Compatibility with old-style naming
   event_types?: STEventTypes;
   eventSource: STEventSource;
   eventTypes: STEventTypes;
 }
 
-/** 一条已激活的世界书条目(checkWorldInfo 返回的条目对象;只取渲染/拼接用到的字段)。 */
+/** One activated lorebook entry (an entry object returned by checkWorldInfo; only the fields used for rendering/joining). */
 export interface WorldInfoEntry {
-  /** 所属世界书文件名 */
+  /** Lorebook file it belongs to */
   world?: string;
-  /** 条目备注/标题 */
+  /** Entry memo/title */
   comment?: string;
-  /** 条目正文 */
+  /** Entry content */
   content?: string;
   [k: string]: unknown;
 }
 
-/** checkWorldInfo 的返回结构(只声明我们要用的字段)。 */
+/** Return structure of checkWorldInfo (only the fields we use are declared). */
 interface CheckWorldInfoResult {
-  /** 全部激活条目(已完成扫描/递归/预算,是最终该进提示词的集合) */
+  /** All activated entries (scanning/recursion/budget done; the final set that belongs in the prompt) */
   allActivatedEntries?: Set<WorldInfoEntry> | Map<string, WorldInfoEntry>;
   [k: string]: unknown;
 }
@@ -167,14 +167,14 @@ type CheckWorldInfoFn = (
 ) => Promise<CheckWorldInfoResult>;
 
 /**
- * 取 ST 的 checkWorldInfo(getContext 未暴露,从 /scripts/world-info.js 动态取)。
- * 与 getWorldInfoPrompt 不同:它返回**条目对象集合**(带 world/comment/content),
- * 才能逐条渲染——而 getWorldInfoPrompt 只吐拼好的字符串,元信息全丢。
- * 取不到(旧版/路径变动)时返回 null,调用方据此降级回 getWorldInfoPrompt。
+ * Gets ST's checkWorldInfo (not exposed by getContext; loaded dynamically from /scripts/world-info.js).
+ * Unlike getWorldInfoPrompt, it returns **a collection of entry objects** (with world/comment/content),
+ * which allows rendering entry by entry; getWorldInfoPrompt only emits a pre-joined string and loses all metadata.
+ * Returns null when unavailable (old versions/path changes), so the caller falls back to getWorldInfoPrompt.
  */
 export async function getCheckWorldInfo(): Promise<CheckWorldInfoFn | null> {
   try {
-    // 变量持有路径,避免 Vite/vue-tsc 把它当本地模块解析
+    // The path is held in a variable so Vite/vue-tsc don't resolve it as a local module
     const wiPath = '/scripts/world-info.js';
     const mod: Record<string, unknown> = await import(/* @vite-ignore */ wiPath);
     const fn = mod.checkWorldInfo;
@@ -185,10 +185,10 @@ export async function getCheckWorldInfo(): Promise<CheckWorldInfoFn | null> {
 }
 
 /**
- * ST-Prompt-Template(提示词模板插件)挂在 globalThis 的执行器接口(见其 exports.ts)。
- * 只用到 prepareContext + evalTemplate:前者备好含变量/世界书上下文的 env,
- * 后者对含 <% %> 的文本跑 EJS。用于让副 API 读到的世界书拿到「执行后」的成品,而非原文。
- * 插件未安装时 globalThis.EjsTemplate 为 undefined,调用方据此降级。
+ * The executor interface ST-Prompt-Template (the prompt template plugin) puts on globalThis (see its exports.ts).
+ * Only prepareContext + evalTemplate are used: the former prepares an env with variable/lorebook context,
+ * the latter runs EJS on text containing <% %>. This lets the lorebook seen by the secondary API be the "executed" result rather than the raw text.
+ * When the plugin isn't installed, globalThis.EjsTemplate is undefined and the caller degrades accordingly.
  */
 export interface EjsTemplateApi {
   prepareContext: (context?: Record<string, unknown>, end?: number) => Promise<Record<string, unknown>>;
@@ -199,7 +199,7 @@ export interface EjsTemplateApi {
   ) => Promise<string | null>;
 }
 
-/** 取 ST-Prompt-Template 暴露的模板执行器;未安装/接口不完整时返回 null(调用方降级为不执行 EJS)。 */
+/** Gets the template executor exposed by ST-Prompt-Template; null when not installed/incomplete (the caller degrades to not running EJS). */
 export function getEjsTemplate(): EjsTemplateApi | null {
   const api = (globalThis as { EjsTemplate?: Partial<EjsTemplateApi> }).EjsTemplate;
   if (api && typeof api.prepareContext === 'function' && typeof api.evalTemplate === 'function') {
@@ -212,7 +212,7 @@ interface SillyTavernGlobal {
   getContext?: () => STContext;
 }
 
-/** 取 ST 上下文;ST 尚未就绪时返回 null(调用方负责轮询/延后)。 */
+/** Gets the ST context; null when ST isn't ready yet (the caller polls/defers). */
 export function getContext(): STContext | null {
   try {
     const st = (window as unknown as { SillyTavern?: SillyTavernGlobal }).SillyTavern;

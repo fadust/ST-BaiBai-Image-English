@@ -2,18 +2,18 @@ import cardCss from '@/floor/card.css?raw';
 import themeCss from '@/styles/theme.css?raw';
 
 /**
- * 卡片样式表:构造一次,经 adoptedStyleSheets 共享给每个卡片的 shadow root。
- * N 张卡片共用同一个 CSSStyleSheet 对象——零重复、零解析开销。
+ * Card stylesheet: built once and shared with every card's shadow root via adoptedStyleSheets.
+ * N cards share the same CSSStyleSheet object: zero duplication, zero parse overhead.
  *
- * 为什么要带上 theme.css:令牌定义在 `.bbi-root[data-theme=…]` 选择器下,
- * 而卡片的 shadow root 里没有 .bbi-root 祖先(shadow 边界挡住了选择器匹配,
- * 尽管自定义属性本身可继承)。故把 theme.css 的选择器改写到 :host 上,
- * 令牌就落在卡片自己的 shadow 根节点上。
+ * Why theme.css is included: tokens are defined under `.bbi-root[data-theme=…]` selectors,
+ * but a card's shadow root has no .bbi-root ancestor (the shadow boundary blocks selector matching,
+ * even though custom properties themselves inherit). So theme.css selectors are rewritten to :host,
+ * and the tokens land on the card's own shadow root node.
  *
- * 改写规则:`.bbi-root[data-theme='x']` → `:host([data-theme='x'])`。
- * data-theme 由 hydrate.ts 写在 host 元素上,故用属性选择器形式。
- * 顺带把 `.bbi-root[data-theme='pastel'] .bbi-checkbox` 这类后代规则一并转换
- * (卡片里没有复选框,留着无害;不特殊处理反而更省事)。
+ * Rewrite rule: `.bbi-root[data-theme='x']` → `:host([data-theme='x'])`.
+ * hydrate.ts writes data-theme on the host element, hence the attribute-selector form.
+ * Descendant rules such as `.bbi-root[data-theme='pastel'] .bbi-checkbox` are converted along the way
+ * (cards have no checkboxes, so they are harmless; not special-casing them is simpler).
  */
 
 let sheet: CSSStyleSheet | null = null;
@@ -21,16 +21,16 @@ let fallbackCss: string | null = null;
 
 function buildCss(): string {
   const scopedTheme = themeCss
-    // 带 data-theme 的主题块:.bbi-root[data-theme='night'] → :host([data-theme='night'])
+    // Theme blocks with data-theme: .bbi-root[data-theme='night'] → :host([data-theme='night'])
     .replace(/\.bbi-root\[data-theme=('|")([a-z]+)\1\]/g, ':host([data-theme=$1$2$1])')
-    // 裸 .bbi-root(字体/圆角/间距等公共令牌块)→ :host
+    // Bare .bbi-root (shared token block for fonts/radii/spacing) → :host
     .replace(/\.bbi-root(?![\w[-])/g, ':host');
   return `${scopedTheme}\n${cardCss}`;
 }
 
 /**
- * 取共享样式表。支持 adoptedStyleSheets 的环境返回 CSSStyleSheet,
- * 否则返回 null,由调用方退回克隆 <style>(见 cardStyleTextFallback)。
+ * Gets the shared stylesheet. Environments supporting adoptedStyleSheets get a CSSStyleSheet;
+ * otherwise null, and the caller falls back to cloning a <style> (see cardStyleTextFallback).
  */
 export function cardStyleSheet(): CSSStyleSheet | null {
   if (sheet) return sheet;
@@ -45,7 +45,7 @@ export function cardStyleSheet(): CSSStyleSheet | null {
   }
 }
 
-/** 老浏览器兜底:样式文本,由调用方塞进 shadow root 的 <style>。 */
+/** Fallback for old browsers: the style text, which the caller puts into a <style> in the shadow root. */
 export function cardStyleTextFallback(): string {
   fallbackCss ??= buildCss();
   return fallbackCss;

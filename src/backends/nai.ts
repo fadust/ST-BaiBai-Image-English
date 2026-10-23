@@ -20,15 +20,15 @@ import type {
 } from '@/state/settings';
 
 /**
- * NovelAI 生图后端(浏览器直连,协议与官方 image.novelai.net 一致)。
- * url 可指向任意兼容站:官方/镜像/第三方转发,端点自动补 /ai 前缀。
+ * NovelAI image backend (direct browser connection, protocol identical to the official image.novelai.net).
+ * url can point to any compatible site: official/mirror/third-party relay; the /ai prefix is added to endpoints automatically.
  *
- * 参考 st-chatu8 的实现口径:
- * - 生图 POST {base}/ai/generate-image,body {input, model, action:'generate', parameters}。
- * - 响应是 zip(stream: 'msgpack'),解出第一张图。
- * - NAI3 的 vibe 直接发参考原图;NAI4/4.5 必须先经 /ai/encode-vibe 编码,
- *   生成时以 reference_image_multiple_cached(uuid + 编码数据) 形式叠加。
- * - .naiv4vibe 文件格式与官方互通(encodings 按模型 key 分组)。
+ * Follows st-chatu8's implementation:
+ * - generation is POST {base}/ai/generate-image, body {input, model, action:'generate', parameters}.
+ * - the response is a zip (stream: 'msgpack'); the first image is extracted.
+ * - NAI3 vibes send the original reference image directly; NAI4/4.5 must first be encoded via /ai/encode-vibe,
+ *   then layered at generation as reference_image_multiple_cached (uuid + encoded data).
+ * - the .naiv4vibe file format is interchangeable with the official one (encodings grouped by model key).
  */
 
 export class NaiError extends Error {
@@ -36,9 +36,9 @@ export class NaiError extends Error {
     message: string,
     readonly status?: number,
     /**
-     * 对方 Retry-After 换算出的毫秒数(没给则 null)。
-     * 由 naiRateLimit 的重试器当退避下界用 —— 这是「该等多久」最权威的一手信息,
-     * 扔掉它就只能凭指数退避瞎猜。
+     * Milliseconds converted from the peer's Retry-After (null if not given).
+     * naiRateLimit's retrier uses it as the backoff floor: it is the most authoritative first-hand information on "how long to wait",
+     * and discarding it leaves only blind exponential backoff.
      */
     readonly retryAfterMs: number | null = null,
   ) {
@@ -47,7 +47,7 @@ export class NaiError extends Error {
   }
 }
 
-/* ============ 常量表(与 st-chatu8 / NAI 官方前端同口径) ============ */
+/* ============ Constant tables (same as st-chatu8 / the official NAI frontend) ============ */
 
 export const NAI_SAMPLERS: { value: string; label: string }[] = [
   { value: 'k_euler', label: 'Euler' },
@@ -66,7 +66,7 @@ export const NAI_NOISE_SCHEDULES: { value: string; label: string }[] = [
   { value: 'polyexponential', label: 'Polyexponential' },
 ];
 
-/** 各模型官方质量词，拼到正向提示词末尾;用户在面板改过则用其覆盖值。 */
+/** Official quality tags per model, appended to the end of the positive prompt; if the user changed them in the panel, their override is used. */
 const QUALITY_TAGS: Record<string, string> = {
   'nai-diffusion-5-full': 'very aesthetic, masterpiece, no text',
   'nai-diffusion-5-curated': 'very aesthetic, masterpiece, no text',
@@ -78,10 +78,10 @@ const QUALITY_TAGS: Record<string, string> = {
 };
 
 /**
- * 各模型官方 Heavy 负面词，作为无需用户选择的通用默认;用户改过则用其覆盖值。
- * 5-full 在官方基线后额外串一条插件精选的通用负面层:只排画质/解剖/水印等**缺陷**,
- * 不含题材、风格、身材、画师偏好——那些会跟用户的正向词和画师串长期打架。
- * 其余模型维持官方基线不动。
+ * Official Heavy negative tags per model, the universal default needing no user choice; if the user changed them, their override is used.
+ * 5-full appends a plugin-curated general negative layer after the official baseline: it only excludes **defects** such as quality/anatomy/watermarks,
+ * never subjects, styles, body types or artist preferences, which would fight the user's positive tags and artist strings in the long run.
+ * Other models keep the official baseline unchanged.
  */
 const DEFAULT_UNDESIRED_CONTENT: Record<string, string> = {
   'nai-diffusion-5-full':
@@ -101,8 +101,8 @@ const DEFAULT_UNDESIRED_CONTENT: Record<string, string> = {
 };
 
 /**
- * 某模型的官方质量词 / 官方 Heavy 负面词。面板拿它做「未自定义」时的显示内容
- * 与「恢复默认」的目标,故必须导出:否则用户看不到实际生效的词(改动前的老问题)。
+ * A model's official quality tags / official Heavy negative tags. The panel uses them as the display content when "not customised"
+ * and as the target for "restore defaults", so they must be exported; otherwise users can't see the tags actually in effect (the old problem before this change).
  */
 export function naiDefaultQualityTags(model: string): string {
   return QUALITY_TAGS[model] ?? '';
@@ -112,7 +112,7 @@ export function naiDefaultUndesired(model: string): string {
   return DEFAULT_UNDESIRED_CONTENT[model] ?? '';
 }
 
-/** variety boost 的 magic 常数(st-chatu8 同口径):按像素量相对参考分辨率缩放。 */
+/** Magic constant for variety boost (same as st-chatu8): scaled by pixel count relative to a reference resolution. */
 const REFERENCE_PIXEL_COUNT = 1011712;
 const SIGMA_MAGIC_NUMBER = 19;
 const SIGMA_MAGIC_NUMBER_V4_5 = 58;
@@ -143,14 +143,14 @@ export function isNai45(model: string): boolean {
 }
 
 /**
- * 该模型是否走「Base Prompt + 原生 Character Prompts + 自然语言」这套协议。
+ * Whether the model uses the "Base Prompt + native Character Prompts + natural language" protocol.
  *
- * 边界是 4.5 而不是整个 v4 系:自然语言是 4.5 才引入的,原版 NAI4
- * (nai-diffusion-4-full / 4-curated-preview)只吃 tag。给它发英文 nl 句子
- * 属于未验证行为,故保持原样走单串 tag 规范。
+ * The boundary is 4.5, not the whole v4 family: natural language arrived in 4.5, and the original NAI4
+ * (nai-diffusion-4-full / 4-curated-preview) only takes tags. Sending it English nl sentences
+ * is unverified behaviour, so it stays on the single-string tag specification.
  *
- * ⚠ 不要改回 isNai5:char_captions 所在的字段本来就叫 v4_prompt,这套结构是 V4 时代的
- * 协议,V5 只是继承。曾经按 isNai5 卡过,导致 4.5 明明支持却一条角色提示都发不出去。
+ * ⚠ Do not change this back to isNai5: the field holding char_captions is literally named v4_prompt; this structure is the V4-era
+ * protocol and V5 merely inherits it. It was once gated on isNai5, so 4.5 supported it yet could not send a single character prompt.
  */
 export function naiSupportsCharacterPrompts(model: string): boolean {
   return isNai45(model) || isNai5(model);
@@ -164,18 +164,18 @@ function isNai3(model: string): boolean {
   return model === 'nai-diffusion-3';
 }
 
-/** skip_cfg_above_sigma:开 variety boost 时按尺寸与模型算;关 → null。 */
+/** skip_cfg_above_sigma: computed from size and model when variety boost is on; off → null. */
 export function skipCfgAboveSigma(width: number, height: number, model: string, varietyBoost: boolean): number | null {
   if (!varietyBoost || isNai5(model)) return null;
   const magic = isNai45(model) ? SIGMA_MAGIC_NUMBER_V4_5 : SIGMA_MAGIC_NUMBER;
   return Math.pow((width * height) / REFERENCE_PIXEL_COUNT, 0.5) * magic;
 }
 
-/* ============ 地址与基础工具 ============ */
+/* ============ Addresses and basic helpers ============ */
 
 /**
- * 拼端点:base 去掉尾斜杠后补 /ai/<path>;base 本身已是完整端点
- * (以 /ai/<path> 或 /<path> 结尾)时原样使用,方便第三方站给整段 URL。
+ * Builds an endpoint: strips the trailing slash from base and appends /ai/<path>; if base is already a full endpoint
+ * (ending in /ai/<path> or /<path>) it is used as-is, so third-party sites can give a whole URL.
  */
 export function naiEndpoint(url: string, path: string): string {
   const base = url.trim().replace(/\/+$/, '');
@@ -190,10 +190,10 @@ export interface NaiSize {
   height: number;
 }
 
-/** 解析「832×1216 / 832x1216」;宽高须为 64 的倍数、256–2048。 */
+/** Parses "832×1216 / 832x1216"; width and height must be multiples of 64, 256–2048. */
 export function parseResolution(text: string): NaiSize {
   const size = parseSize(text);
-  if (!size) throw new NaiError(`Invalid resolution format:${text || '(empty)'};should be like 832×1216`);
+  if (!size) throw new NaiError(`Invalid resolution format: ${text || '(empty)'}; it should look like 832×1216`);
   const { width, height } = size;
   if (width % 64 !== 0 || height % 64 !== 0) {
     throw new NaiError(`resolution ${width}×${height} Not a multiple of 64, NAI requires both width and height to be multiples of 64`);
@@ -204,7 +204,7 @@ export function parseResolution(text: string): NaiSize {
   return { width, height };
 }
 
-/** NAI 种子是 32 位无符号整数(与 ComfyUI 的 2^53 不同,不能复用 randomSeed)。 */
+/** NAI seeds are 32-bit unsigned integers (unlike ComfyUI's 2^53; randomSeed can't be reused). */
 export function naiRandomSeed(): number {
   return Math.floor(Math.random() * 2 ** 32);
 }
@@ -230,35 +230,35 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/* ============ payload 构造(纯函数,可测) ============ */
+/* ============ Payload construction (pure functions, testable) ============ */
 
 export interface NaiGenerateValues {
-  /** 正向 tag(不含质量词)。 */
+  /** Positive tags (without quality tags). */
   prompt: string;
   nl?: string;
   characters?: ImageCharacterPrompt[];
-  /** 种子;缺省随机。 */
+  /** Seed; random when omitted. */
   seed?: number;
-  /** 画幅方向;缺省竖屏(与改动前的固定默认一致)。 */
+  /** Frame orientation; portrait when omitted (matching the fixed default before the change). */
   size?: Orientation;
 }
 
 /**
- * 内置画师串配方:只读,**不进 settings**,改它们 = 改这里的常量、发版即生效。
+ * Built-in artist-string recipes: read-only and **kept out of settings**; changing them = changing the constants here, effective on release.
  *
- * 为什么不做成「首次启动播种进 settings」:写进 settings 那一刻默认值就冻在
- * 每个用户的设备上(还随 extension_settings 跨设备同步),以后再改只能靠
- * 「与旧种子逐字节比对」的指纹迁移,每改一次背一份旧种子。内置在代码里,
- * 默认值永远跟着版本走,已安装用户的 settings 一个字节不用动。
+ * Why not "seed them into settings on first launch": the moment they are written into settings, the defaults freeze on
+ * every user's device (and sync across devices with extension_settings); any later change could only be made via
+ * fingerprint migration "compared byte by byte with the old seed", carrying one more old seed per change. Built into the code,
+ * the defaults always follow the version, and installed users' settings don't change by a byte.
  *
- * 口径:
- * - id 用 bi_ 前缀(用户条目恒为 art_*),永不与用户库相撞;
- * - 只读:面板不给改名/删除,要自定义走「复制」建成用户条目再改;
- * - quality/negative 与用户条目同一条回落链,留空 = 跟随渠道级;
- * - 新用户默认选中第一条(见 settings.ts 的 naiDefaults);老用户的
- *   activeArtistId 存在 settings 里,不受这里影响;
- * - 要下线某条内置配方,至少留一个版本再删:正选中它的用户会走既有
- *   「id 悬空 → 清成不使用」逻辑,画风静默变掉,需慎重。
+ * Rules:
+ * - ids use the bi_ prefix (user entries are always art_*), never colliding with the user library;
+ * - read-only: the panel allows no renaming/deleting; to customise, "Duplicate" into a user entry and edit that;
+ * - quality/negative follow the same fallback chain as user entries; blank = follow the channel level;
+ * - new users have the first one selected by default (see naiDefaults in settings.ts); old users'
+ *   activeArtistId is stored in settings and unaffected by this;
+ * - to retire a built-in recipe, keep it for at least one version before deleting: users who have it selected go through the existing
+ *   "dangling id → cleared to none" logic, and their style changes silently, so be careful.
  */
 export const BUILTIN_NAI_ARTISTS: readonly NaiArtistPreset[] = [
   {
@@ -271,7 +271,7 @@ export const BUILTIN_NAI_ARTISTS: readonly NaiArtistPreset[] = [
   },
 ];
 
-/** 该 id 是否是内置配方(面板据此只读化;用户条目 id 恒为 art_*,不可能撞上)。 */
+/** Whether the id is a built-in recipe (the panel makes it read-only accordingly; user entry ids are always art_*, so they can't collide). */
 export function isBuiltinNaiArtist(id: string): boolean {
   return BUILTIN_NAI_ARTISTS.some(a => a.id === id);
 }
@@ -279,13 +279,13 @@ export function isBuiltinNaiArtist(id: string): boolean {
 type JsonObject = Record<string, unknown>;
 
 /**
- * 当前生效的画风配方;未选 / 指向已删条目 → null。
- * 查找域 = 用户库 ∪ 内置库(用户库优先;id 前缀不同,实际不可能撞)。
+ * The style recipe currently in effect; none selected / pointing at a deleted entry → null.
+ * Lookup domain = user library ∪ built-in library (user library first; the id prefixes differ, so in practice they can't collide).
  *
- * 刻意吃 nai 而不读全局 settings:本文件的拼装函数都是纯函数、可单测,读全局会让测试
- * 没法用 nai() 工厂控制输入。也刻意不 import state/settings 的 activeNaiArtist ——
- * settings.ts 已 import 本模块的 naiDefaultUndesired,反向加值依赖会成运行时环(TDZ 隐患)。
- * 这一行 find 的重复是有意为之。
+ * It deliberately takes nai rather than reading global settings: this file's assembly functions are pure and unit-testable, and reading globals would stop tests
+ * controlling input via the nai() factory. It also deliberately doesn't import activeNaiArtist from state/settings:
+ * settings.ts already imports this module's naiDefaultUndesired, and a reverse value dependency would create a runtime cycle (TDZ hazard).
+ * The duplicated one-line find is intentional.
  */
 function naiActivePreset(nai: NaiSettings): NaiArtistPreset | null {
   if (!nai.activeArtistId) return null;
@@ -296,48 +296,48 @@ function naiActivePreset(nai: NaiSettings): NaiArtistPreset | null {
   );
 }
 
-/** 当前生效的画师串快照（id / 名字 / 正文）。未选或正文全空白 → null。
- *  拼装（naiArtistPrompt）与随图记录（generateNaiImage 的 usage）都走这里，保证
- *  「真发出去的画师串」与「记下来的画师串」永远同源。 */
+/** Snapshot of the artist string in effect (id / name / text). None selected or text entirely blank → null.
+ *  Both assembly (naiArtistPrompt) and recording with the image (usage in generateNaiImage) go through here, ensuring
+ *  "the artist string actually sent" and "the artist string recorded" always share one source. */
 export function naiArtistUsage(nai: NaiSettings): GenerationArtist | null {
   const preset = naiActivePreset(nai);
   const prompt = preset?.prompt.trim() ?? '';
-  // 全空白的 preset 必须归 null:'   ' 是 truthy,下游 filter(Boolean) 兜不住它
+  // An all-blank preset must become null: '   ' is truthy, and a downstream filter(Boolean) can't catch it
   if (!preset || !prompt) return null;
   return { id: preset.id, name: preset.name, prompt };
 }
 
-/** 当前生效的画师串:选中条目的正文;未选 / 指向已删条目 / 内容全空白 → 空串。 */
+/** The artist string in effect: the selected entry's text; none selected / pointing at a deleted entry / content all blank → empty string. */
 export function naiArtistPrompt(nai: NaiSettings): string {
   return naiArtistUsage(nai)?.prompt ?? '';
 }
 
 /**
- * 正面质量词解析链:配方绑定值 → 渠道覆盖值(qualityTags)→ 内置默认。
- * 任一级空串(或纯空白)= 跟随下一级。内置默认当前 = 模型官方词;
- * 以后插件要换成自己的精选默认,只改 naiDefaultQualityTags,链结构不变。
+ * Positive quality-tag resolution chain: recipe's bound value → channel override (qualityTags) → built-in default.
+ * An empty (or whitespace-only) string at any level = follow the next level. The built-in default is currently the model's official tags;
+ * if the plugin later switches to its own curated defaults, only naiDefaultQualityTags changes; the chain structure stays the same.
  */
 export function naiQualityTags(nai: NaiSettings): string {
   const bound = naiActivePreset(nai)?.quality.trim();
   return bound || nai.qualityTags.trim() || naiDefaultQualityTags(nai.model);
 }
 
-/** 负面提示词解析链:配方绑定值 → 渠道覆盖值(undesiredContent)→ 内置默认(模型官方负面词)。 */
+/** Negative prompt resolution chain: recipe's bound value → channel override (undesiredContent) → built-in default (the model's official negative tags). */
 export function naiUndesiredContent(nai: NaiSettings): string {
   const bound = naiActivePreset(nai)?.negative.trim();
   return bound || nai.undesiredContent.trim() || naiDefaultUndesired(nai.model);
 }
 
 /**
- * 正向完整 prompt:画师串在最前,画面 tag 居中,质量词在最后。
- * - 画师串 = 画风配方库当前选中条目(未选则无)。放最前是因为它决定整幅画的画风基调,
- *   NAI 对靠前 tag 的权重更高;
- * - 质量词 = 配方绑定值优先,其次渠道覆盖值(qualityTags),都留空则按模型取官方词
- *   (见 naiQualityTags)。
+ * Full positive prompt: artist string first, image tags in the middle, quality tags last.
+ * - artist string = the entry currently selected in the style recipe library (none if not selected). It goes first because it sets the whole image's style,
+ *   and NAI weights earlier tags more heavily;
+ * - quality tags = the recipe's bound value first, then the channel override (qualityTags); if both are blank, the model's official tags
+ *   (see naiQualityTags).
  *
- * ⚠ 本函数在 buildNaiParameters(v4_prompt 的来源)与 generateNaiImage 的顶层 input
- * 字段处各调一次,两处必须同源。拼装改动一律留在本函数内部——在某个调用点单独加料会让
- * NAI3(读 input)与 NAI4/4.5(读 v4_prompt)拿到不同的提示词,且只在 NAI3 上暴露。
+ * ⚠ This function is called once each in buildNaiParameters (the source of v4_prompt) and for generateNaiImage's top-level input
+ * field, and the two must share one source. Keep every assembly change inside this function: adding extras at one call site would give
+ * NAI3 (reads input) and NAI4/4.5 (read v4_prompt) different prompts, and the difference would only show up on NAI3.
  */
 export function fullPositivePrompt(nai: NaiSettings, prompt: string, nl = ''): string {
   const artist = naiArtistPrompt(nai);
@@ -362,22 +362,22 @@ function characterCaption(character: ImageCharacterPrompt): string {
 }
 
 /**
- * 负面完整 prompt = 配方绑定值 → 渠道覆盖值(undesiredContent)→ 模型官方负面词
- * (见 naiUndesiredContent)。想额外排除什么,往任一级的值里接即可。
+ * Full negative prompt = recipe's bound value → channel override (undesiredContent) → the model's official negative tags
+ * (see naiUndesiredContent). To exclude something extra, append it to the value at any level.
  */
 export function fullNegativePrompt(nai: NaiSettings): string {
   return naiUndesiredContent(nai);
 }
 
 /**
- * 构造 parameters。v4 系模型带 v4_prompt/v4_negative_prompt 结构;NAI3 不带。
- * vibe 不在此叠加(见 applyVibes),保持「一次生成 = build + applyVibes」两步。
+ * Builds parameters. v4-family models carry the v4_prompt/v4_negative_prompt structure; NAI3 doesn't.
+ * Vibes are not layered here (see applyVibes), keeping "one generation = build + applyVibes" as two steps.
  */
 export function buildNaiParameters(nai: NaiSettings, values: NaiGenerateValues): JsonObject {
-  // 画幅按方向取用户配的那一格;没填回落竖屏默认
+  // Frame size takes the user's cell for the orientation; falls back to the portrait default if blank
   const orientation = values.size ?? 'portrait';
   const { width, height } = parseResolution(pickSize(nai, orientation) || '832×1216');
-  // 显式传入 > 面板固定种子 > 随机
+  // Explicitly passed > panel fixed seed > random
   const seed = values.seed ?? (nai.seed > 0 ? nai.seed : naiRandomSeed());
   const prompt = fullPositivePrompt(nai, values.prompt, values.nl);
   const negative = fullNegativePrompt(nai);
@@ -392,7 +392,7 @@ export function buildNaiParameters(nai: NaiSettings, values: NaiGenerateValues):
     sampler,
     steps: nai.steps,
     n_samples: 1,
-    // 提示词已由本地固定默认拼好；协议字段保持官方前端口径。
+    // The prompt is already assembled from local fixed defaults; protocol fields keep the official frontend's conventions.
     ucPreset: 3,
     qualityToggle: true,
     dynamic_thresholding: false,
@@ -413,7 +413,7 @@ export function buildNaiParameters(nai: NaiSettings, values: NaiGenerateValues):
   };
 
   if (isNai3(nai.model)) {
-    // NAI3:vibe 直接发参考原图;SME/SMEA 暂不开放(固定关)
+    // NAI3: vibes send the original reference image directly; SME/SMEA are not offered yet (fixed off)
     params.sm = false;
     params.sm_dyn = false;
     params.reference_image_multiple = [];
@@ -449,7 +449,7 @@ export function buildNaiParameters(nai: NaiSettings, values: NaiGenerateValues):
   return params;
 }
 
-/** vibe 模型 key:encodings 分组的键(与官方 .naiv4vibe 一致)。 */
+/** Vibe model key: the grouping key of encodings (same as the official .naiv4vibe). */
 export function vibeModelKey(model: string): string {
   if (model.includes('nai-diffusion-5-curated')) return 'v5curated';
   if (model.includes('nai-diffusion-5-full')) return 'v5full';
@@ -461,20 +461,20 @@ export function vibeModelKey(model: string): string {
   return 'v4-5full';
 }
 
-/** 一次 applyVibes 的结果。 */
+/** The result of one applyVibes. */
 export interface VibeApplication {
-  /** 实际叠加进 parameters 的 vibe（含配置强度与实际发送强度）。 */
+  /** Vibes actually layered into parameters (with configured strength and actually sent strength). */
   applied: GenerationVibe[];
-  /** 因缺当前模型编码 / 缺原图 / 模型不支持而跳过的 vibe 名（供 toastr）。 */
+  /** Names of vibes skipped for missing the current model's encoding / missing the original image / unsupported model (for toastr). */
   skipped: string[];
 }
 
 /**
- * 把启用的 vibe 叠加进 parameters。
- * - NAI3:参考原图进 reference_image_multiple(配信息提取度 1 + 强度);
- * - NAI4/4.5:编码数据进 reference_image_multiple_cached(随机 cache key),强度并进
- *   reference_strength_multiple;强度总和超过 1 且开启归一化时按比例压回 1。
- * 返回实际叠加的 vibe(供随图记录)与被跳过的 vibe 名(调用方据以提示)。
+ * Layers the enabled vibes into parameters.
+ * - NAI3: original reference images go into reference_image_multiple (with information extracted 1 + strength);
+ * - NAI4/4.5: encoded data goes into reference_image_multiple_cached (random cache key), strengths into
+ *   reference_strength_multiple; when the total strength exceeds 1 and normalisation is on, they are scaled back to 1 proportionally.
+ * Returns the vibes actually layered (recorded with the image) and the names of skipped vibes (the caller warns about them).
  */
 export function applyVibes(
   params: JsonObject,
@@ -517,7 +517,7 @@ export function applyVibes(
     cached.push({ cache_secret_key: randomUuid(), data: enc.encoding });
     picked.push(vibe);
   }
-  // 归一化:总强度 > 1 时按比例压回 1(st-chatu8 同口径;4.5 开归一化时官方端也会自动处理)
+  // Normalisation: when the total strength > 1, scale back to 1 proportionally (same as st-chatu8; with normalisation on for 4.5 the official side handles it automatically too)
   const total = picked.reduce((sum, vibe) => sum + vibe.strength, 0);
   const scale = nai.normalizeRefStrength && total > 1 ? 1 / total : 1;
   for (const vibe of picked) {
@@ -528,7 +528,7 @@ export function applyVibes(
   return { applied, skipped };
 }
 
-/** 造一条 vibe 使用记录：strength = 面板配置值，effectiveStrength = 实际发送值。 */
+/** Builds one vibe usage record: strength = the panel's configured value, effectiveStrength = the value actually sent. */
 function vibeUsage(vibe: NaiVibe, effectiveStrength: number): GenerationVibe {
   return {
     id: vibe.id,
@@ -539,7 +539,7 @@ function vibeUsage(vibe: NaiVibe, effectiveStrength: number): GenerationVibe {
   };
 }
 
-/* ============ 网络请求 ============ */
+/* ============ Network requests ============ */
 
 async function naiHttpError(resp: Response, label: string): Promise<NaiError> {
   const text = (await resp.text().catch(() => '')).trim();
@@ -548,13 +548,13 @@ async function naiHttpError(resp: Response, label: string): Promise<NaiError> {
     const json = JSON.parse(text);
     if (typeof json?.message === 'string') detail = json.message;
   } catch {
-    /* 非 JSON 错误体直接用原文 */
+    /* Non-JSON error bodies use the raw text directly */
   }
-  // Retry-After 一并带上:重试器拿它当退避下界(见 NaiError.retryAfterMs)
+  // Retry-After goes along too: the retrier uses it as the backoff floor (see NaiError.retryAfterMs)
   const retryAfterMs = parseRetryAfter(resp.headers?.get('Retry-After'));
   switch (resp.status) {
     case 400:
-      return new NaiError(`${label}:Request verification failed:${detail.slice(0, 300)}`, resp.status, retryAfterMs);
+      return new NaiError(`${label}: request validation failed: ${detail.slice(0, 300)}`, resp.status, retryAfterMs);
     case 401:
       return new NaiError(`${label}:API Key Wrong or invalid`, resp.status, retryAfterMs);
     case 402:
@@ -566,11 +566,11 @@ async function naiHttpError(resp: Response, label: string): Promise<NaiError> {
         retryAfterMs,
       );
     default:
-      return new NaiError(`${label} (${resp.status}):${detail.slice(0, 300)}`, resp.status, retryAfterMs);
+      return new NaiError(`${label} (${resp.status}): ${detail.slice(0, 300)}`, resp.status, retryAfterMs);
   }
 }
 
-/** 测试连接:优先 /user/subscription 验 key;第三方站无此接口(404)时只验证地址可达。 */
+/** Tests the connection: prefers /user/subscription to verify the key; third-party sites without this endpoint (404) only verify that the address is reachable. */
 export async function testNaiConnection(
   nai: Pick<NaiSettings, 'url' | 'key'>,
   signal?: AbortSignal,
@@ -593,11 +593,11 @@ export async function testNaiConnection(
   const active = data?.subscription?.active ?? data?.active;
   const tierName = ['Free', 'Tablet', 'Scroll', 'Opus'][Number(tier)] ?? `Tier ${tier}`;
   return {
-    message: `The connection is OK:${tierName}${active === false ? '(Subscription is not activated)' : ''}`,
+    message: `Connection OK: ${tierName}${active === false ? ' (subscription not active)' : ''}`,
   };
 }
 
-/** 解 NAI 返回的 zip,取第一张图转 base64。 */
+/** Unpacks the zip NAI returns and converts the first image to base64. */
 export function unzipNaiImage(buffer: ArrayBuffer): { base64: string; filename: string } {
   let files: Record<string, Uint8Array>;
   try {
@@ -610,19 +610,19 @@ export function unzipNaiImage(buffer: ArrayBuffer): { base64: string; filename: 
   return { base64: uint8ToBase64(files[name]), filename: name };
 }
 
-/** generateNaiImage 的完整产出：图片 + 随图记录的元信息。 */
+/** The full output of generateNaiImage: the image + metadata recorded with it. */
 export interface NaiImageOutput {
   result: ComfyImageResult;
-  /** 不在 tag 文本里的那部分配方（画师串 / vibe / 采样参数 / 模型无关字段）。 */
+  /** The part of the recipe not in the tag text (artist string / vibes / sampling parameters / model-independent fields). */
   usage: Pick<GenerationMeta, 'positive' | 'negative' | 'width' | 'height' | 'artist' | 'vibes' | 'params'>;
 }
 
 /**
- * 生图。返回图片与本次实际使用的画师串/vibe/采样参数。
+ * Generates an image. Returns the image and the artist string/vibes/sampling parameters actually used.
  *
- * 429/5xx/网络级失败会自动退避重试(backends/naiRateLimit.ts);配置类错误
- * (key 错、订阅过期、参数非法)立刻抛出,不做无谓重试。onRetry 用于把退避过程
- * 报给卡片显示 —— 否则用户看着「生成中…」一动不动几十秒,只会以为卡死了再点一次。
+ * 429/5xx/network-level failures back off and retry automatically (backends/naiRateLimit.ts); configuration errors
+ * (wrong key, expired subscription, invalid parameters) throw immediately without pointless retries. onRetry reports the backoff
+ * to the card for display; otherwise users see a motionless "Generating…" for tens of seconds, assume it froze and click again.
  */
 export async function generateNaiImage(
   nai: NaiSettings,
@@ -633,7 +633,7 @@ export async function generateNaiImage(
   if (!nai.key.trim()) throw new NaiError('Please fill in first NAI API Key');
   if (!values.prompt.trim()) throw new NaiError('Positive prompt word cannot be empty');
 
-  // 画师串在发请求时解析一次，快照下来随图落盘：事后配方被删/改名也不丢。
+  // The artist string is resolved once when the request is sent and snapshotted to be saved with the image: if the recipe is later deleted/renamed it isn't lost.
   const artist = naiArtistUsage(nai);
   const params = buildNaiParameters(nai, values);
   const activeVibes = naiSupportsVibes(nai.model) ? nai.vibes.filter(vibe => vibe.enabled) : [];
@@ -652,14 +652,14 @@ export async function generateNaiImage(
             },
       );
     } catch (error) {
-      console.warn(`[BaiBai Image] Read vibe "${vibe.name}"Failure:`, error);
+      console.warn(`[BaiBai Image] Failed to read vibe "${vibe.name}":`, error);
     }
   }
   const { applied, skipped } = applyVibes(params, nai, loaded);
   if (skipped.length) {
     const reason = naiSupportsVibes(nai.model) ? 'Missing current model encoding' : 'Current model does not support Vibe Transfer';
-    console.warn(`[BaiBai Image] The following vibe is due to${reason}Skipped:`, skipped);
-    toastr.warning(`vibe「${skipped.join('、')}」${reason}, skipped`, 'BaiBai Image');
+    console.warn(`[BaiBai Image] The following vibes were skipped (${reason}):`, skipped);
+    toastr.warning(`Vibe "${skipped.join(', ')}": ${reason}, skipped`, 'BaiBai Image');
   }
 
   const body = {
@@ -669,8 +669,8 @@ export async function generateNaiImage(
     parameters: params,
     use_new_shared_trial: true,
   };
-  // 只把「发请求 + 解包」包进重试:上面拼参数、读 vibe 数据的活是一次性的,
-  // 重跑它们既白费功夫,也会把 vibe 缺编码的 toastr 警告重复弹出来。
+  // Only "send the request + unpack" is wrapped in retries: assembling parameters and reading vibe data above are one-off work,
+  // and rerunning them would both waste effort and pop the toastr warning about vibes missing encodings again.
   const result = await runNaiWithRetry(
     async () => {
       const resp = await fetch(naiEndpoint(nai.url, 'generate-image'), {
@@ -699,7 +699,7 @@ export async function generateNaiImage(
   return {
     result,
     usage: {
-      // positive 即顶层 input / v4_prompt 里那份全文（含画师串与质量词）
+      // positive is the full text in the top-level input / v4_prompt (including artist string and quality tags)
       positive: fullPositivePrompt(nai, values.prompt, values.nl),
       negative: fullNegativePrompt(nai),
       width: params.width as number,
@@ -711,7 +711,7 @@ export async function generateNaiImage(
   };
 }
 
-/** 采样参数快照：只收标量，不含提示词与 vibe 二进制。 */
+/** Sampling-parameter snapshot: scalars only, without prompts or vibe binaries. */
 function naiParamsSnapshot(params: JsonObject, nai: NaiSettings): GenerationParams {
   return {
     sampler: params.sampler as string,
@@ -725,17 +725,17 @@ function naiParamsSnapshot(params: JsonObject, nai: NaiSettings): GenerationPara
   };
 }
 
-/* ============ vibe 编码与 .naiv4vibe 互通 ============ */
+/* ============ Vibe encoding and .naiv4vibe interchange ============ */
 
-/** 官方 .naiv4vibe 里 encoding 的固定内层 key(与 st-chatu8 同)。 */
+/** Fixed inner key of encoding in the official .naiv4vibe (same as st-chatu8). */
 export const VIBE_ENCODING_KEY = 'b36a8472fe418d9f80d6bb1c54e3a6e62c62936aa7bf31dae2bcf7e929f6430f';
 
 /**
- * 调 /ai/encode-vibe 把参考图编码成 vibe 数据(base64)。
- * NAI4/4.5 的 vibe 必须经此编码;NAI3 不需要(直接发原图)。
+ * Calls /ai/encode-vibe to encode a reference image into vibe data (base64).
+ * NAI4/4.5 vibes must be encoded this way; NAI3 doesn't need it (sends the original image directly).
  *
- * 与生图同样带退避重试:这也是一次真实的 NAI 请求,吃 429 时不该只是弹个红条了事。
- * (并发槽由调用方取,见 pages/backend/panels/NaiPanel.vue —— 与卡片同一条纪律。)
+ * Backoff retries just like generation: this is a real NAI request too, and on a 429 it shouldn't just show a red bar and give up.
+ * (The concurrency slot is taken by the caller; see pages/backend/panels/NaiPanel.vue, the same discipline as cards.)
  */
 export async function encodeVibeImage(
   nai: Pick<NaiSettings, 'url' | 'key'>,
@@ -776,7 +776,7 @@ export interface ImportedVibe {
   strength: number;
 }
 
-/** 解析 .naiv4vibe 文件文本(JSON)为 vibe 条目(不含 id,由调用方补)。 */
+/** Parses .naiv4vibe file text (JSON) into a vibe entry (without id; the caller adds it). */
 export function parseNaiv4vibe(text: string): ImportedVibe {
   let json: any;
   try {
@@ -810,7 +810,7 @@ export function parseNaiv4vibe(text: string): ImportedVibe {
   };
 }
 
-/** 导出为官方兼容的 .naiv4vibe JSON(全部已编码模型一并带上)。 */
+/** Exports official-compatible .naiv4vibe JSON (all encoded models included). */
 export async function buildNaiv4vibe(vibe: NaiVibe, data: NaiVibeData): Promise<string> {
   const encodings: Record<string, unknown> = {};
   for (const [modelKey, enc] of Object.entries(data.encodings)) {

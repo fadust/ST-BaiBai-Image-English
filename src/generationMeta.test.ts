@@ -40,10 +40,10 @@ describe('formatGenerationMeta', () => {
     );
 
     expect(text).toContain("Artist Tags: 厚涂 · artist:wlop, artist:foo");
-    // 质量词与解析后的负面不在 tag 文本里，单独成行
+    // Quality tags and the resolved negative are not in the tag text, so each gets its own line
     expect(text).toContain('Quality word: masterpiece, best quality');
     expect(text).toContain('Negative: lowres');
-    // 配置强度是主值，归一化后的实际值以括号标注
+    // The configured strength is the main value; the normalised actual value is noted in parentheses
     expect(text).toContain('参考A(风景) ×0.8(Actual ×0.571)');
     expect(text).toContain('参考B ×0.6(Actual ×0.429)');
     expect(text).toContain("Model: nai-diffusion-4-5-full");
@@ -72,7 +72,7 @@ describe('formatGenerationMeta', () => {
           baseModel: 'pony.safetensors',
           vae: 'vae.safetensors',
           clips: 'clip-l.safetensors',
-          loras: 'detail×0.7、style×1',
+          loras: 'detail×0.7, style×1',
           sampler: 'euler_ancestral',
           scheduler: 'normal',
           steps: 30,
@@ -83,7 +83,7 @@ describe('formatGenerationMeta', () => {
     expect(text).toContain("Model: Pony 预设");
     expect(text).toContain('Template checkpoint');
     expect(text).toContain('Base model pony.safetensors');
-    expect(text).toContain('LoRA detail×0.7、style×1');
+    expect(text).toContain('LoRA detail×0.7, style×1');
     expect(text).toContain('euler_ancestral/normal · 30 steps · CFG 7');
   });
 

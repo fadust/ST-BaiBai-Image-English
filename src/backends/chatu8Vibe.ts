@@ -9,20 +9,20 @@ import { getContext } from '@/st/context';
 import { newNaiArtist, type NaiArtistPreset, type NaiVibe } from '@/state/settings';
 
 /**
- * 智绘姬(st-chatu8)vibe 兼容导入(只读,绝不写智绘姬的任何数据)。
+ * Compatible vibe import from Chiehime (st-chatu8) (read-only; never writes any Chiehime data).
  *
- * chatu8 的 vibe 存储模型:
- * - extension_settings['st-chatu8'] 里:
- *   - vibePresets: { [预设名]: { vibeDataId, strength, model, ... } }(Vibe 生成器预设)
- *   - vibeGroups: { [组名]: { vibes: [{ vibeDataId, strength }] } }(NAI4/4.5 vibe 组)
- *   - configImageStorage: { [id]: { path } } —— 存到酒馆服务器时的路径映射
- * - vibe 数据本体是 .naiv4vibe 格式的 JSON 字符串,两处可能:
- *   a) 酒馆服务器文件(configImageStorage[id].path 可直接 fetch);
- *   b) IndexedDB「chatu8_config_images」库的 config_images 表(记录 {id, data})。
- * 格式与我们的一致(同为官方 novelai-vibe-transfer),解析直接复用 parseNaiv4vibe。
+ * chatu8's vibe storage model:
+ * - in extension_settings['st-chatu8']:
+ *   - vibePresets: { [preset name]: { vibeDataId, strength, model, ... } } (Vibe generator presets)
+ *   - vibeGroups: { [group name]: { vibes: [{ vibeDataId, strength }] } } (NAI4/4.5 vibe groups)
+ *   - configImageStorage: { [id]: { path } }: path mapping when stored on the SillyTavern server
+ * - the vibe data itself is a JSON string in .naiv4vibe format, in one of two places:
+ *   a) a file on the SillyTavern server (configImageStorage[id].path can be fetched directly);
+ *   b) the config_images table of the IndexedDB database "chatu8_config_images" (records {id, data}).
+ * The format matches ours (both are the official novelai-vibe-transfer), so parsing reuses parseNaiv4vibe directly.
  */
 
-/** 智绘姬在 extension_settings 里的命名空间键。 */
+/** Chiehime's namespace key in extension_settings. */
 export const CHATU8_SETTINGS_KEY = 'st-chatu8';
 const CHATU8_DB_NAME = 'chatu8_config_images';
 const CHATU8_STORE_NAME = 'config_images';
@@ -33,7 +33,7 @@ export { vibeFingerprint } from '@/backends/vibeStore';
 export interface Chatu8VibeRef {
   vibeDataId: string;
   strength: number;
-  /** 来源名:预设名或组名(用于命名导入条目)。 */
+  /** Source name: preset name or group name (used to name the imported entry). */
   source: string;
   kind: 'preset' | 'group';
 }
@@ -41,11 +41,11 @@ export interface Chatu8VibeRef {
 export interface Chatu8ArtistRef {
   /** Source preset name in st-chatu8. */
   source: string;
-  /** 前置固定正向(fixedPrompt)→ 目标画师串位(正向最前,与智绘姬拼装位置一致)。 */
+  /** Leading fixed positive (fixedPrompt) → target artist-string slot (start of the positive, matching Chiehime's assembly position). */
   prompt: string;
-  /** 后置固定正向(fixedPrompt_end)→ 目标正面质量词位(正向最后,与智绘姬拼装位置一致)。 */
+  /** Trailing fixed positive (fixedPrompt_end) → target positive quality-tag slot (end of the positive, matching Chiehime's assembly position). */
   quality: string;
-  /** 固定负向(negativePrompt);导入时会在前面拼上当前模型官方基线(智绘姬同口径:官方 UCP + 用户负向)。 */
+  /** Fixed negative (negativePrompt); on import the current model's official baseline is prepended (same as Chiehime: official UCP + user negative). */
   negative: string;
   /** Whether this is the currently selected NovelAI prompt preset in st-chatu8. */
   active: boolean;
@@ -82,21 +82,21 @@ export function detectChatu8Artists(chatu8: unknown): Chatu8ArtistDetectInfo {
   return { found: true, total: collectChatu8ArtistRefs(chatu8).length };
 }
 
-/** 一条预设的去向(与 collectChatu8ArtistRefs 顺序一一对应,预览徽标与落盘共用)。 */
+/** Where one preset goes (one-to-one with the order of collectChatu8ArtistRefs; shared by preview badges and saving). */
 export interface Chatu8ArtistPlan {
   source: string;
-  /** 前置固定正向(预览用)。 */
+  /** Leading fixed positive (for preview). */
   prompt: string;
-  /** 后置固定正向(预览用)。 */
+  /** Trailing fixed positive (for preview). */
   quality: string;
-  /** 固定负向原文(预览用;落盘值在 preset 里,前面已拼上官方基线)。 */
+  /** Original fixed negative text (for preview; the saved value is in preset, with the official baseline already prepended). */
   negative: string;
   active: boolean;
-  /** import = 新建条目;overwrite = 同名覆盖现有条目;skip = 内容完全相同,跳过。 */
+  /** import = new entry; overwrite = replace the existing entry with the same name; skip = identical content, skipped. */
   state: 'import' | 'overwrite' | 'skip';
-  /** 目标条目 id:overwrite/skip 指向现有条目;import 指向新建条目。 */
+  /** Target entry id: overwrite/skip point to the existing entry; import points to the new entry. */
   targetId: string;
-  /** import/overwrite 时携带最终落库值(overwrite 时 id = 现有条目 id)。 */
+  /** Carries the final value to save for import/overwrite (for overwrite, id = the existing entry's id). */
   preset?: NaiArtistPreset;
 }
 
@@ -111,17 +111,17 @@ export interface Chatu8ArtistImportResult {
 }
 
 /**
- * 把智绘姬的全部提示词预设搬进画师串库(纯函数,绝不写智绘姬)。
+ * Moves all of Chiehime's prompt presets into the artist-string library (pure function; never writes Chiehime).
  *
- * 映射(与智绘姬生成时的拼装位置一一对应):
- * - fixedPrompt(前置固定正向)→ 目标 prompt(画师串位,正向最前);
- * - fixedPrompt_end(后置固定正向)→ 目标 quality(正面质量词位,正向最后);
- * - negativePrompt(固定负向)→ 目标 negative。智绘姬的口径是「官方 UCP + 用户负向」,
- *   故用户负向非空时把当前模型官方基线烤在它前面(基线在导入时即定,随后不随模型切换);
- *   用户负向为空则留空走回落链,基线仍跟随模型,与智绘姬空负向时只用 UCP 同效。
+ * Mapping (one-to-one with Chiehime's assembly positions at generation):
+ * - fixedPrompt (leading fixed positive) → target prompt (artist-string slot, start of the positive);
+ * - fixedPrompt_end (trailing fixed positive) → target quality (positive quality-tag slot, end of the positive);
+ * - negativePrompt (fixed negative) → target negative. Chiehime's rule is "official UCP + user negative",
+ *   so when the user negative is non-empty, the current model's official baseline is baked in front of it (fixed at import, not following later model switches);
+ *   when the user negative is empty it stays empty and uses the fallback chain, so the baseline still follows the model, the same as Chiehime using only UCP with an empty negative.
  *
- * 同名即视为同一配方:内容不同 → 覆盖更新(旧版迁移把正向整体塞进画师串的条目,
- * 重新导入即被修好),完全相同 → 跳过。幂等,随时可再来。
+ * Same name means the same recipe: different content → overwrite (entries from the old migration, which stuffed the whole positive into the artist string,
+ * are fixed by re-importing); identical → skip. Idempotent; can be run again at any time.
  */
 export function importArtistsFromChatu8(
   existing: readonly NaiArtistPreset[],
@@ -132,7 +132,7 @@ export function importArtistsFromChatu8(
     return { found: false, imported: 0, overwritten: 0, duplicates: 0, plans: [], activeArtistId: '' };
   }
 
-  // 同名覆盖按「首个同名条目」处理(库允许重名、以 id 为键;其余同名条目不动)。
+  // Same-name overwrite targets "the first entry with that name" (the library allows duplicate names and is keyed by id; other same-name entries are untouched).
   const byName = new Map<string, NaiArtistPreset>();
   for (const preset of existing) {
     const name = preset.name.trim();
@@ -187,7 +187,7 @@ export function importArtistsFromChatu8(
   return result;
 }
 
-/** 从 chatu8 设置里收集全部 vibe 引用(预设 + 组),按 vibeDataId 去重(预设优先,命名更好看)。 */
+/** Collects all vibe references from chatu8 settings (presets + groups), deduplicated by vibeDataId (presets first, for nicer names). */
 export function collectChatu8VibeRefs(chatu8: unknown): Chatu8VibeRef[] {
   if (!chatu8 || typeof chatu8 !== 'object') return [];
   const root = chatu8 as Record<string, unknown>;
@@ -234,7 +234,7 @@ function decodeDataUrlText(dataUrl: string): string {
   return header.includes(';base64') ? base64ToUtf8(data) : decodeURIComponent(data);
 }
 
-/** 与 chatu8 getConfigText 的服务器分支同口径:fetch 路径后按 data:/JSON/base64 尝试解码。 */
+/** Same as the server branch of chatu8's getConfigText: fetch the path, then try decoding as data:/JSON/base64. */
 async function fetchServerText(path: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -258,8 +258,8 @@ async function fetchServerText(path: string): Promise<string | null> {
 }
 
 /**
- * 读 chatu8 的 IndexedDB(不带版本号打开,避免触发 upgrade;只读单条记录)。
- * data 可能是字符串(text)或 ArrayBuffer(图片,不会是 vibe 文本,忽略)。
+ * Reads chatu8's IndexedDB (opened without a version number to avoid triggering an upgrade; reads a single record only).
+ * data may be a string (text) or an ArrayBuffer (an image, never vibe text; ignored).
  */
 let chatu8DbPromise: Promise<IDBDatabase | null> | null = null;
 
@@ -307,15 +307,15 @@ async function readChatu8Store(id: string): Promise<string | null> {
 }
 
 export interface Chatu8DetectInfo {
-  /** 是否检测到智绘姬设置。 */
+  /** Whether Chiehime settings were detected. */
   found: boolean;
-  /** vibe 引用总数(预设+组内,已按 id 去重)。 */
+  /** Total vibe references (presets + within groups, deduplicated by id). */
   total: number;
   presets: number;
   groups: number;
 }
 
-/** 智绘姬 vibe 检测:只读 settings 里的引用列表(同步、廉价),供迁移面板实时展示。 */
+/** Chiehime vibe detection: reads only the reference list in settings (synchronous, cheap) for live display in the migration panel. */
 export function detectChatu8Vibes(chatu8: unknown): Chatu8DetectInfo {
   if (!chatu8 || typeof chatu8 !== 'object') return { found: false, total: 0, presets: 0, groups: 0 };
   const refs = collectChatu8VibeRefs(chatu8);
@@ -327,22 +327,22 @@ export function detectChatu8Vibes(chatu8: unknown): Chatu8DetectInfo {
   };
 }
 
-/** 旧版迁移把组名拼进了显示名,分隔符是「 · 」。 */
+/** The old migration joined the group name into the display name with the separator " · ". */
 const LEGACY_GROUP_SEPARATOR = ' · ';
 
 export interface PrefixGroupPlan {
   id: string;
-  /** 从名字前缀识别出的组名。 */
+  /** Group name recognised from the name prefix. */
   group: string;
-  /** 去掉前缀后的显示名。 */
+  /** Display name with the prefix removed. */
   name: string;
 }
 
 /**
- * 为「已经迁移过」的库补分组:旧版把组名拼成了「组名 · 原名」,这里把前缀还原成 group。
+ * Adds groups to an "already migrated" library: the old version joined names as "group name · original name"; this restores the prefix as group.
  *
- * 只动 group 为空的条目(不覆盖用户已手工分好的组),且前缀与余名都非空才算。
- * 纯函数、只返回需要改动的条目,调用方决定是否落盘——用户点按钮前要能看到「将整理 N 个」。
+ * Only touches entries with an empty group (never overriding groups the user set by hand), and only when both prefix and remainder are non-empty.
+ * Pure function returning only the entries that need changes; the caller decides whether to save, since users must see "will tidy N" before clicking.
  */
 export function planPrefixGroups(
   vibes: readonly Pick<NaiVibe, 'id' | 'name' | 'group'>[],
@@ -361,14 +361,14 @@ export function planPrefixGroups(
 }
 
 export interface Chatu8ImportResult {
-  /** 是否检测到 chatu8 设置。 */
+  /** Whether chatu8 settings were detected. */
   found: boolean;
   imported: number;
-  /** 内容与本库已有(或本次已导入)重复而跳过。 */
+  /** Skipped because the content duplicates the library (or something already imported in this run). */
   duplicates: number;
-  /** 引用存在但数据取不到/解析失败。 */
+  /** The reference exists but the data couldn't be fetched/parsed. */
   failed: number;
-  /** 待入库的新条目(调用方 push 进 settings.nai.vibes)。 */
+  /** New entries to add (the caller pushes them into settings.nai.vibes). */
   vibes: NaiVibe[];
 }
 
@@ -379,8 +379,8 @@ export interface Chatu8ImportOptions {
 }
 
 /**
- * 从 st-chatu8 导入全部 vibe。existing 传当前库(内容去重用)。
- * 单个失败不阻塞整体;结果为 null 表示未检测到 chatu8。
+ * Imports all vibes from st-chatu8. Pass the current library as existing (for content deduplication).
+ * A single failure doesn't block the rest; a null result means chatu8 was not detected.
  */
 export async function importVibesFromChatu8(
   existing: NaiVibe[],
@@ -402,7 +402,7 @@ export async function importVibesFromChatu8(
 
   for (const [index, ref] of refs.entries()) {
     options.onProgress?.(index + 1, refs.length);
-    // 服务器优先(chatu8 同口径),取不到再试 IndexedDB
+    // Server first (same as chatu8), then IndexedDB if that fails
     const path = serverMap[ref.vibeDataId]?.path;
     let text = typeof path === 'string' && path ? await fetchServerText(path) : null;
     if (!text) text = await readChatu8Store(ref.vibeDataId);
@@ -410,7 +410,7 @@ export async function importVibesFromChatu8(
       result.failed++;
       continue;
     }
-    // IndexedDB 里可能存的是 dataURL 字符串,先剥壳
+    // IndexedDB may store a dataURL string; strip the wrapper first
     if (text.startsWith('data:')) text = decodeDataUrlText(text);
     try {
       const parsed = parseNaiv4vibe(text);
@@ -426,15 +426,15 @@ export async function importVibesFromChatu8(
       result.vibes.push(
         vibeMetaFromData(
           id,
-          // 预设用预设名(用户起的);组内条目无名,用 vibe 文件原名(组名已进 group 字段,
-          // 不再拼进显示名——那会变成「组名 · 组名 · xxx」的重复)
+          // Presets use the preset name (given by the user); group entries have no name, so the vibe file's original name is used (the group name already goes into the group field,
+          // no longer joined into the display name, which would become a repetitive "group name · group name · xxx")
           ref.kind === 'preset' ? ref.source : parsed.name,
           paths.dataPath,
           paths.thumbnailPath,
           data,
           ref.strength,
           false,
-          // 智绘姬的组结构原样保留;预设不属于任何组
+          // Chiehime's group structure is kept as-is; presets belong to no group
           ref.kind === 'group' ? ref.source : '',
         ),
       );

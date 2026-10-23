@@ -3,8 +3,8 @@ import { openPanel } from '@/state/ui';
 const MENU_ITEM_ID = 'bbi-menu-item';
 
 /**
- * 往 ST 的 #extensionsMenu(魔杖菜单)末尾注入"柏宝绘"入口。
- * 菜单是懒加载的,用轮询等它出现;注入一次即可。
+ * Injects the "BaiBai Image" entry at the end of ST's #extensionsMenu (wand menu).
+ * The menu is lazy-loaded, so we poll until it appears; injecting once is enough.
  */
 export function injectMenuButton() {
   const tryInject = () => {
@@ -24,7 +24,7 @@ export function injectMenuButton() {
     $item.on('click', (e: { preventDefault: () => void }) => {
       e.preventDefault();
       openPanel();
-      // 点击后收起魔杖菜单,贴合原生行为
+      // Close the wand menu after clicking, matching native behaviour
       $('#extensionsMenu').hide();
     });
 

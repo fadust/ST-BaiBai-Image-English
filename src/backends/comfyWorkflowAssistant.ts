@@ -19,7 +19,7 @@ export interface WorkflowBinding {
   node: string;
   input: string;
   purpose: WorkflowBindingPurpose;
-  /** 需要跨每张图保留的原提示词片段编号；文本由插件按编号读取，AI不复制原文。 */
+  /** Indices of original prompt fragments to keep across every image; the plugin reads the text by index, the AI does not copy it. */
   keep?: string[];
 }
 
@@ -155,7 +155,7 @@ export function parseWorkflowBindings(raw: string): WorkflowBinding[] {
       parsed = JSON.parse(candidate);
       break;
     } catch {
-      // 尝试下一个 JSON 候选。
+      // Try the next JSON candidate.
     }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -222,7 +222,7 @@ function fixedText(value: string, keep: string[], binding: WorkflowBinding): str
   const available = new Map(fragments.map(fragment => [fragment.id, fragment.text]));
   const unknown = keep.filter(id => !available.has(id));
   if (unknown.length) {
-    throw new Error(`AI is the node ${binding.node}.${binding.input} returned a fragment that does not exist:${unknown.join('、')}`);
+    throw new Error(`AI returned a fragment that does not exist for node ${binding.node}.${binding.input}: ${unknown.join(', ')}`);
   }
   return fragments
     .filter(fragment => keep.includes(fragment.id))

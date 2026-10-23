@@ -13,8 +13,8 @@ describe('isStoryMessage', () => {
   });
 
   it('accepts a floor hidden by /hide — is_system alone is not a system message', () => {
-    // ST 的 /hide 只翻 is_system、不碰 extra(chats.js hideChatMessageRange),
-    // 语义是「不进提示词」而非「不是剧情」。楼层按钮与自动 tag 都得照跑。
+    // ST's /hide only flips is_system and never touches extra (hideChatMessageRange in chats.js);
+    // it means "not sent in the prompt", not "not story". Floor buttons and auto-tag must both keep working.
     expect(isStoryMessage(msg({ is_system: true }))).toBe(true);
   });
 
@@ -24,7 +24,7 @@ describe('isStoryMessage', () => {
   });
 
   it('ignores extra.type on a floor that is not is_system', () => {
-    // /role assistant 会 delete extra.type,但历史消息里可能有残留;is_system=false 时不算系统楼
+    // /role assistant deletes extra.type, but old messages may have leftovers; with is_system=false it is not a system floor
     expect(isStoryMessage(msg({ extra: { type: 'narrator' } }))).toBe(true);
   });
 

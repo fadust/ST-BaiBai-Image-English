@@ -292,7 +292,7 @@ useBaiBaiImage(async api => {
 
   const status = api.getBackendStatus();
   if (!status.configured) {
-    toastr.warning(`柏宝绘未就绪：${status.reason}`);
+    toastr.warning(`BaiBai Image not ready: ${status.reason}`);
     return;
   }
 

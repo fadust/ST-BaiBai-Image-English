@@ -3,47 +3,47 @@ import { normalizeOrientation, type Orientation } from '@/backends/size';
 import { getContext } from '@/st/context';
 
 /**
- * 柏宝绘生图 tag 的两条托管正则（DESIGN-FLOOR-UI.md §4）：
+ * The two managed regexes for BaiBai Image tags (DESIGN-FLOOR-UI.md §4):
  *
- * - bbi-image-tag-slot（markdownOnly）：显示路径把 <bbi_image>…</bbi_image> 整体
- *   替换为空锚点 <div data-bbi-slot=""></div>，提示词永不进 DOM。
- * - bbi-image-tag-hide（promptOnly）：提示词路径把同一 tag 替换为空字符串。
+ * - bbi-image-tag-slot (markdownOnly): the display path replaces the whole <bbi_image>…</bbi_image>
+ *   with an empty anchor <div data-bbi-slot=""></div>, so the prompt never enters the DOM.
+ * - bbi-image-tag-hide (promptOnly): the prompt path replaces the same tag with an empty string.
  *
- * 两条规则 find 相同、生效路径互斥（引擎条件 markdownOnly&&isMarkdown 与
- * promptOnly&&isPrompt 不会同时命中），可安全共存。
+ * Both rules share the same find and apply on mutually exclusive paths (the engine conditions markdownOnly&&isMarkdown and
+ * promptOnly&&isPrompt never match at the same time), so they coexist safely.
  */
 
 export const IMAGE_TAG_FIND_REGEX_LITERAL = '/<bbi_image>[\\s\\S]+?<\\/bbi_image>/gi';
 
-/** 与托管脚本同源的运行时正则：解析 message.mes 原文里的 tag（水合配对用）。 */
+/** Runtime regex from the same source as the managed scripts: parses tags in the raw message.mes (for hydration pairing). */
 export const IMAGE_TAG_FIND_REGEX = /<bbi_image>[\s\S]+?<\/bbi_image>/gi;
 
-/** 显示侧锚点 DOM 选择器（锚点只用 data 属性，class 会被 DOMPurify 加 custom- 前缀）。 */
+/** DOM selector for display-side anchors (anchors use only a data attribute; DOMPurify would prefix classes with custom-). */
 export const BBI_SLOT_SELECTOR = 'div[data-bbi-slot]';
 
 export const IMAGE_TAG_SLOT_REGEX_ID = 'bbi-image-tag-slot';
 export const IMAGE_TAG_HIDE_REGEX_ID = 'bbi-image-tag-hide';
 
-// regex_placement：0=MD_DISPLAY(已弃用) / 1=USER_INPUT / 2=AI_OUTPUT / 3=SLASH_COMMAND。
-// 显示路径的 placement 随消息类型变化（script.js getRegexPlacement）：
-// 用户消息→1,AI 楼层→2,而 **extra.type === 'narrator' 的楼层→3**；
-// 提示词路径(script.js Generate)只按 is_user 二选一,只会是 1 或 2。
+// regex_placement: 0=MD_DISPLAY (deprecated) / 1=USER_INPUT / 2=AI_OUTPUT / 3=SLASH_COMMAND.
+// The display path's placement varies by message type (getRegexPlacement in script.js):
+// user messages → 1, AI floors → 2, and **floors with extra.type === 'narrator' → 3**;
+// the prompt path (Generate in script.js) only chooses by is_user, so it is only ever 1 or 2.
 const PLACEMENT_USER_INPUT = 1;
 const PLACEMENT_AI_OUTPUT = 2;
 /**
- * 旁白楼(/narrator、/sys 等 extra.type='narrator')的显示 placement。
+ * Display placement for narrator floors (extra.type='narrator' from /narrator, /sys and the like).
  *
- * 必须带上它:`/narrator` 造出的楼是 `is_system:false` + `extra.type:'narrator'`,
- * 于是 st/context.ts 的 isAiStoryMessage **认它是剧情楼**——自动 tag 会往里写 tag。
- * 而显示侧 getRegexPlacement 给这种楼派的是 3,只写 [1,2] 的话锚点正则整条不命中:
- * tag 原文不被替换,DOMPurify 剥掉不认识的 `<bbi_image>` 壳、把里面的提示词当正文留下,
- * 用户直接看到一串 danbooru tag,且没有锚点 = 没有卡片。
- * 「tag 永不进 DOM」这条不变式在这一类楼上是破的。
+ * It must be included: a floor created by `/narrator` is `is_system:false` + `extra.type:'narrator'`,
+ * so isAiStoryMessage in st/context.ts **treats it as a story floor**, and auto-tag will write tags into it.
+ * The display side's getRegexPlacement assigns such floors 3, so with only [1,2] the anchor regex never matches:
+ * the raw tag isn't replaced, DOMPurify strips the unknown `<bbi_image>` wrapper and leaves the prompt inside as body text,
+ * users see a string of danbooru tags directly, and no anchor = no card.
+ * The invariant "tags never enter the DOM" is broken on this kind of floor.
  *
- * 提示词侧那条(hide)同样带上:它是 promptOnly,只在 isPrompt 时生效,而 ST 自己
- * 从不用 (SLASH_COMMAND, isPrompt) 这个组合,故对现有路径是无操作;带上它是为了
- * 「tag 永不进提示词」在第三方也调 getRegexedString 时依然成立——replaceString 是空串,
- * 多覆盖一个 placement 不会有副作用。两条规则 placement 保持一致也更好推理。
+ * The prompt-side rule (hide) includes it too: it is promptOnly and only applies when isPrompt, and ST itself
+ * never uses the (SLASH_COMMAND, isPrompt) combination, so it is a no-op for existing paths. It is included so that
+ * "tags never enter the prompt" still holds when a third party calls getRegexedString; replaceString is empty,
+ * so covering one more placement has no side effect. Keeping both rules' placements identical is also easier to reason about.
  */
 const PLACEMENT_SLASH_COMMAND = 3;
 
@@ -65,7 +65,7 @@ export interface ManagedRegexScript extends Record<string, unknown> {
   runOnEdit: boolean;
 }
 
-/** 显示侧：生图 tag → 空锚点（水合时 Vue 卡片渲染进锚点）。 */
+/** Display side: image tag → empty anchor (the Vue card renders into the anchor during hydration). */
 export function imageTagSlotScript(): ManagedRegexScript {
   return {
     id: IMAGE_TAG_SLOT_REGEX_ID,
@@ -84,7 +84,7 @@ export function imageTagSlotScript(): ManagedRegexScript {
   };
 }
 
-/** 提示词侧：生图 tag → 空串（提示词路径彻底移除，永不外泄）。 */
+/** Prompt side: image tag → empty string (removed entirely from the prompt path; never leaks). */
 export function imageTagHideScript(): ManagedRegexScript {
   return {
     id: IMAGE_TAG_HIDE_REGEX_ID,
@@ -103,38 +103,38 @@ export function imageTagHideScript(): ManagedRegexScript {
   };
 }
 
-/** 从消息原文按出现顺序解析全部生图 tag；无 tag 返回空数组。 */
+/** Parses all image tags from the raw message in order of appearance; returns an empty array if there are none. */
 export function parseImageTags(mes: string): string[] {
   return mes.match(IMAGE_TAG_FIND_REGEX) ?? [];
 }
 
 /**
- * 正文里是否有生图 tag 的痕迹——**含只剩半截的孤立开/闭标签**。
+ * Whether the text shows any trace of an image tag, **including stray half-tags (lone open/close tags)**.
  *
- * **只有这一份**:楼层按钮判断「要不要先弹重新生成确认」与 runner 判断「要不要跳过
- * 已有 tag 的楼」共用它。两侧各写一条正则的后果:按钮那份只认开标签,正文里只剩一个
- * `</bbi_image>` 时按钮以为没 tag(不弹确认、传 replace=false),runner 那份认开也认闭、
- * 于是以为有 tag 而静默放弃——用户看到的就是「按钮点了永远没反应」。
+ * **There is only this one copy**: the floor button deciding "ask for regenerate confirmation first" and the runner deciding "skip floors
+ * that already have tags" share it. When each side had its own regex: the button's only recognised open tags, so with only a
+ * `</bbi_image>` left in the text the button thought there was no tag (no confirmation, replace=false), while the runner's recognised both and
+ * thought there was a tag and silently gave up; users saw "the button never does anything".
  */
 export function hasImageTagTrace(mes: string): boolean {
   return /<\/?bbi_image\b/i.test(mes ?? '');
 }
 
 /**
- * 剔除消息里的全部生图 tag（重新生成前用）。
- * 插件注入的 tag 独占一行（注入形态：行文本 + 换行 + tag），连同前行换行一起删，
- * 恰好还原注入前原文；手写内联 tag 前面没有换行，仅删 tag 本身。
+ * Removes all image tags from a message (used before regenerating).
+ * Tags injected by the plugin sit on their own line (injected form: line text + newline + tag), so they are removed together with the preceding newline,
+ * restoring exactly the original text before injection; hand-written inline tags have no preceding newline, so only the tag itself is removed.
  *
- * 为什么不能直接 `.replace(查找正则, '')`:那条正则是非贪婪的,正文里多出一个半截的
- * `<bbi_image>`(AI 照着上下文模仿只写了一半、或 tag 被别的插件截断)时,它会从这个
- * 残骸一路吃到下一个 `</bbi_image>`,把中间的正文连同后面那条真 tag 一起删掉。
- * 故改为逐 token 扫:闭标签与**最近一个未配对的开标签**成对(整段删),扫完仍落单的
- * 开/闭标签只删自己。残骸必须清干净——留着它,ST 显示侧那条同样非贪婪的锚点正则
- * 会把正文吞进锚点(破图)。
+ * Why not just `.replace(find regex, '')`: that regex is non-greedy, so when the text contains an extra half
+ * `<bbi_image>` (the AI imitated the context and wrote only half, or another plugin truncated a tag), it would eat from that
+ * fragment all the way to the next `</bbi_image>`, deleting the text in between together with the real tag after it.
+ * So it scans token by token instead: a close tag pairs with **the nearest unpaired open tag** (the whole span is removed), and lone
+ * open/close tags left after the scan remove only themselves. Fragments must be cleaned up completely; left behind, ST's equally non-greedy anchor regex
+ * on the display side would swallow body text into the anchor (broken image).
  */
 export function stripImageTags(mes: string): string {
   const source = String(mes ?? '');
-  // 就地新建:模块级带 /g 的正则实例 lastIndex 有状态,exec 循环不能共用(同 replaceImageTagAt)
+  // Created in place: a module-level /g regex instance has stateful lastIndex, so exec loops can't share it (same as replaceImageTagAt)
   const tokens = /<\/?bbi_image\b[^>]*>/gi;
   const ranges: Array<{ start: number; end: number }> = [];
   const openStack: Array<{ start: number; end: number }> = [];
@@ -155,7 +155,7 @@ export function stripImageTags(mes: string): string {
   let out = '';
   let cursor = 0;
   for (const range of ranges) {
-    // `O O C C` 这种嵌套下外层区间已经把内层吃掉了,跳过
+    // With nesting like `O O C C` the outer span already swallowed the inner one; skip it
     if (range.start < cursor) continue;
     out += source.slice(cursor, range.start).replace(/(?:\r\n|\n|\r)$/, '');
     cursor = range.end;
@@ -164,42 +164,42 @@ export function stripImageTags(mes: string): string {
 }
 
 /**
- * tag / nl / negative 内容里不允许出现的子标签字面量（会污染 bbi_image 内部解析）。
+ * Sub-tag literals not allowed in tag / nl / negative content (they would corrupt bbi_image's internal parsing).
  *
- * 唯一口径：AI 侧(autoTag/protocol.ts 的 sanitizeContent)与手输侧(提示词编辑弹窗)
- * 共用这一份。**绝不再抄第二份** —— 查找正则 `<bbi_image>…</bbi_image>` 是非贪婪的，
- * 内容里混进一个 `</bbi_image>` 就会让 tag 提前截断、后半截漏进 DOM 与提示词，
- * 正好破掉「tag 永不进 DOM、永不进提示词」这条不变式。
+ * Single rule: shared by the AI side (sanitizeContent in autoTag/protocol.ts) and the manual-input side (prompt editor dialog).
+ * **Never copy it a second time**: the find regex `<bbi_image>…</bbi_image>` is non-greedy,
+ * so one `</bbi_image>` in the content truncates the tag early and leaks the rest into the DOM and the prompt,
+ * breaking exactly the invariant "tags never enter the DOM, never enter the prompt".
  */
 export const FORBIDDEN_SUBTAG = /<\/?(?:bbi_image|tag|nl|negative|characters|size)\b/i;
 
-/** 文本里是否含 bbi_image 子标签字面量（手输校验用；口径同 AI 侧）。 */
+/** Whether text contains bbi_image sub-tag literals (for manual-input validation; same rule as the AI side). */
 export function containsTagMarkup(text: string): boolean {
   return FORBIDDEN_SUBTAG.test(text);
 }
 
 export interface ImageTagContent {
-  /** danbooru 短 tag 部分：显式 <tag> 子标签内容，或剔除子标签后的裸文本（存量格式）。 */
+  /** Short danbooru tag part: content of an explicit <tag> sub-tag, or the bare text with sub-tags removed (legacy format). */
   tag: string;
-  /** 自然语言部分：<nl> 子标签内容，无则空串。 */
+  /** Natural-language part: content of the <nl> sub-tag, or empty string if none. */
   nl: string;
-  /** 本画面动态负面 tag：<negative> 子标签内容，无则空串。 */
+  /** Per-image dynamic negative tags: content of the <negative> sub-tag, or empty string if none. */
   negative: string;
   characters: ImageCharacterPrompt[];
-  /** 画幅方向：<size> 子标签内容，无/不可识别则竖屏（存量 tag 即走这条，行为与改动前一致）。 */
+  /** Frame orientation: content of the <size> sub-tag; missing/unrecognisable means portrait (legacy tags go this way, same behaviour as before the change). */
   size: Orientation;
 }
 
 /**
- * 解析 tag 原文（含 <bbi_image> 壳）的内部内容。一条容忍式规则覆盖三种形态：
- * - <bbi_image>xxxx</bbi_image>                    裸文本 = tag（存量兼容）
- * - <bbi_image>xxxx<nl>yyyy</nl></bbi_image>       裸文本 = tag，<nl> = nl
- * - <bbi_image><tag>x</tag><negative>y</negative></bbi_image> 显式子标签（手写容忍）
- * 裸文本与显式 <tag> 同时存在时按「裸文本在前」以 ", " 合并进 tag 部分，不丢内容。
- * <size>/<nl>/<negative> 必须先剥掉，不能漏进正向提示词。
+ * Parses the inner content of a raw tag (including the <bbi_image> wrapper). One lenient rule covers three forms:
+ * - <bbi_image>xxxx</bbi_image>                    bare text = tag (legacy compatible)
+ * - <bbi_image>xxxx<nl>yyyy</nl></bbi_image>       bare text = tag, <nl> = nl
+ * - <bbi_image><tag>x</tag><negative>y</negative></bbi_image> explicit sub-tags (hand-written tolerance)
+ * When bare text and an explicit <tag> both exist, they merge into the tag part as "bare text first" joined with ", ", losing nothing.
+ * <size>/<nl>/<negative> must be stripped first and must not leak into the positive prompt.
  */
 export function parseImageTagContent(raw: string): ImageTagContent {
-  // 内容统一折叠成单行:手写 tag 可能跨行,而提示词里换行没有意义
+  // Content is folded into a single line: hand-written tags may span lines, and newlines mean nothing in a prompt
   const oneLine = (text: string) => text.trim().replace(/[\r\n]+/g, ' ');
   const inner = raw.replace(/^<bbi_image[^>]*>/i, '').replace(/<\/bbi_image>$/i, '');
   const nlMatch = inner.match(/<nl>([\s\S]*?)<\/nl>/i);
@@ -241,14 +241,14 @@ export function parseImageTagContent(raw: string): ImageTagContent {
 }
 
 /**
- * 序列化成 tag 原文（含 <bbi_image> 壳）—— parseImageTagContent 的反向操作。
+ * Serialises to raw tag text (including the <bbi_image> wrapper): the inverse of parseImageTagContent.
  *
- * **格式的读与写只有这一份**：注入(autoTag/protocol.ts 的 injectImageTags)与手动编辑
- * (floor/promptEditor.ts)共用，两处漂移会让「解析得到的字段」与「落进正文的原文」对不上，
- * 而 promptHash 吃的正是原文 —— 漂移直接表现为「什么都没改却全变 stale」。
+ * **There is only one reader and writer of the format**: injection (injectImageTags in autoTag/protocol.ts) and manual editing
+ * (floor/promptEditor.ts) share it. If they drifted, "parsed fields" and "raw text written to the story" would disagree,
+ * and promptHash hashes exactly the raw text, so drift shows up as "nothing changed, yet everything turned stale".
  *
- * 标准形态：tag 部分保持裸文本（与存量格式一致），nl/negative/characters 空则整段不写。
- * size **恒写出**：生成是延后的(点卡片才出图)，方向必须随 tag 持久化在正文里。
+ * Standard form: the tag part stays bare text (matching the legacy format); nl/negative/characters are omitted entirely when empty.
+ * size is **always written**: generation is deferred (images render only when the card is clicked), so the orientation must persist with the tag in the text.
  */
 export function serializeImageTag(content: ImageTagContent): string {
   const nl = content.nl ? `<nl>${content.nl}</nl>` : '';
@@ -260,13 +260,13 @@ export function serializeImageTag(content: ImageTagContent): string {
 }
 
 /**
- * 提示词全文的**唯一展示口径**：楼层卡片（复制 / 灯箱 / 展开区）与图库共用。
+ * The **single display rule** for the full prompt text: shared by floor cards (copy / lightbox / expanded area) and the gallery.
  *
- * 与 serializeImageTag 的分工:那个产出机器读的正文原文（会被 promptHash 吃），
- * 这个产出人读的纯文本（段间空行、角色分段）。两者都不许各自照抄第二份——
- * 图库要显示的必须与卡片上一字不差，否则同一张图在两处看到两种样子。
+ * Division with serializeImageTag: that one produces the raw text for machines (consumed by promptHash),
+ * this one produces plain text for people (blank lines between sections, character sections). Neither may keep its own second copy:
+ * what the gallery shows must match the card word for word, otherwise the same image looks different in two places.
  *
- * size 刻意不出现:它是画幅方向，不是提示词内容，卡片上也从来不显示。
+ * size is deliberately left out: it is the frame orientation, not prompt content, and cards never show it either.
  */
 export function formatPromptText(
   content: Pick<ImageTagContent, 'tag' | 'nl' | 'negative' | 'characters'>,
@@ -284,12 +284,12 @@ export function formatPromptText(
 }
 
 /**
- * 原位替换正文里第 seq 条 tag（0-based），其余正文与其它 tag 一字不动。
- * seq 越界返回 null（调用方据此放弃写回）。
+ * Replaces tag number seq (0-based) in the text in place; the rest of the text and other tags stay untouched.
+ * seq out of range returns null (the caller then abandons the write-back).
  *
- * 为什么不用模块级的 IMAGE_TAG_FIND_REGEX：那是个带 /g 的共享实例，lastIndex 有状态。
- * 现有调用方走的都是 .match()/.replace()（会重置 lastIndex）故相安无事，
- * 这里用 replace 回调按序计数，仍就地新建正则，不给后来者留下踩踏的余地。
+ * Why not the module-level IMAGE_TAG_FIND_REGEX: it is a shared instance with /g, and lastIndex is stateful.
+ * Existing callers all use .match()/.replace() (which reset lastIndex), so there is no conflict;
+ * here the replace callback counts in order and the regex is still created locally, leaving later code no way to trip over it.
  */
 export function replaceImageTagAt(mes: string, seq: number, nextTag: string): string | null {
   if (!Number.isInteger(seq) || seq < 0) return null;
@@ -309,10 +309,10 @@ const MANAGED_SCRIPTS: Array<() => ManagedRegexScript> = [
 ];
 
 /**
- * 向 ST 全局正则列表注册柏宝绘托管规则。
- * 固定 id 保证幂等：旧版本或用户改动过的同 id 规则会被更新，其它正则原样保留，
- * 不重复添加。旧版单条 bbi-image-tag-hide（markdownOnly+promptOnly 双开）会被
- * 新 hide 定义原位覆盖，并新增 slot 规则，存量用户无缝迁移。
+ * Registers BaiBai Image's managed rules in ST's global regex list.
+ * Fixed ids make it idempotent: same-id rules from old versions or edited by the user are updated, other regexes are left as-is,
+ * and nothing is added twice. The old single bbi-image-tag-hide rule (markdownOnly+promptOnly both on) is
+ * overwritten in place by the new hide definition, and a slot rule is added, so existing users migrate seamlessly.
  */
 export function ensureImageTagRegexRegistered(): boolean {
   const context = getContext();

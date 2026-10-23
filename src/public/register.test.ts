@@ -5,9 +5,9 @@ import { charTagLib, emptyCharFields, type CharTagEntry } from '@/state/charTags
 
 vi.mock('@/st/context', () => ({ getContext: () => ({ getCurrentChatId: () => 'chat-a' }) }));
 
-// 本插件跑在浏览器里,ready/changed 是**真事件**;测试环境是 node,没有 window。
-// 拿 EventTarget 当替身:addEventListener/dispatchEvent 语义与浏览器一致,
-// 足以锁住「第三方能不能收到通知」这件事。必须在 import register 之前建好。
+// This plugin runs in the browser, where ready/changed are **real events**; the test environment is node, with no window.
+// EventTarget stands in: addEventListener/dispatchEvent behave the same as in the browser,
+// enough to lock down "whether third parties get notified". It must be set up before importing register.
 vi.stubGlobal('window', new EventTarget());
 
 const { PUBLIC_CHANGED_EVENT, PUBLIC_READY_EVENT, registerPublicInterface } =
@@ -21,7 +21,7 @@ function entry(name: string): CharTagEntry {
   return { name, fields: emptyCharFields(), raw: '', nl: '', source: 'ai', desc: '', history: [] };
 }
 
-/** 等 queueMicrotask 与 Vue watch 的 flush 都跑完。 */
+/** Waits for both queueMicrotask and the Vue watch flush to finish. */
 async function settle(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 0));
 }
@@ -33,7 +33,7 @@ beforeEach(() => {
 describe('registerPublicInterface', () => {
   it('publishes on globalThis and announces readiness (the two ways to find it)', async () => {
     const ready = vi.fn();
-    // 比柏宝绘先加载的第三方只能靠事件——只给 globalThis 会逼它自己写轮询
+    // Third parties loaded before BaiBai Image can only rely on events; offering only globalThis would force them to write their own polling
     window.addEventListener(PUBLIC_READY_EVENT, ready);
     vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -85,8 +85,8 @@ describe('registerPublicInterface', () => {
   it('coalesces a burst of library recomputes into one notice', async () => {
     const seen: unknown[] = [];
     const off = api().subscribe(notice => seen.push(notice));
-    // 切聊天/删楼/滑动会连着触发好几次重算;不攒的话第三方一秒收十几条一样的通知,
-    // 每条都可能引它做一次全量刷新
+    // Switching chats/deleting floors/swiping triggers several recomputations in a row; without batching a third party would get a dozen identical notifications a second,
+    // each of which might make it do a full refresh
     charTagLib.entries = [entry('a')];
     charTagLib.entries = [entry('b')];
     charTagLib.entries = [entry('c')];
@@ -125,7 +125,7 @@ describe('registerPublicInterface', () => {
     charTagLib.entries = [entry('y')];
     await settle();
 
-    // 一个第三方写崩了,不能连累其余订阅者与事件监听者
+    // One third party crashing must not take down the other subscribers and event listeners
     expect(good).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledTimes(1);
     offA();

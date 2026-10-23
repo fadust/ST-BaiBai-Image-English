@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { checkSlotHealth, floorIdOf, HOST_HIDE_CLASS } from '@/floor/slotHealth';
 
 /**
- * 仓里没装 jsdom(vitest 跑在 node),故用鸭子类型的假节点。
- * checkSlotHealth / floorIdOf 刻意只碰极小的 DOM 表面(isConnected / closest /
- * classList.contains / getAttribute),正是为了能这样锁住判据。
+ * The repo has no jsdom installed (vitest runs in node), so duck-typed fake nodes are used.
+ * checkSlotHealth / floorIdOf deliberately touch only a tiny DOM surface (isConnected / closest /
+ * classList.contains / getAttribute), precisely so the criteria can be locked down like this.
  */
 function fakeHost(options: {
   connected?: boolean;
-  /** closest(selector) 的返回值表;缺的选择器返回 null。 */
+  /** Table of closest(selector) return values; missing selectors return null. */
   ancestors?: Record<string, unknown>;
 }): Element {
   const { connected = true, ancestors = {} } = options;
@@ -34,7 +34,7 @@ describe('checkSlotHealth', () => {
   });
 
   it('reports detached when the anchor left the document', () => {
-    // ST 的 updateMessageBlock / messageEditCancel 整体重写 .mes_text 的结果
+    // The result of ST's updateMessageBlock / messageEditCancel rewriting .mes_text wholesale
     const host = fakeHost({ connected: false, ancestors: { '.mes_text': fakeMesText([]) } });
     expect(checkSlotHealth(host)).toBe('detached');
   });
@@ -45,16 +45,16 @@ describe('checkSlotHealth', () => {
   });
 
   it('reports hidden-by-host when the ancestor .mes_text carries the hide class', () => {
-    // ST 给「有 media 且 inline_image===false」的楼挂 inline_media,style.css 里是 display:none
+    // ST gives floors with "media and inline_image===false" the inline_media class, which is display:none in style.css
     const host = fakeHost({ ancestors: { '.mes_text': fakeMesText([HOST_HIDE_CLASS]) } });
     expect(checkSlotHealth(host)).toBe('hidden-by-host');
   });
 
   /**
-   * 顺序锁:脱离文档的元素 closest() 仍会沿着**已断开的子树**往上走,而那份被 ST
-   * 换下来的 .mes_text 完全可能带着 inline_media。若先判 hidden 再判 detached,
-   * 这种楼会被误诊成「只是被藏了」——于是不重挂、只去改一个不在文档里的节点,
-   * 卡片永远回不来。detached 必须优先。
+   * Order lock: on an element detached from the document, closest() still walks up the **disconnected subtree**, and the .mes_text that ST
+   * swapped out may well carry inline_media. If hidden were checked before detached,
+   * such floors would be misdiagnosed as "only hidden", so instead of remounting it would just edit a node not in the document,
+   * and the card would never come back. detached must take priority.
    */
   it('prefers detached over hidden when both look true', () => {
     const host = fakeHost({
@@ -65,7 +65,7 @@ describe('checkSlotHealth', () => {
   });
 
   it('reports ok when the anchor is connected but has no .mes_text ancestor', () => {
-    // 别把「结构不认识」当成异常去反复重挂:不知道怎么救的情况下什么都别做
+    // Don't treat "unrecognised structure" as an anomaly and keep remounting: when it's unclear how to fix it, do nothing
     expect(checkSlotHealth(fakeHost({}))).toBe('ok');
   });
 });
@@ -77,7 +77,7 @@ describe('floorIdOf', () => {
   });
 
   it('returns null when there is no enclosing .mes', () => {
-    // 该楼整个不在文档里(切聊天/懒渲染卸载):交给渲染事件,不在自愈里瞎猜
+    // The whole floor isn't in the document (chat switch/lazy-render unload): leave it to the render event; no guessing in self-healing
     expect(floorIdOf(fakeHost({}))).toBeNull();
     expect(floorIdOf(null)).toBeNull();
   });
@@ -86,7 +86,7 @@ describe('floorIdOf', () => {
     expect(floorIdOf(fakeHost({ ancestors: { '.mes': fakeMes(null) } }))).toBeNull();
     expect(floorIdOf(fakeHost({ ancestors: { '.mes': fakeMes('') } }))).toBeNull();
     expect(floorIdOf(fakeHost({ ancestors: { '.mes': fakeMes('abc') } }))).toBeNull();
-    // 负数不是合法楼层号,别拿它去索引 chat
+    // Negative numbers aren't valid floor numbers; don't use them to index chat
     expect(floorIdOf(fakeHost({ ancestors: { '.mes': fakeMes('-1') } }))).toBeNull();
   });
 });

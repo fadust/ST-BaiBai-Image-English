@@ -1,15 +1,15 @@
 /**
- * 从 ComfyUI 拉取模型/LoRA/采样器列表,供简易模式表单做候选。
+ * Fetches model/LoRA/sampler lists from ComfyUI as candidates for the simple-mode form.
  *
- * 通道策略与 generateComfyImage 同口径:浏览器直连优先(一次 GET /object_info 拿全,
- * 含 LoRA 与 CLIP);仅网络级失败(CORS/拒连)回退 ST 后端转发。
+ * Channel strategy matches generateComfyImage: direct browser connection first (one GET /object_info returns everything,
+ * including LoRA and CLIP); only on network-level failure (CORS/connection refused) does it fall back to forwarding via the ST backend.
  *
- * ST 后端只有 /api/sd/comfy/models|samplers|schedulers|vaes 四个端点(都是服务端
- * 拉 /object_info 再摘字段),**没有 loras/clips 端点**——转发通道下这两组降级为空,
- * 表单退化为手输(datalist 无候选),并在状态行说明原因。
+ * The ST backend only has four endpoints, /api/sd/comfy/models|samplers|schedulers|vaes (each pulls /object_info server-side
+ * and extracts a field); **there are no loras/clips endpoints**. Through the forwarding channel those two lists are empty,
+ * the form degrades to manual input (datalist without candidates), and the status line explains why.
  *
- * 列表有 session 级缓存:object_info 完整响应有几 MB,切换预设/重开面板不该反复拉;
- * 用户加了新模型点「刷新」强制重拉。
+ * Lists are cached per session: the full object_info response is several MB, and switching presets/reopening the panel should not refetch it;
+ * when users add new models they click "Refresh" to force a refetch.
  */
 
 import { ComfyUIError } from '@/backends/comfyui';
@@ -24,12 +24,12 @@ export interface ComfyModelLists {
   loras: string[];
   samplers: string[];
   schedulers: string[];
-  /** 实际打通的通道:browser=拿到了全量;server=转发,loras/clips 为空。 */
+  /** The channel that actually connected: browser = full lists; server = forwarded, loras/clips empty. */
   mode: 'browser' | 'server';
   fetchedAt: number;
 }
 
-/** 转发通道拿不到列表时的常见候选(datalist 兜底,仍允许手输)。 */
+/** Common candidates when the forwarding channel cannot fetch lists (datalist fallback; manual input still allowed). */
 export const FALLBACK_SAMPLERS = ['euler', 'euler_ancestral', 'dpmpp_2m', 'dpmpp_2m_sde', 'ddim', 'uni_pc'];
 export const FALLBACK_SCHEDULERS = ['normal', 'karras', 'exponential', 'sgm_uniform', 'simple', 'beta'];
 
@@ -50,7 +50,7 @@ function isNetworkError(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-/** object_info 里取某个节点某输入的候选列表;节点未装/形状不符一律空数组(降级优先)。 */
+/** Gets the candidate list for one input of one node from object_info; missing nodes/mismatched shapes always give an empty array (degrade first). */
 function optionList(info: JsonObject, nodeClass: string, input: string): string[] {
   const node = info[nodeClass];
   if (!isObject(node) || !isObject(node.input) || !isObject(node.input.required)) return [];
@@ -61,7 +61,7 @@ function optionList(info: JsonObject, nodeClass: string, input: string): string[
   return options.filter((item): item is string => typeof item === 'string');
 }
 
-/** 浏览器直连的全量解析。clips 取 CLIPLoader 与 DualCLIPLoader 的并集(同文件夹,口径可能差一版)。 */
+/** Full parse for the direct browser connection. clips is the union of CLIPLoader and DualCLIPLoader (same folder; their lists may differ by a version). */
 export function parseObjectInfo(info: JsonObject): Omit<ComfyModelLists, 'mode' | 'fetchedAt'> {
   return {
     checkpoints: optionList(info, 'CheckpointLoaderSimple', 'ckpt_name'),
@@ -81,8 +81,8 @@ export function parseObjectInfo(info: JsonObject): Omit<ComfyModelLists, 'mode' 
 }
 
 /**
- * ST 转发 /models 的条目是 {value: 原始文件名, text: 展示名};
- * UNet/GGUF 靠 text 前缀区分("UNet: xxx"/"GGUF: xxx"),其余是 checkpoint。
+ * Entries of ST's forwarded /models are {value: original file name, text: display name};
+ * UNet/GGUF are told apart by text prefix ("UNet: xxx"/"GGUF: xxx"); the rest are checkpoints.
  */
 function classifyServerModels(data: unknown): Pick<ComfyModelLists, 'checkpoints' | 'unets' | 'ggufs'> {
   const result = { checkpoints: [] as string[], unets: [] as string[], ggufs: [] as string[] };
@@ -103,7 +103,7 @@ function stringArray(data: unknown): string[] {
 
 async function responseError(response: Response, label: string): Promise<ComfyUIError> {
   const text = (await response.text().catch(() => '')).trim();
-  return new ComfyUIError(`${label} (${response.status})${text ? `：${text.slice(0, 300)}` : ''}`, response.status);
+  return new ComfyUIError(`${label} (${response.status})${text ? `: ${text.slice(0, 300)}` : ''}`, response.status);
 }
 
 async function fetchViaBrowser(url: string, signal?: AbortSignal): Promise<ComfyModelLists> {
@@ -147,7 +147,7 @@ async function fetchViaServer(url: string, signal?: AbortSignal): Promise<ComfyM
 
 const cache = new Map<string, ComfyModelLists>();
 
-/** 拉取列表;同 url 命中缓存直接返回,force 强制重拉(「刷新」按钮)。 */
+/** Fetches lists; the same url hits the cache and returns directly; force refetches (the "Refresh" button). */
 export async function fetchComfyModelLists(
   url: string,
   options?: { force?: boolean; signal?: AbortSignal },
@@ -160,7 +160,7 @@ export async function fetchComfyModelLists(
   try {
     lists = await fetchViaBrowser(key, options?.signal);
   } catch (error) {
-    // 与出图同口径:仅网络级失败回退;HTTP 错误是服务端真实反馈,转发过去结果一样
+    // Same rule as generation: only network-level failures fall back; HTTP errors are real server feedback, and forwarding would give the same result
     if (!isNetworkError(error)) throw error;
     lists = await fetchViaServer(key, options?.signal);
   }
@@ -168,7 +168,7 @@ export async function fetchComfyModelLists(
   return lists;
 }
 
-/** 测试用:清空缓存。 */
+/** For tests: clears the cache. */
 export function clearComfyModelListsCache(): void {
   cache.clear();
 }

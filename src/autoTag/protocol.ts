@@ -14,42 +14,42 @@ export interface ImageCharacterPrompt {
 }
 
 export interface ImageInsertion {
-  /** 模型选择的目标正文位置 ID。 */
+  /** Target story-text position ID chosen by the model. */
   position: string;
-  /** 位置 ID 对应的原始物理行(0-based，仅插件内部使用)。 */
+  /** Original physical line for the position ID (0-based, plugin-internal only). */
   sourceLine: number;
-  /** danbooru 短 tag 部分(必填)。 */
+  /** Short danbooru tag part (required). */
   tag: string;
-  /** 自然语言部分(可空;ComfyUI「生成自然语言」开启时由模型一并输出)。 */
+  /** Natural-language part (optional; output by the model when ComfyUI "Generate Natural Language" is on). */
   nl: string;
-  /** 本画面动态负面 tag(可空;仅在 ComfyUI 工作流使用 %negative_prompt% 时要求模型输出)。 */
+  /** Per-image dynamic negative tags (optional; only requested when the ComfyUI workflow uses %negative_prompt%). */
   negative: string;
   characters: ImageCharacterPrompt[];
-  /** 画幅方向:模型只判横/竖,具体像素由用户在后端面板配置。漏给/乱给一律降级竖屏。 */
+  /** Frame orientation: the model only decides landscape/portrait; exact pixels are configured by the user in the backend panel. Missing or invalid values fall back to portrait. */
   size: Orientation;
 }
 
 export interface ImagePlan {
   images: ImageInsertion[];
-  /** AI 报告的角色库变更(建档/字段更新);调用方负责落库。 */
+  /** Character library changes reported by the AI (profile creation/field updates); the caller applies them. */
   changes: CharChange[];
 }
 
-/** AI 输出的单条角色变更(宽松形状;解析后字段全部合法才保留)。 */
+/** A single character change output by the AI (loose shape; kept only if every field parses as valid). */
 export interface CharChange {
   name: string;
-  /** 'new' = 建档;其余为字段名/整串/自然语言。 */
+  /** 'new' = create profile; otherwise a field name/whole string/natural language. */
   field: CharTagHistoryField;
   value: string;
-  /** 自然语言外貌句(new 建档时可附带)。 */
+  /** Natural-language appearance sentence (may accompany a 'new' profile). */
   nl?: string;
   reason: string;
   /**
-   * 永久变化开始生效的位置。建档(new)不受此约束——角色的固定外貌是本楼全程
-   * 成立的事实,不是「从某处开始」的变化,这里只作记录与排序用。
+   * Position where a permanent change takes effect. Profile creation (new) is exempt: a character's fixed appearance holds
+   * for the whole floor and is not a change "starting somewhere"; here it is only recorded and used for ordering.
    */
   position: string;
-  /** position 对应的原始物理行(0-based,仅插件内部使用)。 */
+  /** Original physical line for position (0-based, plugin-internal only). */
   sourceLine: number;
 }
 
@@ -122,13 +122,13 @@ function parseObject(raw: string): Record<string, unknown> {
         return value as Record<string, unknown>;
       }
     } catch {
-      // 尝试下一个候选 JSON 块。
+      // Try the next candidate JSON block.
     }
   }
   throw new Error('AI did not return a parsable JSON object');
 }
 
-/** tag / nl / negative 内容里不允许出现的子标签字面量（口径见 st/imageTagRegex.ts）。 */
+/** Sub-tag literals not allowed inside tag / nl / negative content (rules in st/imageTagRegex.ts). */
 
 function sanitizeContent(value: unknown, field: string, index: number): string {
   const text = typeof value === 'string' ? value.trim().replace(/[\r\n]+/g, ' ') : '';
@@ -165,11 +165,11 @@ function sanitizePosition(value: unknown, index: number): string {
 }
 
 /**
- * 解析并严格校验模型给出的“目标位置 ID + 提示词”列表。tag 必填;nl/negative 选填。
- * size 一律容忍:归一不出就当竖屏——为它抛错会白白吃掉 runner 的重试次数。
- * 图片超过上限时本地硬截断;少于用户明确设置的下限则抛错,交给 runner 重试。
- * changes 全程宽容:单条坏就丢弃,绝不连累 images——角色档案漏一条只是这个角色本轮
- * 没锚定,为它作废整次输出会连图一起没有,那是更坏的结果。
+ * Parses and strictly validates the model's list of "target position ID + prompt". tag is required; nl/negative optional.
+ * size is always tolerated: if it can't be normalised it is treated as portrait; throwing over it would waste the runner's retries.
+ * Images beyond the maximum are truncated locally; fewer than the minimum the user explicitly set throws, handing it to the runner to retry.
+ * changes are tolerated throughout: a bad item is dropped and never affects images; missing one character profile only means that character
+ * isn't anchored this round, while discarding the whole output for it would lose the images too, which is worse.
  */
 export function parseImagePlan(
   raw: string,
@@ -199,14 +199,14 @@ export function parseImagePlan(
     if (sourceLine === undefined) {
       throw new Error(`images[${index}].position=${position} Not in target body optional position`);
     }
-    // 兼容模型按旧协议/习惯返回 prompt 键的情况
+    // Tolerates models returning a prompt key per the old protocol/habit
     const tag = sanitizeContent(entry.tag ?? entry.prompt, 'tag', index);
     if (!tag) throw new Error(`images[${index}].tag cannot be empty`);
     const nl = sanitizeContent(entry.nl, 'nl', index);
     const negative = sanitizeContent(entry.negative ?? entry.negative_prompt, 'negative', index);
     const characters = sanitizeCharacters(entry.characters, index);
     for (const character of characters) character.name = sourceName(character.name, sourceText);
-    // 兼容模型按习惯返回 orientation / aspect 键
+    // Tolerates models returning orientation / aspect keys out of habit
     const size = normalizeOrientation(entry.size ?? entry.orientation ?? entry.aspect);
     images.push({ position, sourceLine, tag, nl, negative, characters, size });
   }
@@ -237,8 +237,8 @@ function sourceName(name: string, source: string): string {
 }
 
 /**
- * 解析变化生效位置。建档(new)缺位置不是错——它本就全楼生效;
- * 解析不出时回落到首个位置,只用于排序。
+ * Parses where a change takes effect. A profile creation (new) without a position is not an error: it applies to the whole floor anyway;
+ * if unparseable it falls back to the first position, used only for ordering.
  */
 function parsePosition(
   value: unknown,
@@ -256,7 +256,7 @@ function firstPosition(positions: Map<string, number>): { position: string; sour
   return { position: '', sourceLine: 0 };
 }
 
-/** 建档字段:hair 与 eyes 是二次元身份锚点,缺任一条则该条建档不可用(调用方丢弃)。 */
+/** Profile creation fields: hair and eyes are the identity anchors of anime characters; if either is missing the profile is unusable (the caller discards it). */
 function parseNewFields(raw: Record<string, unknown>): string | null {
   const fields: Partial<Record<CharTagField, string>> = {};
   for (const field of CHAR_TAG_FIELDS) {
@@ -279,7 +279,7 @@ function parseChanges(raw: unknown, positions: Map<string, number>): CharChange[
     if (!name || !HISTORY_FIELDS.has(fieldRaw)) continue;
     const field = fieldRaw as CharTagHistoryField;
     const parsedPosition = parsePosition(o.position ?? o.at, positions);
-    // 建档全楼生效,位置只作记录,缺失就回落首位;永久变化必须知道从哪生效,位置坏 = 丢弃
+    // Profile creation applies to the whole floor and the position is only recorded, falling back to the first if missing; a permanent change must know where it takes effect, so a bad position = discarded
     if (!parsedPosition && field !== 'new') continue;
     const { position, sourceLine } = parsedPosition ?? firstPosition(positions);
     let value = typeof o.value === 'string' ? o.value.trim() : '';
@@ -300,7 +300,7 @@ function parseChanges(raw: unknown, positions: Map<string, number>): CharChange[
   return out;
 }
 
-/** 保持原文及原换行符不变，只在模型选择的位置 ID 对应源码行之后插入 tag。 */
+/** Keeps the original text and its line breaks unchanged, inserting tags only after the source line of the position ID the model chose. */
 export function injectImageTags(source: string, images: ImageInsertion[]): string {
   if (!images.length) return source;
   const lines = sourceLines(source);
@@ -322,8 +322,8 @@ export function injectImageTags(source: string, images: ImageInsertion[]): strin
     output += line.text;
     const inserted = byLine.get(index) ?? [];
     const insertedEol = line.eol || fallbackEol;
-    // 序列化口径见 st/imageTagRegex.ts 的 serializeImageTag（与手动编辑弹窗共用同一份，
-    // 两处漂移会让「解析出的字段」与「落进正文的原文」对不上，而 promptHash 吃的是原文）。
+    // For the serialisation rule see serializeImageTag in st/imageTagRegex.ts (shared with the manual editor dialog;
+    // if the two drifted, "parsed fields" and "raw text written to the story" wouldn't match, and promptHash hashes the raw text).
     for (const image of inserted) {
       output += `${insertedEol}${serializeImageTag(image)}`;
     }

@@ -6,16 +6,16 @@ import History from './history/index.vue';
 import Settings from './settings/index.vue';
 
 export interface PageDef {
-  /** 唯一 id,存进 ui.activePage / localStorage;同时作为 Icon 的 name */
+  /** Unique id, stored in ui.activePage / localStorage; also used as the Icon name */
   id: string;
-  /** 导航栏全称 */
+  /** Full name shown in the navigation bar */
   label: string;
   component: Component;
 }
 
 /**
- * 分页注册表 —— 新增一页:建一个 pages/<id>/index.vue,再往这里加一行,
- * 并在 Icon.vue 的 PATHS 里加一条同 id 的图标。顺序即导航顺序,设置放最末。
+ * Page registry. To add a page: create pages/<id>/index.vue, add one line here,
+ * and add an icon with the same id to PATHS in Icon.vue. Order is navigation order; settings stays last.
  */
 export const PAGES: PageDef[] = [
   { id: 'backend', label: 'Backend', component: Backend },

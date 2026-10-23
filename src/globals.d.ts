@@ -1,5 +1,5 @@
 declare global {
-  // ST 在全局挂载了这些依赖,这里只声明插件实际使用到的最小类型。
+  // ST mounts these dependencies globally; only the minimal types the plugin actually uses are declared here.
   const $: any;
   const _: any;
   const toastr: any;

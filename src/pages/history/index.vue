@@ -14,27 +14,27 @@ import {
 import { copyText } from '@/st/clipboard';
 
 /**
- * 请求历史页。
+ * Request history page.
  *
- * 副 API 推理与生图各自的调用收口点(api/client.ts、floor/Card.vue)把过程写进
- * state/history.ts,这里只负责展示。**纯内存,刷新即清空**——定位是调试辅助,
- * 不是资产,所以既不落盘也不提供导出。
+ * The call funnels for secondary API inference and image generation (api/client.ts, floor/Card.vue) write the process into
+ * state/history.ts; this page only displays it. **Memory only, cleared on reload**: it is meant as a debugging aid,
+ * not an asset, so it is neither saved nor exportable.
  *
- * 结构:一条请求 = 一个折叠区;展开后里面是「一段提示词 = 一行」的只读列表
- * (与设置页「自定义提示词」同款观感),点行进弹窗看全文。
+ * Structure: one request = one collapsible section; expanded, it holds a read-only list of "one prompt segment = one row"
+ * (same look as "Custom prompts" on the settings page); click a row to see the full text in a dialog.
  */
 
 type Filter = 'all' | 'llm' | 'image';
 
-/** 展开后列表里的一段:副 API 是各条 message + 返回,生图是各段提示词。 */
+/** One segment in the expanded list: for the secondary API each message + the response; for image generation each prompt segment. */
 interface Segment {
-  /** 行首标签:system / user / assistant / 返回 / 正向提示词 … */
+  /** Leading label: system / user / assistant / response / positive prompt … */
   label: string;
   text: string;
 }
 
 const filter = ref<Filter>('all');
-/** 弹窗里正在看的那一段(null = 关闭)。 */
+/** The segment currently viewed in the dialog (null = closed). */
 const viewing = ref<{ title: string; segment: Segment } | null>(null);
 
 const FILTERS: { value: Filter; label: string }[] = [
@@ -75,8 +75,8 @@ function subtitle(record: HistoryRecord): string {
 }
 
 /**
- * token 数展示。估算值加 ≈ 前缀:估算走的是 ST 主界面当前模型的分词器,
- * 与副 API 渠道模型未必同源,不能与上游返回的真实 usage 混显。
+ * Token count display. Estimates get an ≈ prefix: the estimate uses the tokenizer of ST's current main model,
+ * which may not match the secondary API channel's model, so it can't be shown mixed with the real usage returned upstream.
  */
 function tokenLabel(record: LlmRecord): string {
   if (record.promptTokens === null) return '';
@@ -89,7 +89,7 @@ function tokenTitle(record: LlmRecord): string {
     : 'Real usage returned by upstream (usage)';
 }
 
-/** 把一条记录摊成「按顺序的若干段」——展开区就是照这个顺序渲染的。 */
+/** Spreads one record into "several segments in order"; the expanded area renders in exactly this order. */
 function segments(record: HistoryRecord): Segment[] {
   if (record.kind === 'llm') {
     const out: Segment[] = record.messages.map(m => ({ label: m.role, text: m.content }));
@@ -100,7 +100,7 @@ function segments(record: HistoryRecord): Segment[] {
   if (record.nl) out.push({ label: 'Natural Language', text: record.nl });
   for (const character of record.characters ?? []) {
     out.push({
-      label: `\u89d2\u8272: ${character.name}`,
+      label: `Role: ${character.name}`,
       text: [character.tag, character.nl].filter(Boolean).join('\n\n'),
     });
   }
@@ -108,17 +108,17 @@ function segments(record: HistoryRecord): Segment[] {
   return out;
 }
 
-/** 行内预览:压掉换行,长的靠 CSS 省略号截断。 */
+/** Inline preview: newlines squeezed out; long ones are truncated by a CSS ellipsis. */
 function inline(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** 展开区顶部那排事实标签。 */
+/** The row of fact tags at the top of the expanded area. */
 function facts(record: HistoryRecord): string[] {
   const out = [subtitle(record), duration(record.durationMs), new Date(record.startedAt).toLocaleString()];
   if (record.kind === 'llm') {
     if (record.stream) out.push('Stream');
-    // 标题行那个数字是提示词 token(标题行地方紧,不带单位);这里补全口径。
+    // The number on the title row is prompt tokens (the title row is cramped, so no unit); the full rule is given here.
     if (record.promptTokens !== null) out.push(`prompt word ${tokenLabel(record)} token`);
     if (record.completionTokens !== null) {
       out.push(`output ${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()} token`);
@@ -129,15 +129,15 @@ function facts(record: HistoryRecord): string[] {
   return out.filter(Boolean);
 }
 
-/** 整条记录拷成文本,方便贴去别处排查。 */
+/** Copies the whole record as text, handy for pasting elsewhere when troubleshooting. */
 function copyAll(record: HistoryRecord): void {
   const head = [
-    `【${title(record)}】${subtitle(record)}`,
-    `Status:${statusLabel(record)}  Time consuming:${duration(record.durationMs)}`,
+    `[${title(record)}] ${subtitle(record)}`,
+    `Status: ${statusLabel(record)}  Duration: ${duration(record.durationMs)}`,
     record.kind === 'llm' && record.promptTokens !== null
-      ? `Prompt word token:${tokenLabel(record)}`
+      ? `Prompt tokens: ${tokenLabel(record)}`
       : '',
-    record.error ? `Error:${record.error}` : '',
+    record.error ? `Error: ${record.error}` : '',
   ].filter(Boolean);
   const body = segments(record).map(s => `--- ${s.label} ---\n${s.text}`);
   void copyText([...head, '', ...body].join('\n'), 'Record copied');
@@ -179,7 +179,7 @@ function copyAll(record: HistoryRecord): void {
       </button>
     </div>
 
-    <!-- 一条请求 = 一个折叠区 -->
+    <!-- One request = one collapsible section -->
     <div v-if="shown.length" class="bbi-sections">
       <Collapsible v-for="record in shown" :key="record.id" :open="false">
         <template #header>
@@ -213,7 +213,7 @@ function copyAll(record: HistoryRecord): void {
           This is estimated using the word segmenter of the current model of the ST main interface, which may not be consistent with the model of this channel.
         </p>
 
-        <!-- 按顺序的提示词列表:与设置页「自定义提示词」同款行 -->
+        <!-- Prompt list in order: same row style as "Custom prompts" on the settings page -->
         <ul class="bbi-prompt-list">
           <li v-for="(seg, i) in segments(record)" :key="i">
             <button
@@ -244,7 +244,7 @@ function copyAll(record: HistoryRecord): void {
       No records have been requested for this session. Trigger an automatic tag or generate a picture, and entries will appear here (refreshing the page will clear them).
     </p>
 
-    <!-- ===== 单段全文弹窗 ===== -->
+    <!-- ===== Single-segment full-text dialog ===== -->
     <ModalMask :open="!!viewing" @close="viewing = null">
       <div v-if="viewing" class="bbi-modal bbi-modal-wide" role="dialog" aria-modal="true" aria-label="Full text of prompt words">
         <header class="bbi-modal-head">
@@ -269,7 +269,7 @@ function copyAll(record: HistoryRecord): void {
 </template>
 
 <style scoped>
-/* —— 计数药丸:与角色页/设置页同款观感 —— */
+/* —— Count pill: same look as the characters/settings pages —— */
 .bbi-count {
   border: 0;
   padding: 7px 12px;
@@ -290,9 +290,9 @@ function copyAll(record: HistoryRecord): void {
   margin: 12px 0;
 }
 
-/* —— 折叠区标题行:名称 + 渠道 + token + 时间 + 状态 ——
-   收缩优先级(挤不下时谁先让路):渠道/模型 → 标题 → 时间;
-   token 与状态药丸**永不收缩**——它们是这一行最该被读到的两个值。 */
+/* —— Collapsible title row: name + channel + tokens + time + status ——
+   Shrink priority (who gives way first when space runs out): channel/model → title → time;
+   tokens and the status pill **never shrink**: they are the two values on this row most worth reading. */
 .bbi-hist-head {
   display: flex;
   align-items: center;
@@ -300,9 +300,9 @@ function copyAll(record: HistoryRecord): void {
   flex: 1 1 auto;
   min-width: 0;
 }
-/* 标题可收缩(min-width:0 是省略号生效的前提)。
-   原先是 flex:0 0 auto 不可收缩,长标题会把后面的 token/状态整个挤出容器——
-   窄屏「看不到 token」正是这么来的,不是被 media query 藏了。 */
+/* The title can shrink (min-width:0 is required for the ellipsis to work).
+   It used to be flex:0 0 auto, unshrinkable, so a long title pushed the tokens/status after it right out of the container;
+   that is exactly why "no tokens visible" happened on narrow screens, not because a media query hid them. */
 .bbi-hist-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -312,7 +312,7 @@ function copyAll(record: HistoryRecord): void {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 渠道/模型:最先让路的那个 */
+/* Channel/model: the first to give way */
 .bbi-hist-sub {
   flex: 1 1 auto;
   min-width: 0;
@@ -330,7 +330,7 @@ function copyAll(record: HistoryRecord): void {
   font-weight: 600;
   color: var(--bbi-ink);
 }
-/* 估算值弱化:与真实用量视觉上就分开,免得被当成权威数字 */
+/* Estimates are muted: visually separated from real usage so they aren't taken as authoritative numbers */
 .bbi-hist-tok.is-est {
   color: var(--bbi-ink-muted);
   font-weight: 400;
@@ -343,8 +343,8 @@ function copyAll(record: HistoryRecord): void {
   white-space: nowrap;
 }
 
-/* 状态药丸:复用全局 .bbi-prompt-state 的几何,只改配色。
-   成功走它自带的 .is-custom 同款强调色,失败红、取消橙(取消不是故障)。 */
+/* Status pill: reuses the global .bbi-prompt-state geometry, changing only colours.
+   Success uses the same accent as its own .is-custom; failure red, cancelled orange (cancelling isn't a fault). */
 .bbi-prompt-state.is-ok {
   color: var(--bbi-accent);
   background: var(--bbi-accent-soft);
@@ -361,7 +361,7 @@ function copyAll(record: HistoryRecord): void {
   border-color: transparent;
 }
 
-/* —— 展开区:事实标签条 —— */
+/* —— Expanded area: fact label strip —— */
 .bbi-hist-facts {
   display: flex;
   flex-wrap: wrap;
@@ -387,7 +387,7 @@ function copyAll(record: HistoryRecord): void {
   overflow-wrap: anywhere;
 }
 
-/* —— 提示词分段列表:几何照搬设置页「自定义提示词」 —— */
+/* —— Prompt segment list: geometry copied from "Custom prompts" on the settings page —— */
 .bbi-prompt-list {
   list-style: none;
   margin: 0;
@@ -417,12 +417,12 @@ function copyAll(record: HistoryRecord): void {
   border-color: var(--bbi-accent);
   background: var(--bbi-surface);
 }
-/* 角色标签 = 这段提示词的身份,与设置页 .bbi-prompt-name 同口径:走 --bbi-ink。
-   定宽让各行预览的左边缘对齐成一条线。
-   【宽度按最长标签定】ASSISTANT 是 9 个大写等宽字符 + letter-spacing,原来拍脑袋
-   给的 72px 装不下,被省略成「ASSISTAN…」。用 ch 单位跟着字号走,换字号不会再截断。
-   【勿改成 --bbi-accent】它在粉彩主题下是 #ffafcc(浅粉,本就是给背景用的,
-   配套 --bbi-accent-ink 白字),当文字色压在浅色面上几乎看不见。 */
+/* The role label = the identity of this prompt segment, same rule as the settings page's .bbi-prompt-name: uses --bbi-ink.
+   Fixed width so every row's preview starts on the same left edge.
+   [Width set by the longest label] ASSISTANT is 9 uppercase monospace characters + letter-spacing; the guessed
+   72px couldn't fit it and it was cut to "ASSISTAN…". Using ch units follows the font size, so changing font size won't truncate it again.
+   [Don't change to --bbi-accent] In the pastel theme it is #ffafcc (light pink, meant for backgrounds,
+   paired with white --bbi-accent-ink text); as a text colour on a light surface it is nearly invisible. */
 .bbi-prompt-role {
   flex: 0 0 auto;
   width: 10.5ch;
@@ -444,10 +444,10 @@ function copyAll(record: HistoryRecord): void {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* token 粗估:一眼看出哪段最占篇幅,是这个列表最该被读到的值。
-   定宽 + 右对齐 + tabular-nums:各行个位对齐成一列,不同位数(≈400 / ≈3,700)
-   才能直接比长短;不定宽的话数字随预览宽度浮动,比大小就得逐个读。
-   宽度含 ≈ 前缀 + 5 位数(万级),用 ch 跟着字号走。 */
+/* Rough token estimate: shows at a glance which segment takes the most space; the value in this list most worth reading.
+   Fixed width + right-aligned + tabular-nums: units line up in a column across rows, so different digit counts (≈400 / ≈3,700)
+   can be compared directly; without a fixed width the numbers float with the preview width and each must be read to compare.
+   The width covers the ≈ prefix + 5 digits (tens of thousands), in ch units following the font size. */
 .bbi-prompt-len {
   flex: 0 0 auto;
   width: 7ch;
@@ -473,7 +473,7 @@ function copyAll(record: HistoryRecord): void {
   margin-top: 12px;
 }
 
-/* —— 弹窗:更宽 + 长文本限高滚动 —— */
+/* —— Dialog: wider + long text height-capped with scrolling —— */
 .bbi-modal-wide {
   max-width: 680px;
 }
@@ -494,7 +494,7 @@ function copyAll(record: HistoryRecord): void {
   user-select: text;
 }
 
-/* —— 危险按钮 / 图标按钮 / 底部占位:scoped 过不了组件边界,各页各抄一份 —— */
+/* —— Danger button / icon buttons / bottom spacer: scoped doesn't cross component boundaries, so each page keeps its own copy —— */
 .bbi-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);
@@ -528,8 +528,8 @@ function copyAll(record: HistoryRecord): void {
   flex: 1 1 auto;
 }
 
-/* —— 窄屏:标题行挤不下,让次要信息退场 ——
-   token 与状态**必须留下**:token 是这页的核心信息,比渠道名/时间重要得多。 */
+/* —— Narrow screens: the title row can't fit, so secondary info steps back ——
+   Tokens and status **must stay**: tokens are this page's core information, far more important than the channel name/time. */
 @media (max-width: 640px) {
   .bbi-hist-name {
     font-size: 13px;
@@ -538,10 +538,10 @@ function copyAll(record: HistoryRecord): void {
   .bbi-hist-time {
     display: none;
   }
-  /* 窄屏:预览让位给 token 估算。估算值是判断「哪段占篇幅」的唯一依据,预览只是
-     辅助辨认——两者只能留一个时留数字。预览撤走后靠 margin-left:auto 把它顶回右侧,
-     否则会贴着角色标签挤在左边,离眼睛按钮老远、看着也不像一列。
-     角色标签宽度不再压缩:压到 56px 会把 ASSISTANT 截断,而它正是要看的身份信息。 */
+  /* Narrow screens: the preview gives way to the token estimate. The estimate is the only basis for judging "which segment takes space"; the preview only
+     helps recognition, so when only one can stay, keep the number. With the preview gone, margin-left:auto pushes it back to the right;
+     otherwise it would huddle on the left next to the role label, far from the eye button and not reading as a column.
+     The role label width is no longer reduced: squeezing it to 56px would truncate ASSISTANT, which is exactly the identity information to read. */
   .bbi-prompt-preview {
     display: none;
   }

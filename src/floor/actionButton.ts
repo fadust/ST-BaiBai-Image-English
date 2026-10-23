@@ -6,27 +6,27 @@ import { getContext, isAiStoryMessage } from '@/st/context';
 import { hasImageTagTrace } from '@/st/imageTagRegex';
 
 /**
- * 楼层「生成生图 tag」按钮注入。
+ * Injects the floor "Generate image tags" button.
  *
- * 每个剧情楼的 .extraMesButtons(ST 扩展按钮区,"⋯" 展开)追加一个调色板按钮
- * (与扩展菜单入口同款图标):
- * - 无 tag 的楼:直接分析并写入 tag;
- * - 已有 tag 的楼:先弹插件自绘确认窗,确认后剔除旧 tag、重新分析写入
- *   (旧图片保留在卡片历史里,新 tag 的卡片按 stale 机制展示旧图)。
+ * Appends a palette button to each story floor's .extraMesButtons (ST's extension button area, expanded by "⋯")
+ * (same icon as the extension menu entry):
+ * - floor without tags: analyse and write tags directly;
+ * - floor with tags: first shows the plugin's own confirm dialog; on confirmation, removes the old tags and re-analyses and writes
+ *   (old images stay in the card history; cards for the new tags show old images via the stale mechanism).
  *
- * 给谁不给谁**只由 st/context.ts 的 isAiStoryMessage 说话**,与自动流程、与 runner
- * 的兜底闸门是同一个谓词:AI 楼给、用户楼与 ST 真系统楼不给,而被 /hide 隐藏的普通楼
- * 照给——它仍是剧情楼,runner 也放行。旧版这里直接读 DOM 的 is_system 属性,隐藏楼
- * 一律没有按钮(用户报的正是这个),而属性变更又不在 observer 的监听范围里,
- * 于是「隐藏前渲染过的楼留着按钮、隐藏后重渲染的楼没有按钮」同一条聊天两种样子。
+ * Who gets a button is decided **only by isAiStoryMessage in st/context.ts**, the same predicate as the auto flow and the runner's
+ * safety gate: AI floors get one; user floors and true ST system floors don't; normal floors hidden with /hide
+ * still do, since they are still story floors and the runner lets them through. The old version read the DOM's is_system attribute directly, so hidden floors
+ * never had a button (exactly what users reported), and attribute changes are outside the observer's scope,
+ * so one chat showed two behaviours: "floors rendered before hiding keep the button; floors re-rendered after hiding lose it".
  *
- * 按钮是纯 DOM(fa 图标与 ST 原生扩展按钮同款观感),不进 Vue 树。
- * ST 重渲染会重建楼层 DOM,共用的 #chat 观察器(floor/chatObserver.ts)负责幂等对账
- * (该有的补、该撤的撤)。
+ * The button is plain DOM (fa icon, same look as ST's native extension buttons) and stays outside the Vue tree.
+ * ST re-rendering rebuilds floor DOM; the shared #chat observer (floor/chatObserver.ts) reconciles idempotently
+ * (adds what should exist, removes what shouldn't).
  */
 
 const BUTTON_CLASS = 'bbi-tag-action';
-// 与扩展菜单入口同款调色板图标
+// Same palette icon as the extension menu entry
 const ICON_CLASS = 'fa-palette';
 
 let bound = false;
@@ -43,7 +43,7 @@ async function onActivate(button: HTMLElement): Promise<void> {
   const floor = Number(button.closest('.mes')?.getAttribute('mesid'));
   const context = getContext();
   const message = Number.isInteger(floor) ? context?.chat?.[floor] : undefined;
-  // 点了必须有下文:静默 return 在用户那里就是「按钮点了没反应」,连日志都没有
+  // A click must lead somewhere: a silent return is, to the user, "clicked the button, nothing happened", without even a log
   if (!context || !message) {
     console.warn('[BaiBai Image] The corresponding message cannot be found for the floor button', { mesid: button.closest('.mes')?.getAttribute('mesid') });
     toastr.warning('No news found on this floor, please refresh the page and try again', 'BaiBai Image');
@@ -68,14 +68,14 @@ async function onActivate(button: HTMLElement): Promise<void> {
   try {
     await requestFloorTags(floor, { replace: hasTags });
   } finally {
-    // 运行期间 ST 可能已重渲染移除本按钮;对脱离 DOM 的元素改 class 是安全无操作
+    // ST may have re-rendered and removed this button while running; changing classes on a detached element is a safe no-op
     setRunning(button, false);
   }
 }
 
 function createButton(): HTMLDivElement {
   const button = document.createElement('div');
-  // mes_button 与 .extraMesButtons 里的 ST 原生扩展按钮同类(menu_button 是通用菜单按钮,样式不同)
+  // mes_button matches ST's native extension buttons in .extraMesButtons (menu_button is the generic menu button, styled differently)
   button.className = `mes_button fa-solid ${ICON_CLASS} ${BUTTON_CLASS}`;
   button.title = 'Generate raw image tag (regenerate if tag already exists)';
   button.setAttribute('role', 'button');
@@ -93,24 +93,24 @@ function createButton(): HTMLDivElement {
 }
 
 /**
- * 按钮与「谁该有按钮」对账(幂等、双向):该有的补,该撤的撤。
+ * Reconciles buttons with "who should have one" (idempotent, both ways): adds what should exist, removes what shouldn't.
  *
- * 双向是必需的——只补不撤时,判据变了(排除名单里加了这个角色、/role 把楼改成系统楼)
- * 也只有等整段重渲染才生效,期间留着的按钮点了只会撞上 runner 的兜底闸门。
- * 正在跑的那颗不撤:它的 spinner 与 running 标记要留到本次请求收尾。
+ * Both ways is required: if it only added, a changed criterion (this character added to the exclusion list, /role turning a floor into a system floor)
+ * would only take effect after a full re-render, and the leftover buttons would meanwhile just run into the runner's safety gate when clicked.
+ * The one currently running isn't removed: its spinner and running mark must stay until this request finishes.
  */
 function syncButtons(): void {
   const chat = getContext()?.chat;
-  // 上下文还没就绪:什么都别做——此时「谁该有」无从判断,照着空 chat 对账会把按钮全撤掉
+  // Context not ready yet: do nothing; "who should have one" can't be judged now, and reconciling against an empty chat would remove every button
   if (!chat) return;
-  // 排除角色:该聊天整条自动 tag 链路停用(与柏宝书同名单),手动按钮一并撤掉
+  // Excluded character: the whole auto-tag pipeline is disabled for this chat (same list as BaiBai Book), and manual buttons are removed too
   const excluded = isCurrentChatExcluded();
   for (const mesEl of document.querySelectorAll<HTMLElement>('#chat .mes')) {
     const extra = mesEl.querySelector('.extraMesButtons');
     if (!extra) continue;
     const floor = Number(mesEl.getAttribute('mesid'));
-    // 判据吃 chat 里的消息对象,不吃 DOM 的 is_system 属性(见文件头注释)。
-    // 顺带的好处:/hide 只翻属性、不动 DOM 树,本来就触发不了 observer,现在也无需触发。
+    // The criterion uses the message objects in chat, not the DOM's is_system attribute (see the file header comment).
+    // A side benefit: /hide only flips the attribute without touching the DOM tree, so it could never trigger the observer anyway, and now it doesn't need to.
     const wanted = !excluded && Number.isInteger(floor) && isAiStoryMessage(chat[floor]);
     const existing = extra.querySelector<HTMLElement>(`.${BUTTON_CLASS}`);
     if (wanted && !existing) extra.appendChild(createButton());
@@ -118,11 +118,11 @@ function syncButtons(): void {
   }
 }
 
-/** 绑定楼层按钮注入(幂等)。#chat 在 ST 静态模板里,绑定时不存在则说明环境异常,直接放弃。 */
+/** Binds floor-button injection (idempotent). #chat is in ST's static template; if it doesn't exist when binding, the environment is broken, so give up. */
 export function bindTagActionButtons(): boolean {
   if (bound) return true;
-  // 观察器与卡片自愈共用一个(floor/chatObserver.ts):同一棵树别观察两遍,
-  // 开销在浏览器收集 MutationRecord 那一侧,不在回调侧。
+  // The observer is shared with card self-healing (floor/chatObserver.ts): don't observe the same tree twice;
+  // the cost is on the browser's side of collecting MutationRecords, not on the callback side.
   if (!ensureChatObserver()) return false;
   bound = true;
   onChatMutation(syncButtons);

@@ -85,13 +85,13 @@ function dataUrlBase64(dataUrl: string): string {
 export const DEFAULT_VIBE_STRENGTH = 0.6;
 
 /**
- * Vibe 强度的唯一口径:夹到 0–1,认不出数就回落默认值。
+ * The single rule for vibe strength: clamped to 0–1; anything not recognised as a number falls back to the default.
  *
- * 曾经有四份各自为政的实现(设置反序列化 / .naiv4vibe 解析 / 智绘姬导入 / 面板输入),
- * 其中三份写作 `Number(v)`,而 `Number(null)` 与 `Number('')` 都是 0 ——
- * 「字段缺失」于是被静默判成「强度 0」,vibe 挂上了却对画面毫无影响,极难排查。
- * 这里只认真正的数字和能解析出数字的字符串(面板 <input> 给的是字符串),
- * 其余(null / '' / 空白串 / 布尔 / 对象)一律回落默认值。
+ * There used to be four separate implementations (settings deserialisation / .naiv4vibe parsing / Chiehime import / panel input),
+ * three of which wrote `Number(v)`, and `Number(null)` and `Number('')` are both 0;
+ * so "field missing" was silently judged as "strength 0", and a vibe was attached with no effect on the image at all, very hard to trace.
+ * This only accepts real numbers and strings that parse into numbers (the panel's <input> gives strings);
+ * everything else (null / '' / whitespace strings / booleans / objects) falls back to the default.
  */
 export function clampVibeStrength(raw: unknown, def = DEFAULT_VIBE_STRENGTH): number {
   const value =
@@ -176,16 +176,16 @@ async function saveServerVibeFiles(
 }
 
 export async function loadVibeData(vibe: Pick<NaiVibe, 'dataPath' | 'name'>): Promise<NaiVibeData> {
-  if (!vibe.dataPath) throw new Error(`Vibe「${vibe.name}"Missing data file`);
+  if (!vibe.dataPath) throw new Error(`Vibe "${vibe.name}" is missing its data file`);
   if (vibe.dataPath.startsWith(LOCAL_PATH_PREFIX)) return readLocalData(vibe.dataPath);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(vibe.dataPath, { signal: controller.signal });
-    if (!response.ok) throw new Error(`Read Vibe「${vibe.name}"Failed (${response.status})`);
+    if (!response.ok) throw new Error(`Failed to read vibe "${vibe.name}" (${response.status})`);
     const data = (await response.json()) as Partial<NaiVibeData>;
     if (!data || typeof data !== 'object' || !data.encodings || typeof data.encodings !== 'object') {
-      throw new Error(`Vibe「${vibe.name}"Invalid data format`);
+      throw new Error(`Vibe "${vibe.name}" has an invalid data format`);
     }
     return {
       image: typeof data.image === 'string' ? data.image : '',

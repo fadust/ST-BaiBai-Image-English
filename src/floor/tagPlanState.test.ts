@@ -4,7 +4,7 @@ import { awaitTagPlan, clearAllTagPlans, isTagPlanning, runTagPlan } from '@/flo
 
 const KEY = 'c|1|0|0';
 
-/** 手动控制收尾时机的 deferred(不用计时器,避免测试靠睡眠) */
+/** A deferred with manually controlled completion (no timers, so tests don't rely on sleeping) */
 function deferred(): { promise: Promise<void>; resolve: () => void; reject: (e: unknown) => void } {
   let resolve!: () => void;
   let reject!: (e: unknown) => void;
@@ -20,7 +20,7 @@ describe('tagPlanState', () => {
     clearAllTagPlans();
   });
 
-  it('跑起来即处于重写中,收尾后清除', async () => {
+  it('rewriting as soon as it runs, cleared after finishing', async () => {
     const gate = deferred();
     const task = runTagPlan(KEY, () => gate.promise);
     expect(isTagPlanning(KEY)).toBe(true);
@@ -29,14 +29,14 @@ describe('tagPlanState', () => {
     expect(isTagPlanning(KEY)).toBe(false);
   });
 
-  it('旧任务的收尾不得清掉新任务的记录', async () => {
+  it('an old task finishing must not clear the new task record', async () => {
     const first = deferred();
     const second = deferred();
     const firstTask = runTagPlan(KEY, () => first.promise);
     const secondTask = runTagPlan(KEY, () => second.promise);
     first.resolve();
     await firstTask;
-    // 先开的那个收尾了,但 key 上现在是后开的那个,展示态必须还亮着
+    // The first one started has finished, but the key now holds the later one, so the display state must stay lit
     expect(isTagPlanning(KEY)).toBe(true);
     second.resolve();
     await secondTask;
@@ -44,10 +44,10 @@ describe('tagPlanState', () => {
   });
 
   /**
-   * 弹窗「续上」的命门:关掉弹窗不中断重写,重开时要能 await 回同一个在途请求。
-   * 若这里返回的不是同一个 promise,重开的弹窗就只会干转圈、等不到收尾。
+   * The crux of the dialog's "rejoin": closing the dialog doesn't interrupt the rewrite, and reopening must be able to await the same in-flight request.
+   * If this didn't return the same promise, the reopened dialog would just spin forever and never see completion.
    */
-  it('awaitTagPlan 取回的是同一个在途 promise', async () => {
+  it('awaitTagPlan gets back the same in-flight promise', async () => {
     const gate = deferred();
     const task = runTagPlan(KEY, () => gate.promise);
     const rejoined = awaitTagPlan(KEY);
@@ -57,12 +57,12 @@ describe('tagPlanState', () => {
     expect(awaitTagPlan(KEY)).toBeNull();
   });
 
-  it('无在途任务时 awaitTagPlan 返回 null', () => {
+  it('awaitTagPlan returns null with no in-flight task', () => {
     expect(awaitTagPlan(KEY)).toBeNull();
   });
 
-  /** 请求失败也必须摘掉运行态,否则那一槽会永远卡在「重写中」再也点不动。 */
-  it('run 抛错时照样清除运行态,并把错误抛给调用方', async () => {
+  /** A failed request must also remove the runtime state, otherwise that slot would be stuck in "Rewriting" forever and never clickable again. */
+  it('clears runtime state even when run throws, and rethrows the error to the caller', async () => {
     const gate = deferred();
     const task = runTagPlan(KEY, () => gate.promise);
     gate.reject(new Error('boom'));
@@ -70,7 +70,7 @@ describe('tagPlanState', () => {
     expect(isTagPlanning(KEY)).toBe(false);
   });
 
-  it('clearAllTagPlans 清空全部槽位', () => {
+  it('clearAllTagPlans clears every slot', () => {
     runTagPlan(KEY, () => deferred().promise);
     runTagPlan('c|2|0|0', () => deferred().promise);
     clearAllTagPlans();

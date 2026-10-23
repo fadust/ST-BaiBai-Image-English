@@ -40,14 +40,14 @@ const NAV_OPTIONS: { value: NavPosition; label: string }[] = [
   { value: 'bottom', label: 'Bottom' },
 ];
 
-// 出图后端可选项:与渠道页页签同口径,藏掉未开放的 webui
+// Image backend options: same rule as the channel page tabs, hiding the unreleased webui
 const BACKEND_OPTIONS = BACKENDS.filter(b => b.value !== 'webui');
 
 /**
- * 思考强度候选:各家取值的并集,**不是**某一家的官方列表。
- * auto 是显式选项(值为空串 = 不发送该参数),不是「留空」——
- * 用 BbiSelect 而非可输入的 BbiCombo:移动端点输入框会弹出输入法,很打扰。
- * 取值不做校验,原样发给端点(见 ApiChannel.reasoningEffort)。
+ * Reasoning-effort candidates: the union of values across providers, **not** any one provider's official list.
+ * auto is an explicit option (value empty string = don't send the parameter), not "left blank";
+ * BbiSelect rather than the typable BbiCombo: on mobile tapping an input pops up the keyboard, which is intrusive.
+ * Values aren't validated and are sent to the endpoint as-is (see ApiChannel.reasoningEffort).
  */
 const REASONING_EFFORT_OPTIONS = [
   { value: '', label: 'auto' },
@@ -59,7 +59,7 @@ const REASONING_EFFORT_OPTIONS = [
   { value: 'max', label: 'max' },
 ];
 
-/* —— 自绘下拉(BbiSelect)的 v-model 适配:组件按 string 收发,这里收窄回具体联合类型 —— */
+/* —— v-model adapters for the custom dropdown (BbiSelect): the component sends and receives strings; here they are narrowed back to the specific union types —— */
 const themeSel = computed<string>({
   get: () => ui.theme,
   set: v => (ui.theme = v as ThemeName),
@@ -68,8 +68,8 @@ const navSel = computed<string>({
   get: () => ui.navPosition,
   set: v => (ui.navPosition = v as NavPosition),
 });
-// 楼层卡片主题不再提供设置项:卡片无边框化后恒跟随 ST 主题。
-// settings.ui.cardTheme 字段与 hydrate 读取保留(旧用户已改的值继续生效,无害)。
+// The floor card theme is no longer a setting: since cards became borderless they always follow the ST theme.
+// The settings.ui.cardTheme field and its hydrate read are kept (values old users changed still apply, harmlessly).
 const orbShapeSel = computed<string>({
   get: () => ui.orbShape,
   set: v => (ui.orbShape = v as OrbShape),
@@ -84,8 +84,8 @@ const imageDisplaySel = computed<string>({
 });
 const IMAGE_DISPLAY_OPTIONS = IMAGE_DISPLAY_SIZES.map(o => ({ value: o.value, label: o.label }));
 
-// 副 API「生成 tag 使用」:空串 = 跟随主 API,其余为渠道 id。
-// 渠道增删改名要实时反映到选项里,故用 computed 而非静态常量。
+// Secondary API "used for generating tags": empty string = follow the main API; otherwise a channel id.
+// Adding/deleting/renaming channels must reflect in the options live, hence computed rather than a static constant.
 const tagGenSel = computed<string>({
   get: () => settings.assignments.tagGen,
   set: v => (settings.assignments.tagGen = v),
@@ -95,26 +95,26 @@ const TAG_GEN_OPTIONS = computed(() => [
   ...settings.channels.map(c => ({ value: c.id, label: c.name || 'Unnamed channel' })),
 ]);
 
-/* —— 渠道:列表只读展示,编辑/新建都在弹窗里进行,避免一长列表平铺误触。
-   渠道列表与柏宝书共享(见 state/settings.ts 的共享存储),任一端改动自动同步。 —— */
-// editingId:正在编辑的「已有渠道」id;新建时为 null。仅用于「完成」时定位写回目标。
+/* —— Channels: the list is read-only; editing/creating happens in a dialog, avoiding mis-taps on a long flat list.
+   The channel list is shared with BaiBai Book (see shared storage in state/settings.ts); a change on either side syncs automatically. —— */
+// editingId: id of the "existing channel" being edited; null when creating. Only used to locate the write-back target on "Done".
 const editingId = ref<string | null>(null);
-// 编辑用「草稿副本」:v-model 全改在草稿上,只有点「完成」才写回 settings(避免每敲一字就触发存盘)。
-// 弹窗开关也以它为准:草稿存在 = 弹窗打开。
+// Editing uses a "draft copy": all v-model changes go to the draft, and only "Done" writes back to settings (avoiding a save on every keystroke).
+// The dialog's open state follows it too: draft exists = dialog open.
 const editingChannel = ref<ApiChannel | null>(null);
-// 深拷贝渠道(纯数据,JSON 即可),切断与 settings 真身的引用
+// Deep-copy the channel (plain data, JSON is enough), cutting the reference to the real settings object
 function cloneChannel(ch: ApiChannel): ApiChannel {
   return JSON.parse(JSON.stringify(ch)) as ApiChannel;
 }
-// 密钥默认隐藏;每次打开/关闭弹窗都复位,避免密钥意外保持明文
+// The key is hidden by default; reset on every open/close so the key never stays visible by accident
 const showKey = ref(false);
 
 function normalizeAutoTagNumbers(changed?: 'minImages' | 'maxImages' | Event) {
   settings.autoTag.contextMessages = Math.max(1, Math.floor(Number(settings.autoTag.contextMessages) || 1));
   let minImages = Math.max(0, Math.floor(Number(settings.autoTag.minImages) || 0));
   let maxImages = Math.max(1, Math.floor(Number(settings.autoTag.maxImages) || 1));
-  // 用户抬高下限时顺带抬高上限;用户压低上限时顺带压低下限。
-  // 这样正在编辑的那一格始终保留用户意图,不会出现 min > max 的瞬时脏配置。
+  // When the user raises the minimum, the maximum rises with it; when the user lowers the maximum, the minimum drops with it.
+  // That way the cell being edited always keeps the user's intent, and a momentary min > max dirty config never occurs.
   if (changed === 'minImages') maxImages = Math.max(maxImages, minImages);
   else minImages = Math.min(minImages, maxImages);
   settings.autoTag.minImages = minImages;
@@ -122,8 +122,8 @@ function normalizeAutoTagNumbers(changed?: 'minImages' | 'maxImages' | Event) {
   settings.autoTag.retryCount = Math.min(5, Math.max(0, Math.floor(Number(settings.autoTag.retryCount) || 0)));
 }
 
-/* —— 自定义提示词(UI 照搬柏宝书):列表只读展示,编辑在弹窗里进行。
-   空串 = 回落内置默认;是否已自定义按 trim 非空判定。 —— */
+/* —— Custom prompts (UI copied from BaiBai Book): the list is read-only; editing happens in a dialog.
+   Empty string = fall back to the built-in default; "customised" means non-empty after trim. —— */
 interface TagPromptMeta {
   key: keyof AutoTagPrompts;
   label: string;
@@ -132,16 +132,16 @@ interface TagPromptMeta {
   macros: { token: string; desc: string }[];
 }
 
-// 规范与思维链按后端成对排列:两者必须配对使用(思维链槽位要填的字段,
-// 得在同后端规范里有判据和词表),列在一起是为了改一个时能看见另一个。
-// 不按当前后端过滤——过滤会让「现在用的是哪份」变成隐式状态,反而更难排查。
+// Specifications and thought chains are listed in pairs per backend: they must be used together (fields the thought chain's slots fill
+// need criteria and a vocabulary in the same backend's specification); listing them together lets you see one while changing the other.
+// Not filtered by the current backend: filtering would make "which one is in use now" implicit state, which is harder to debug.
 //
-// ⚠ NAI 只列一对,存的是 naiV5Spec / naiV5Thinking(键名带 V5 是历史包袱,见 settings.ts)。
-// 4.5 以下那套单串 tag 的 naiSpec / naiThinking 已随模型列表收窄一起下线,不再列出:
-// 可选模型只剩 4.5/V5,那两份永远走不到,列出来只会让人以为还有第二种口径要维护。
+// ⚠ NAI lists only one pair, stored as naiV5Spec / naiV5Thinking (V5 in the key names is historical baggage; see settings.ts).
+// The single-string tag naiSpec / naiThinking for models below 4.5 retired together with the narrowed model list and are no longer listed:
+// only 4.5/V5 remain selectable, so those two are never reached, and listing them would only suggest a second set of rules to maintain.
 //
-// 自然语言条件段(autoTag/prompt.ts 的 expandNlSections)对两个后端的规范与思维链都展开,
-// 故这四份都挂上这组宏;内置的 NAI 两份正是靠它一份文本兼顾「生成自然语言」开关两侧。
+// Natural-language conditional sections (expandNlSections in autoTag/prompt.ts) expand in both backends' specifications and thought chains,
+// so all four carry this macro set; the two built-in NAI texts rely on it to serve both sides of the "Generate Natural Language" toggle with one text.
 const NL_SECTION_MACROS = [
   { token: '{{#nl}}', desc: 'The beginning of the conditional section: The content up to {{/nl}} is only retained when "Generate Natural Language" is turned on.' },
   { token: '{{^nl}}', desc: 'The beginning of the conditional section: the content up to {{/nl}} is only retained when "Generate Natural Language" is turned off.' },
@@ -192,19 +192,19 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   },
 ];
 
-// 正在编辑的提示词;draft 是草稿,点「完成」才写回 settings(取消则丢弃)。
+// The prompt being edited; draft is the draft, written back to settings only on "Done" (discarded on cancel).
 const editingTagPrompt = ref<TagPromptMeta | null>(null);
 const tagPromptDraft = ref('');
 const tagPromptArea = ref<InstanceType<typeof BbiTextarea> | null>(null);
 
-// 该条是否已自定义(非空即视为已覆盖内置)
+// Whether this entry is customised (non-empty means it overrides the built-in)
 function isTagPromptCustom(key: keyof AutoTagPrompts): boolean {
   return settings.autoTag.prompts[key].trim().length > 0;
 }
 
 function openTagPrompt(meta: TagPromptMeta) {
   editingTagPrompt.value = meta;
-  // 已自定义→载入用户内容;未自定义→预填内置模板,方便直接在其上改
+  // Customised → load the user's content; not customised → prefill the built-in template so it can be edited directly
   tagPromptDraft.value = settings.autoTag.prompts[meta.key].trim() || meta.builtin;
 }
 function closeTagPrompt() {
@@ -214,21 +214,21 @@ function closeTagPrompt() {
 function saveTagPrompt() {
   const meta = editingTagPrompt.value;
   if (!meta) return;
-  // 草稿与内置完全一致→存空串(回落内置),避免把模板冗余存进设置、也便于显示「默认」
+  // Draft identical to the built-in → store an empty string (fall back to built-in), avoiding storing a redundant template in settings and allowing "Default" to show
   const v = tagPromptDraft.value.trim();
   settings.autoTag.prompts[meta.key] = v === meta.builtin.trim() ? '' : tagPromptDraft.value;
   closeTagPrompt();
 }
-// 「恢复默认」:把草稿重置回内置模板(保存后即回落内置)
+// "Restore default": resets the draft to the built-in template (after saving it falls back to built-in)
 function resetTagPromptDraft() {
   if (editingTagPrompt.value) tagPromptDraft.value = editingTagPrompt.value.builtin;
 }
-// 点宏标签 → 插入到文本框光标处(无焦点则追加到末尾);光标定位由组件内部处理
+// Clicking a macro chip → inserts at the text box caret (appends to the end without focus); caret handling is inside the component
 function insertTagMacro(token: string) {
   tagPromptArea.value?.insertAtCursor(token);
 }
 
-// 排除参数:内部存 string[],编辑时用逗号分隔的单行文本承载,读/写两向转换。
+// Excluded parameters: stored internally as string[]; edited as a comma-separated single line, converted both ways on read/write.
 const excludeParamsText = computed<string>({
   get: () => editingChannel.value?.excludeParams.join(', ') ?? '',
   set: v => {
@@ -243,23 +243,23 @@ const excludeParamsText = computed<string>({
 
 function addChannel() {
   showKey.value = false;
-  editingId.value = null; // null = 新建,完成时 push
-  editingChannel.value = newChannel(); // 草稿,尚未进 settings
+  editingId.value = null; // null = new; pushed on Done
+  editingChannel.value = newChannel(); // Draft, not yet in settings
 }
 function openChannel(id: string) {
   const src = settings.channels.find(c => c.id === id);
   if (!src) return;
   showKey.value = false;
   editingId.value = id;
-  editingChannel.value = cloneChannel(src); // 编辑草稿副本,不动真身
+  editingChannel.value = cloneChannel(src); // Edit a draft copy, leaving the real object alone
 }
-/** 取消(× / 点遮罩):丢弃草稿,不写回 settings(无论新建还是编辑,改动都作废)。 */
+/** Cancel (× / click mask): discard the draft without writing back to settings (changes are void whether creating or editing). */
 function closeChannel() {
   showKey.value = false;
   editingId.value = null;
   editingChannel.value = null;
 }
-/** 完成:把草稿写回 settings —— 新建则 push,编辑则按 id 覆盖。此时才触发存盘。 */
+/** Done: write the draft back to settings: push when creating, overwrite by id when editing. Only now is a save triggered. */
 function confirmChannel() {
   const draft = editingChannel.value;
   if (draft) {
@@ -271,7 +271,7 @@ function confirmChannel() {
     if (editingId.value) {
       const idx = list.findIndex(c => c.id === editingId.value);
       if (idx >= 0) list[idx] = draft;
-      else list.push(draft); // 编辑期间原渠道被删等异常 → 兜底为新增
+      else list.push(draft); // If something odd happened while editing, such as the original channel being deleted → fall back to adding it
     } else {
       list.push(draft);
     }
@@ -280,14 +280,14 @@ function confirmChannel() {
   editingId.value = null;
   editingChannel.value = null;
 }
-// 删除渠道前的二次确认:点删除先开确认弹窗,确认后才真正删。
+// Second confirmation before deleting a channel: clicking delete opens a confirm dialog first, and deletion happens only after confirming.
 const confirmDeleteOpen = ref(false);
 function askRemoveChannel() {
   confirmDeleteOpen.value = true;
 }
 function confirmRemoveChannel() {
   confirmDeleteOpen.value = false;
-  // 删除针对「已有渠道」(editingId);新建草稿尚未入库,等同直接丢弃草稿
+  // Deletion targets an "existing channel" (editingId); a new draft isn't in the library yet, so it's the same as discarding the draft
   if (editingId.value) removeChannel(editingId.value);
   editingId.value = null;
   editingChannel.value = null;
@@ -296,7 +296,7 @@ function removeChannel(id: string) {
   const list = settings.channels;
   const idx = list.findIndex(c => c.id === id);
   if (idx >= 0) list.splice(idx, 1);
-  // 清理指派:生成 tag 若指派了该渠道则清空(回落跟随主 API)
+  // Clean up assignments: if tag generation was assigned to this channel, clear it (fall back to following the main API)
   if (settings.assignments.tagGen === id) settings.assignments.tagGen = '';
 }
 
@@ -307,7 +307,7 @@ async function doTest(ch: ApiChannel) {
   testing.value[ch.id] = r.message;
 }
 
-// 各渠道拉取到的模型列表 + 拉取状态
+// Model lists fetched per channel + fetch state
 const models = ref<Record<string, string[]>>({});
 const loadingModels = ref<Record<string, boolean>>({});
 async function pullModels(ch: ApiChannel) {
@@ -325,14 +325,14 @@ async function pullModels(ch: ApiChannel) {
   }
 }
 
-/* —— 排除角色:勾选的角色名(含重名卡)的聊天里,自动 tag 全流程停用。
-   名单与柏宝书共享(见 state/settings.ts 的共享存储),任一端改动自动同步。
-   按「名字」排除,同名卡是一批一起排除。列表很长时易卡,故:① 仅在弹窗打开时取/去重角色名;
-   ② 带搜索框过滤;③ 用 v-show + 子串匹配,渲染量随搜索收敛。 —— */
+/* —— Excluded characters: in chats with the checked character names (including same-name cards), the whole auto-tag flow is disabled.
+   The list is shared with BaiBai Book (see shared storage in state/settings.ts); a change on either side syncs automatically.
+   Excluded by "name", so same-name cards are excluded together. Long lists can lag, so: ① character names are fetched/deduplicated only while the dialog is open;
+   ② a search box filters; ③ v-show + substring matching keeps rendering in step with the search. —— */
 const excludeOpen = ref(false);
 const excludeSearch = ref('');
 
-// 弹窗打开时一次性算出去重后的角色名(按名排序),关闭后不再持有,避免常驻大列表。
+// When the dialog opens, compute the deduplicated character names once (sorted by name); not held after closing, avoiding a permanent large list.
 const charNames = computed<string[]>(() => {
   if (!excludeOpen.value) return [];
   const chars = getContext()?.characters ?? [];
@@ -344,7 +344,7 @@ const charNames = computed<string[]>(() => {
   return [...seen].sort((a, b) => a.localeCompare(b, 'zh'));
 });
 
-// 过滤:空搜索显示全部;否则大小写不敏感子串匹配
+// Filtering: empty search shows everything; otherwise case-insensitive substring match
 const filteredCharNames = computed<string[]>(() => {
   const q = excludeSearch.value.trim().toLowerCase();
   if (!q) return charNames.value;
@@ -368,13 +368,13 @@ function toggleExcluded(name: string) {
   else list.push(name);
 }
 
-/* —— 排除世界书:tag 生成副 API 不带这些整本世界书的条目。复刻排除角色的搜索+勾选弹窗;
-   世界书名从 ST 的 getWorldInfoNames()(全部已加载的世界书文件)取。 —— */
+/* —— Excluded lorebooks: the tag-generation secondary API omits entries from these whole lorebooks. Copies the excluded-characters search+check dialog;
+   lorebook names come from ST's getWorldInfoNames() (all loaded lorebook files). —— */
 const excludeWorldOpen = ref(false);
 const excludeWorldSearch = ref('');
 
-// 旧版 ST(如 1.13.5)的 getContext() 没有 getWorldInfoNames,退而从主页面世界书
-// 下拉框 #world_editor_select 读选项文本(value="" 是占位项,跳过)。
+// Old ST (e.g. 1.13.5) has no getWorldInfoNames in getContext(), so fall back to reading option text from the main page's lorebook
+// dropdown #world_editor_select (value="" is a placeholder; skipped).
 function readWorldNamesFromDom(): string[] {
   const opts = document.querySelectorAll<HTMLOptionElement>('#world_editor_select option');
   const out: string[] = [];
@@ -384,7 +384,7 @@ function readWorldNamesFromDom(): string[] {
   return out;
 }
 
-// 弹窗打开时一次性取世界书名(去重去空、按名排序);关闭后不持有。
+// When the dialog opens, fetch lorebook names once (deduplicated, blanks removed, sorted by name); not held after closing.
 const worldNames = computed<string[]>(() => {
   if (!excludeWorldOpen.value) return [];
   const getNames = getContext()?.getWorldInfoNames;
@@ -420,8 +420,8 @@ function toggleWorldExcluded(name: string) {
   else list.push(name);
 }
 
-/* —— 排除世界书条目:按条目名(comment)过滤,复刻清洗标签的输入框+chips。
-   规则当正则,普通名字即包含匹配;编译失败降级子串。 —— */
+/* —— Excluded lorebook entries: filtered by entry name (comment), copying the cleanup-tag input + chips.
+   Rules are regexes; a plain name is a contains-match; on compile failure it degrades to substring matching. —— */
 const wiPatternDraft = ref('');
 function addWiPattern() {
   const pat = wiPatternDraft.value.trim();
@@ -439,8 +439,8 @@ function removeWiPattern(pat: string) {
   if (idx >= 0) settings.excludes.excludedWorldInfoPatterns.splice(idx, 1);
 }
 
-/* —— 自定义清洗标签:用户填标签名(如 snow),清洗正文时把 <snow>…</snow> 整块删掉。
-   与柏宝书同名单共享(柏宝书配的清洗标签,绘里同样生效)。 —— */
+/* —— Custom cleanup tags: the user enters a tag name (e.g. snow), and cleaning story text removes the whole <snow>…</snow> block.
+   The list is shared with BaiBai Book (cleanup tags set in BaiBai Book apply here too). —— */
 const stripTagDraft = ref('');
 function addStripTag() {
   const tag = sanitizeTagName(stripTagDraft.value);
@@ -456,15 +456,15 @@ function removeStripTag(tag: string) {
   if (idx >= 0) settings.excludes.customStripTags.splice(idx, 1);
 }
 
-/* —— 模型可搜索下拉(combobox):输入框既是当前值也是过滤词,聚焦弹出过滤列表 —— */
+/* —— Searchable model dropdown (combobox): the input is both the current value and the filter; focusing pops up the filtered list —— */
 const modelMenuOpen = ref(false);
-const modelQuery = ref(''); // 聚焦后用户输入的过滤词;失焦时清空
-// 已拉取到的当前渠道模型列表
+const modelQuery = ref(''); // Filter text typed after focusing; cleared on blur
+// Fetched model list for the current channel
 const modelList = computed<string[]>(() => {
   const id = editingChannel.value?.id;
   return id ? models.value[id] ?? [] : [];
 });
-// 过滤:有 query 按子串(大小写不敏感)过滤;为空则显示全部。性能上限 200 条,避免超长列表卡顿。
+// Filtering: with a query, filter by substring (case-insensitive); empty shows everything. Capped at 200 for performance, avoiding lag with very long lists.
 const filteredModels = computed<string[]>(() => {
   const q = modelQuery.value.trim().toLowerCase();
   const list = modelList.value;
@@ -480,7 +480,7 @@ function pickModel(m: string) {
   modelMenuOpen.value = false;
   modelQuery.value = '';
 }
-// 失焦延迟关闭,让 option 的 mousedown/click 先生效
+// Delay closing on blur so an option's mousedown/click takes effect first
 function closeModelMenuSoon() {
   setTimeout(() => {
     modelMenuOpen.value = false;
@@ -502,14 +502,14 @@ async function confirmUpdate() {
     await performUpdate();
     toastr?.success?.('Update successful, refreshing the page...', 'BaiBai Image');
   } catch (error) {
-    toastr?.error?.(`Update failed:${error instanceof Error ? error.message : String(error)}`, 'BaiBai Image');
+    toastr?.error?.(`Update failed: ${error instanceof Error ? error.message : String(error)}`, 'BaiBai Image');
   }
 }
 </script>
 
 <template>
   <section class="bbi-page">
-    <!-- 标题行右端显示版本号;有更新时旁边出现更新按钮。 -->
+    <!-- The version number shows at the right end of the title row; an update button appears beside it when an update exists. -->
     <div class="bbi-page-head">
       <h2 class="bbi-title bbi-title-sub">Settings</h2>
       <div class="bbi-ver-row">
@@ -536,7 +536,7 @@ async function confirmUpdate() {
     </div>
     <hr class="bbi-rule" />
 
-    <!-- 总开关:整个插件的主控。全页唯一的大号滑动开关,与下方各项的小复选框拉开层级。 -->
+    <!-- Master switch: the main control of the whole plugin. The page's only large slide switch, set apart in rank from the small checkboxes below. -->
     <div class="bbi-master" :class="{ 'is-off': !settings.enabled }">
       <span class="bbi-master-spine" aria-hidden="true"></span>
       <span class="bbi-master-title">BaiBai Image·Wen Sheng Tu</span>
@@ -554,7 +554,7 @@ async function confirmUpdate() {
     </div>
 
     <div class="bbi-sections">
-      <!-- 基本设置:主题 / 导航 / 入口 / 悬浮球等界面项,置于首位 -->
+      <!-- Basic settings: UI items such as theme / navigation / entry points / floating orb, placed first -->
       <Collapsible title="Basic settings" :open="false">
         <div class="bbi-select-row">
           <span class="bbi-field-label">Theme</span>
@@ -614,7 +614,7 @@ async function confirmUpdate() {
         </label>
         <p class="bbi-field-hint">Hang a draggable floating ball on the edge of the screen and click to open BaiBai Image. Drag it to the center to permanently suspend it, and drag it close to the left and right edges to adsorb the edges.</p>
 
-        <!-- 悬浮球外观:配置项多,开启后才收进小分组 -->
+        <!-- Floating-orb appearance: many options, tucked into a small group only once enabled -->
         <Collapsible v-if="ui.showOrb" title="Appearance of floating ball" :open="false">
           <div class="bbi-select-row">
             <span class="bbi-field-label">Shape</span>
@@ -648,9 +648,9 @@ async function confirmUpdate() {
         </Collapsible>
       </Collapsible>
 
-      <!-- 副 API:生成画图 tag 用的模型渠道(与柏宝书共享渠道列表) -->
+      <!-- Secondary API: the model channels used to generate image tags (channel list shared with BaiBai Book) -->
       <Collapsible title="Auxiliary API" :open="false">
-        <!-- 任务指派:只有一个任务——生成 tag -->
+        <!-- Task assignment: there is only one task, generating tags -->
         <div class="bbi-field bbi-assign">
           <div class="bbi-assign-row">
             <span class="bbi-field-label">Generate tag using</span>
@@ -661,7 +661,7 @@ async function confirmUpdate() {
 
         <hr class="bbi-rule" />
 
-        <!-- 渠道:顶部添加按钮 + 紧凑只读列表(点行进弹窗编辑),不再一长列表平铺 -->
+        <!-- Channels: add button at the top + compact read-only list (click a row to edit in a dialog), no longer one long flat list -->
         <div class="bbi-channel-bar">
           <span class="bbi-field-label">Backend</span>
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="addChannel()">
@@ -747,7 +747,7 @@ async function confirmUpdate() {
         <p class="bbi-field-hint">Deputy API Automatically retry when the request fails or the response cannot be parsed; 0 = No retry, up to 5 times.</p>
       </Collapsible>
 
-      <!-- 排除角色:名单与柏宝书共享(见 state/settings.ts 的共享存储),任一端改动自动同步 -->
+      <!-- Excluded characters: list shared with BaiBai Book (see shared storage in state/settings.ts); a change on either side syncs automatically -->
       <Collapsible title="Excluded characters" :open="false">
         <p class="bbi-field-hint">Pictures of characters in the list are not automatically generated in the chat tag. The list is shared with BaiBai Book, and changes at either end are automatically synchronized.</p>
         <div class="bbi-channel-bar">
@@ -767,13 +767,13 @@ async function confirmUpdate() {
         <p v-else class="bbi-field-hint">List is empty, all characters have auto tag enabled.</p>
       </Collapsible>
 
-      <!-- 排除世界书内容:与柏宝书同名单共享 -->
+      <!-- Excluded lorebook content: same lists shared with BaiBai Book -->
       <Collapsible title="Exclude lorebook content" :open="false">
         <p class="bbi-field-hint">
           Eliminate entries that are useless to the picture from the World Info that generated the tag reference, saving token and avoiding interference. List shared with Cypress; only affects deputy API.
         </p>
 
-        <!-- 整本排除:复刻排除角色的搜索+勾选弹窗 -->
+        <!-- Whole-book exclusion: copies the excluded-characters search+check dialog -->
         <div class="bbi-channel-bar">
           <span class="bbi-field-label">Exclude entire book · Selected {{ settings.excludes.excludedWorldNames.length }} Ben</span>
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="openExcludeWorld">
@@ -792,12 +792,12 @@ async function confirmUpdate() {
 
         <hr class="bbi-rule" />
 
-        <!-- 按条目名过滤:复刻清洗标签的输入框 + chips -->
+        <!-- Filter by entry name: copies the cleanup-tag input + chips -->
         <div class="bbi-field-head">
           <span class="bbi-field-label">Filter by entry comment</span>
         </div>
         <p class="bbi-field-hint">
-          Note name by item<strong> substring</strong>Match (case-insensitive), support regular expressions (such as <code>^Rules</code>)。
+          Matches entry names by <strong>substring</strong> (case-insensitive) and supports regular expressions (such as <code>^Rules</code>).
           preset <code>\[mvu[\s\S]*?\]</code> Used to filter MVU mechanism entries and can be deleted if not required.
         </p>
         <div class="bbi-striptag-bar">
@@ -823,7 +823,7 @@ async function confirmUpdate() {
         <p v-else class="bbi-field-hint">There are no rules for entry names.</p>
       </Collapsible>
 
-      <!-- 自定义清洗标签:与柏宝书同名单共享 -->
+      <!-- Custom cleanup tags: same list shared with BaiBai Book -->
       <Collapsible title="Custom cleanup tags" :open="false">
         <p class="bbi-field-hint">
           Fill in the tag name (such as <code>snow</code>), the text and World Info will be scanned <code>&lt;snow&gt;…&lt;/snow&gt;</code> Delete the entire block. The list is shared with BaiBai Book.
@@ -851,7 +851,7 @@ async function confirmUpdate() {
         <p v-else class="bbi-field-hint">No custom cleanup tags. Built-in cleanup still removes reasoning blocks, notes, and item annotations.</p>
       </Collapsible>
 
-      <!-- 自定义提示词(与柏宝书同款入口,独立成区) -->
+      <!-- Custom prompts (same entry point as BaiBai Book, in its own section) -->
       <Collapsible title="Custom prompts" :open="false">
         <ul class="bbi-prompt-list">
           <li v-for="m in TAG_PROMPT_METAS" :key="m.key" class="bbi-prompt-item">
@@ -867,7 +867,7 @@ async function confirmUpdate() {
       </Collapsible>
     </div>
 
-    <!-- ===== 排除角色弹窗:搜索 + 勾选列表 ===== -->
+    <!-- ===== Excluded characters dialog: search + checklist ===== -->
     <ModalMask :open="excludeOpen" @close="closeExclude">
       <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Edit exclusion list">
         <header class="bbi-modal-head">
@@ -905,7 +905,7 @@ async function confirmUpdate() {
       </div>
     </ModalMask>
 
-    <!-- ===== 排除世界书弹窗:搜索 + 勾选列表(复刻排除角色) ===== -->
+    <!-- ===== Excluded lorebooks dialog: search + checklist (copying excluded characters) ===== -->
     <ModalMask :open="excludeWorldOpen" @close="closeExcludeWorld">
       <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Edit Excluded lorebook List">
         <header class="bbi-modal-head">
@@ -943,7 +943,7 @@ async function confirmUpdate() {
       </div>
     </ModalMask>
 
-    <!-- ===== 渠道编辑弹窗 ===== -->
+    <!-- ===== Channel editor dialog ===== -->
     <ModalMask :open="!!editingChannel" @close="closeChannel">
       <div v-if="editingChannel" class="bbi-modal" role="dialog" aria-modal="true" aria-label="Edit channel">
         <header class="bbi-modal-head">
@@ -982,7 +982,7 @@ async function confirmUpdate() {
         <label class="bbi-modal-field">
           <span class="bbi-modal-label">Model</span>
           <div class="bbi-model-row">
-            <!-- 可搜索 combobox:已拉取到模型列表时,聚焦弹出过滤菜单;没列表时就是普通输入框 -->
+            <!-- Searchable combobox: with a fetched model list, focusing pops up a filtered menu; without one it's a plain input -->
             <div class="bbi-combo">
               <input
                 v-model="editingChannel.model"
@@ -992,7 +992,7 @@ async function confirmUpdate() {
                 @input="modelQuery = editingChannel.model; modelMenuOpen = true"
                 @blur="closeModelMenuSoon"
               />
-              <!-- 自绘下拉三角(纯装饰,pointer-events:none → 点击穿透到输入框照常聚焦展开);仅在有可选模型时显示 -->
+              <!-- Custom dropdown arrow (purely decorative, pointer-events:none → clicks pass through to the input to focus and open as usual); only shown when models are available -->
               <span v-if="modelList.length" class="bbi-combo-caret" :class="{ 'is-open': modelMenuOpen }" aria-hidden="true" />
               <ul v-if="modelMenuOpen && modelList.length" class="bbi-combo-menu">
                 <li v-if="!filteredModels.length" class="bbi-combo-empty">No matching model</li>
@@ -1031,8 +1031,8 @@ async function confirmUpdate() {
             <span>Timeout (s)</span>
             <input v-model.number="editingChannel.timeoutSec" class="bbi-input" type="number" step="10" min="1" />
           </label>
-          <!-- 思考强度用 BbiSelect(纯选择,不唤起输入法);它自带 180px 固定宽,
-               这里要跟其余三个等分,故在 .bbi-mini-field 内用 :deep 放开宽度 -->
+          <!-- Reasoning effort uses BbiSelect (pure selection, no keyboard pop-up); it has a built-in fixed width of 180px,
+               and here it must share space evenly with the other three, so :deep inside .bbi-mini-field releases the width -->
           <div class="bbi-mini-field">
             <span>Reasoning effort</span>
             <BbiSelect
@@ -1060,8 +1060,8 @@ async function confirmUpdate() {
         <p v-if="testing[editingChannel.id]" class="bbi-channel-test">{{ testing[editingChannel.id] }}</p>
 
         <footer class="bbi-modal-foot">
-          <!-- 删除靠左、与右侧主操作拉开,破坏性动作不与「完成」相邻,降低误触。
-               删除:始终显示文字;测试:PC 显「测试渠道」,移动端只显「测试」(短版,省版面) -->
+          <!-- Delete on the left, apart from the main actions on the right, so the destructive action isn't next to "Done", reducing mis-taps.
+               Delete: always shows text; Test: shows "Test channel" on PC and just "Test" on mobile (short version, saving space) -->
           <button class="bbi-btn bbi-btn-danger" type="button" @click="askRemoveChannel">
             <Icon name="trash" /> Delete
           </button>
@@ -1072,9 +1072,9 @@ async function confirmUpdate() {
           <button class="bbi-btn bbi-btn-primary" type="button" @click="confirmChannel">Done</button>
         </footer>
 
-        <!-- 删除渠道二次确认:叠在渠道弹窗之上。置于 v-if="editingChannel" 块内,
-             渠道为 null 时整体不渲染——既合语义,也让 editingChannel.name 类型收窄。
-             ConfirmDialog 自身 teleport + top-layer,放这儿不影响其渲染层级。 -->
+        <!-- Second confirmation for deleting a channel: stacked above the channel dialog. Placed inside the v-if="editingChannel" block,
+             so nothing renders when the channel is null, which is semantically right and also narrows the type of editingChannel.name.
+             ConfirmDialog teleports itself + uses the top layer, so placing it here doesn't affect its rendering layer. -->
         <ConfirmDialog
           v-model:open="confirmDeleteOpen"
           title="Delete channel"
@@ -1089,7 +1089,7 @@ async function confirmUpdate() {
       </div>
     </ModalMask>
 
-    <!-- ===== 自定义提示词编辑弹窗(UI 照搬柏宝书) ===== -->
+    <!-- ===== Custom prompt editor dialog (UI copied from BaiBai Book) ===== -->
     <ModalMask :open="!!editingTagPrompt" @close="closeTagPrompt">
       <div
         v-if="editingTagPrompt"
@@ -1105,8 +1105,8 @@ async function confirmUpdate() {
 
         <p class="bbi-modal-label">{{ editingTagPrompt.hint }}</p>
 
-        <!-- 可用宏:点一下插入到光标处(规范与思维链四份都有自然语言条件段,ComfyUI 规范另有 {{nl}};
-             无宏的条目不显示这一栏) -->
+        <!-- Available macros: click to insert at the caret (all four specifications and thought chains have natural-language conditional sections; the ComfyUI specification also has {{nl}};
+             entries without macros don't show this bar) -->
         <div v-if="editingTagPrompt.macros.length" class="bbi-macro-bar">
           <span class="bbi-macro-tip">Click to insert macro:</span>
           <button
@@ -1149,7 +1149,7 @@ async function confirmUpdate() {
       :busy="updateState.updating"
       @confirm="confirmUpdate"
     >
-      Current version v{{ updateState.current || '—' }}, the latest version v{{ updateState.latest }}。<br />
+      Current version v{{ updateState.current || '—' }}, the latest version v{{ updateState.latest }}.<br />
       Update now? The page will automatically refresh after the update is completed to take effect.
     </ConfirmDialog>
   </section>
@@ -1162,7 +1162,7 @@ async function confirmUpdate() {
   gap: 8px;
 }
 
-/* —— 版本标签:实心强调底 + 反白字,点击可重新检查 —— */
+/* —— Version tag: solid accent background + inverted text; click to check again —— */
 .bbi-ver {
   border: 0;
   padding: 7px 12px;
@@ -1180,8 +1180,8 @@ async function confirmUpdate() {
   opacity: 0.7;
 }
 
-/* —— 总开关主控卡 —— */
-/* 左缘一道强调色竖脊;停用时整卡褪色、竖脊转灰,状态一眼可辨 */
+/* —— Master switch card —— */
+/* An accent-coloured spine on the left edge; when disabled the whole card fades and the spine turns grey, making the state obvious */
 .bbi-master {
   display: flex;
   align-items: center;
@@ -1223,7 +1223,7 @@ async function confirmUpdate() {
   margin: 4px 0 8px;
 }
 
-/* —— 滑动开关:全页仅总开关一处使用 —— */
+/* —— Slide switch: used only by the master switch on this page —— */
 .bbi-toggle {
   flex: 0 0 auto;
   position: relative;
@@ -1258,9 +1258,9 @@ async function confirmUpdate() {
   transform: translateX(20px);
 }
 
-/* ============ 副 API:渠道(与柏宝书同款) ============ */
+/* ============ Secondary API: channels (same as BaiBai Book) ============ */
 
-/* 任务指派 */
+/* Task assignment */
 .bbi-assign {
   display: flex;
   flex-direction: column;
@@ -1272,8 +1272,8 @@ async function confirmUpdate() {
   justify-content: space-between;
   gap: 12px;
 }
-/* 指派下拉:比全局 BbiSelect 更窄小一号,与右侧对齐、不撑满半行(柏宝书同款)。
-   BbiSelect 自带 180px 固定宽,这里收窄并放开 max-width 以适应移动端。 */
+/* Assignment dropdown: one size smaller than the global BbiSelect, aligned right and not filling half the row (same as BaiBai Book).
+   BbiSelect has a built-in fixed width of 180px; here it is narrowed and max-width released to fit mobile. */
 .bbi-assign-row :deep(.bbi-select-box) {
   width: 160px;
   max-width: 60%;
@@ -1282,7 +1282,7 @@ async function confirmUpdate() {
   font-size: 12px;
 }
 
-/* 渠道:顶部操作条(标签 + 添加按钮) */
+/* Channels: top action bar (label + add button) */
 .bbi-channel-bar {
   display: flex;
   align-items: center;
@@ -1291,7 +1291,7 @@ async function confirmUpdate() {
   margin-bottom: 12px;
 }
 
-/* 渠道:紧凑只读列表,每渠道一行,点行进弹窗编辑 */
+/* Channels: compact read-only list, one row per channel; click a row to edit in a dialog */
 .bbi-channel-list {
   list-style: none;
   margin: 0;
@@ -1305,7 +1305,7 @@ async function confirmUpdate() {
   align-items: stretch;
   gap: 8px;
 }
-/* 行主体:整块可点,左名字右模型 */
+/* Row body: clickable as a whole, name on the left, model on the right */
 .bbi-channel-open {
   flex: 1;
   min-width: 0;
@@ -1327,7 +1327,7 @@ async function confirmUpdate() {
   border-color: var(--bbi-accent);
   background: var(--bbi-surface);
 }
-/* 渠道名:完整显示,允许换行,占据剩余空间 */
+/* Channel name: shown in full, may wrap, takes the remaining space */
 .bbi-channel-item-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -1335,7 +1335,7 @@ async function confirmUpdate() {
   font-weight: 600;
   word-break: break-word;
 }
-/* 模型名:次要信息,过长则截断,不挤占名字 */
+/* Model name: secondary information, truncated when too long, never crowding the name */
 .bbi-channel-item-model {
   flex: 0 1 auto;
   min-width: 0;
@@ -1347,7 +1347,7 @@ async function confirmUpdate() {
   text-overflow: ellipsis;
 }
 
-/* —— 渠道编辑弹窗 —— */
+/* —— Channel editor dialog —— */
 .bbi-model-row {
   display: flex;
   gap: 8px;
@@ -1379,7 +1379,7 @@ async function confirmUpdate() {
   cursor: default;
 }
 
-/* —— 模型可搜索 combobox —— */
+/* —— Searchable model combobox —— */
 .bbi-combo {
   position: relative;
   flex: 1;
@@ -1387,9 +1387,9 @@ async function confirmUpdate() {
 }
 .bbi-combo .bbi-input {
   width: 100%;
-  padding-right: 26px; /* 给右侧自绘三角让位,文字不压到箭头 */
+  padding-right: 26px; /* Make room for the custom arrow on the right so text doesn't run under it */
 }
-/* 自绘下拉三角:与原生 <select> 同款 SVG,贴右侧居中;展开时翻转。装饰元素不拦点击 */
+/* Custom dropdown arrow: the same SVG as native <select>, centred on the right; flips when open. A decorative element that doesn't block clicks */
 .bbi-combo-caret {
   position: absolute;
   top: 50%;
@@ -1407,7 +1407,7 @@ async function confirmUpdate() {
 .bbi-combo-caret.is-open {
   transform: translateY(-50%) rotate(180deg);
 }
-/* 过滤菜单:绝对定位贴在输入框下方,限高滚动,长列表不撑爆弹窗 */
+/* Filter menu: absolutely positioned just below the input, height-capped with scrolling, so long lists don't blow up the dialog */
 .bbi-combo-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -1445,7 +1445,7 @@ async function confirmUpdate() {
   color: var(--bbi-ink-muted);
 }
 
-/* 温度/最大 token/超时/思考强度:四个短控件并排,窄屏落到 2×2(见媒体查询) */
+/* Temperature/max tokens/timeout/reasoning effort: four short controls side by side, falling to 2×2 on narrow screens (see the media query) */
 .bbi-channel-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1460,11 +1460,11 @@ async function confirmUpdate() {
   font-size: 12px;
   color: var(--bbi-ink-muted);
 }
-/* BbiSelect 自带 180px 固定宽(为设置页的行布局设计),这里要跟其余三个等分 */
+/* BbiSelect has a built-in fixed width of 180px (designed for the settings page's row layout); here it must share space evenly with the other three */
 .bbi-mini-field :deep(.bbi-select-box) {
   width: 100%;
 }
-/* 与相邻 number 输入等高:触发器默认 padding 比 .bbi-input 略小 */
+/* Same height as the neighbouring number inputs: the trigger's default padding is slightly smaller than .bbi-input's */
 .bbi-mini-field :deep(.bbi-select-trigger) {
   padding: 7px 10px;
 }
@@ -1475,11 +1475,11 @@ async function confirmUpdate() {
   word-break: break-all;
 }
 
-/* 弹窗底部:spacer 把删除键推到最左,与右侧操作分隔 */
+/* Dialog footer: the spacer pushes the delete button to the far left, separated from the actions on the right */
 .bbi-modal-foot-spacer {
   flex: 1 1 auto;
 }
-/* 危险操作按钮:描边低调,hover 才显红,避免误触 */
+/* Dangerous-action button: subtle outline, red only on hover, to avoid mis-clicks */
 .bbi-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);
@@ -1490,12 +1490,12 @@ async function confirmUpdate() {
   background: var(--bbi-danger-soft);
 }
 
-/* 测试按钮文字:默认(PC)显完整版,短版藏起;窄屏在媒体查询里互换 */
+/* Test button text: by default (PC) the full version shows and the short one hides; they swap on narrow screens in the media query */
 .bbi-btn-label-short {
   display: none;
 }
 
-/* —— 自定义提示词列表(UI 照搬柏宝书) —— */
+/* —— Custom prompt list (UI copied from BaiBai Book) —— */
 .bbi-prompt-list {
   list-style: none;
   margin: 0;
@@ -1504,7 +1504,7 @@ async function confirmUpdate() {
   flex-direction: column;
   gap: 8px;
 }
-/* 整行可点进弹窗编辑;布局沿用渠道列表的观感(描边、hover 显强调色) */
+/* The whole row is clickable to open the editor dialog; layout follows the channel list's look (outline, accent on hover) */
 .bbi-prompt-open {
   width: 100%;
   display: flex;
@@ -1530,7 +1530,7 @@ async function confirmUpdate() {
   font-size: 13px;
   font-weight: 600;
 }
-/* 状态药丸(.bbi-prompt-state / .is-custom)已提到 base.css 全局:渠道页也用它 */
+/* The status pill (.bbi-prompt-state / .is-custom) has moved to global base.css: the channels page uses it too */
 .bbi-prompt-edit {
   flex: 0 0 auto;
   font-size: 16px;
@@ -1540,11 +1540,11 @@ async function confirmUpdate() {
   color: var(--bbi-accent);
 }
 
-/* —— 提示词弹窗:更宽 + 大文本框 —— */
+/* —— Prompt dialog: wider + large text box —— */
 .bbi-modal-wide {
   max-width: 680px;
 }
-/* 宏标签条:可横向裹行,每个宏点击插入 */
+/* Macro chip bar: wraps horizontally; clicking a macro inserts it */
 .bbi-macro-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1581,7 +1581,7 @@ async function confirmUpdate() {
   tab-size: 2;
 }
 
-/* ============ 排除名单(chips + 弹窗列表):与柏宝书同款交互,类名换 bbi 前缀 ============ */
+/* ============ Exclusion lists (chips + dialog list): same interaction as BaiBai Book, with class names switched to the bbi prefix ============ */
 .bbi-exclude-chips {
   list-style: none;
   margin: 10px 0 0;
@@ -1655,12 +1655,12 @@ async function confirmUpdate() {
   color: var(--bbi-ink-muted);
 }
 
-/* ============ 移动端:折叠区内部正文整体收一号,与窄屏标题节奏统一 ============ */
+/* ============ Mobile: body text inside collapsible sections one size smaller, matching the narrow-screen title rhythm ============ */
 @media (max-width: 640px) {
   .bbi-auto-grid {
     grid-template-columns: 1fr;
   }
-  /* 渠道参数四连:窄屏一行四个每个只剩几十 px,落成 2×2 */
+  /* The four channel parameters: on narrow screens four in a row leaves each only a few dozen px, so they fall to 2×2 */
   .bbi-channel-row {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1670,7 +1670,7 @@ async function confirmUpdate() {
   .bbi-channel-item-model {
     font-size: 11px;
   }
-  /* 渠道弹窗底部:测试按钮窄屏只显短版「测试」,PC 显完整「测试渠道」 */
+  /* Channel dialog footer: on narrow screens the test button shows only the short "Test"; PC shows the full "Test channel" */
   .bbi-btn-label-full {
     display: none;
   }

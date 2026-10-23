@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * 共享存储「空种子」事故回归测试:
- * 旧版绘在没有任何排除数据时也会用空名单创建共享存储(occupying baibai_exclude_settings),
- * 书启动后领养空 store → 双方互相同步成空,用户配置全灭。
- * 现在的契约:没有用户数据的一方绝不建仓;有数据的一方遇到「空种子 store」时自愈回写。
+ * Regression test for the shared-storage "empty seed" incident:
+ * old versions of Image created the shared storage (occupying baibai_exclude_settings) with empty lists even when there was no exclusion data at all,
+ * Book adopted the empty store on startup → both sides synced each other to empty, and the user's config was wiped out.
+ * The current contract: a side without user data never creates the store; a side with data self-heals by writing back when it meets an "empty seed store".
  *
- * 本文件只测纯逻辑工具(excludesHasUserData 同构实现),settings.ts 的 hydrate 链
- * 依赖 ST getContext,不便在 node 环境完整实例化。
+ * This file only tests the pure logic helpers (a same-structure implementation of excludesHasUserData); the hydrate chain in settings.ts
+ * depends on ST getContext and is hard to instantiate fully in a node environment.
  */
 
 const DEFAULT_WI_PATTERNS = ['\\[mvu[\\s\\S]*?\\]'];
@@ -36,15 +36,15 @@ const emptySeeded = (): ExcludesLike => ({
   customStripTags: [],
 });
 
-describe('排除名单共享存储空种子守卫', () => {
+describe('empty-seed guard for the shared exclusion-list storage', () => {
   beforeEach(() => vi.restoreAllMocks());
   afterEach(() => vi.restoreAllMocks());
 
-  it('空名单 + 仅内置默认规则 = 无用户数据(旧版绘写入的空种子长这样)', () => {
+  it('empty lists + only built-in default rules = no user data (the empty seed old Image wrote looks like this)', () => {
     expect(excludesHasUserData(emptySeeded())).toBe(false);
   });
 
-  it('全空名单(用户刚装插件)= 无用户数据', () => {
+  it('all-empty lists (user just installed the plugin) = no user data', () => {
     expect(
       excludesHasUserData({
         excludedChars: [],
@@ -55,33 +55,33 @@ describe('排除名单共享存储空种子守卫', () => {
     ).toBe(false);
   });
 
-  it('有排除角色 = 有用户数据', () => {
+  it('has excluded characters = has user data', () => {
     const ex = emptySeeded();
     ex.excludedChars = ['小雪'];
     expect(excludesHasUserData(ex)).toBe(true);
   });
 
-  it('有整本排除的世界书 = 有用户数据', () => {
+  it('has whole-book excluded lorebooks = has user data', () => {
     const ex = emptySeeded();
     ex.excludedWorldNames = ['设定集'];
     expect(excludesHasUserData(ex)).toBe(true);
   });
 
-  it('有自定义条目名规则(除内置 mvu 外)= 有用户数据', () => {
+  it('has custom entry-name rules (besides the built-in mvu) = has user data', () => {
     const ex = emptySeeded();
     ex.excludedWorldInfoPatterns.push('^\\[状态');
     expect(excludesHasUserData(ex)).toBe(true);
   });
 
-  it('有自定义清洗标签 = 有用户数据', () => {
+  it('has custom cleanup tags = has user data', () => {
     const ex = emptySeeded();
     ex.customStripTags = ['snow'];
     expect(excludesHasUserData(ex)).toBe(true);
   });
 
-  it('仅内置 mvu 规则(用户删光了自定义项)= 无用户数据,不会误判为空种子被回写覆盖', () => {
-    // 用户在任一端有意删空自定义项后,store 里只剩内置规则 → 与本地一致,
-    // 自愈守卫不触发(书侧 requires excludesHasUserData(apiSettings) 为 false)
+  it('only the built-in mvu rule (user deleted all custom items) = no user data, never misjudged as an empty seed and overwritten', () => {
+    // After the user deliberately empties the custom items on either side, the store holds only built-in rules → consistent with local,
+    // so the self-healing guard doesn't fire (Book's side requires excludesHasUserData(apiSettings) to be false)
     const ex = emptySeeded();
     expect(excludesHasUserData(ex)).toBe(false);
   });

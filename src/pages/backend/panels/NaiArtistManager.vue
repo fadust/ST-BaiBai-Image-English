@@ -11,17 +11,17 @@ import { ARTIST_PREVIEW_FOLDER, deleteUserImage, uploadUserImage } from '@/st/im
 import { newNaiArtist, settings, type NaiArtistPreset } from '@/state/settings';
 
 /**
- * 画师串库管理器(NAI 面板「管理」按钮唤起)。
+ * Artist-string library manager (opened by the NAI panel's "Manage" button).
  *
- * 分工:面板里的下拉管「高频切换」,这里管「低频管理」——搜索、预览图、
- * 勾选批量删除、逐条编辑/复制/删除。
+ * Division: the panel's dropdown handles "frequent switching"; this handles "infrequent management": search, preview images,
+ * check-and-bulk-delete, editing/duplicating/deleting one by one.
  *
- * 交互约定:
- * - 点卡片主体 = 启用该条(再点当前条 = 停用,回「不使用」);
- * - 左上角勾选框 = 管理态多选,只服务于批量删除,与启用状态无关;
- * - 内置条(bi_*)随插件版本更新,只读:无勾选框、不可删改,「复制」是唯一自定义入口;
- * - 预览图上传后压成最长边 512 的 jpeg,落 user/images/柏宝绘_画师串/<条目id>.jpg,
- *   路径记在条目 previewPath 上,不维护额外索引;换图同名覆盖,删条目时连带删文件。
+ * Interaction conventions:
+ * - clicking a card body = enable that entry (clicking the current one again = disable, back to "None");
+ * - the checkbox at top left = management multi-select, only for bulk deletion, unrelated to the enabled state;
+ * - built-in entries (bi_*) update with plugin versions and are read-only: no checkbox, can't be deleted or edited; "Duplicate" is the only way to customise;
+ * - uploaded preview images are compressed to a jpeg with a 512 longest edge, saved to user/images/柏宝绘_画师串/<entry id>.jpg,
+ *   with the path recorded in the entry's previewPath and no extra index; changing the image overwrites the same name, and deleting the entry deletes the file.
  */
 
 const props = defineProps<{ open: boolean }>();
@@ -35,17 +35,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 列表条目:内置库排前(与下拉的顺序一致),附带只读标记。 */
+/** List entries: the built-in library first (same order as the dropdown), with a read-only flag. */
 interface ManagerItem {
   preset: NaiArtistPreset;
   builtin: boolean;
 }
 
 const search = ref('');
-/** 管理态勾选集(只存用户条目 id;内置条不可勾选,天然进不来)。 */
+/** Management checked set (user entry ids only; built-in entries can't be checked, so they never get in). */
 const selected = ref<ReadonlySet<string>>(new Set());
 
-// 每次打开回到干净状态:搜索词与勾选都是「这一轮管理」的临时态,不该跨次残留。
+// Every opening starts clean: the search text and checks are temporary state for "this management round" and shouldn't carry over.
 watch(
   () => props.open,
   open => {
@@ -62,7 +62,7 @@ const items = computed<ManagerItem[]>(() => [
 
 const filtered = computed(() => items.value.filter(i => matchArtist(i.preset, search.value)));
 
-/** 当前筛选结果里的可勾选(用户)条目:全选/计数都以它为准,内置条不参与批量。 */
+/** Checkable (user) entries in the current filter results: select-all/count are based on these; built-in entries take no part in bulk actions. */
 const selectableFiltered = computed(() => filtered.value.filter(i => !i.builtin));
 
 const allFilteredSelected = computed(
@@ -73,7 +73,7 @@ const allFilteredSelected = computed(
 
 const activeId = computed(() => settings.nai.activeArtistId);
 
-/** 点卡片:启用;再点当前条:停用(回「不使用」,是有意义的存储值)。 */
+/** Clicking a card: enable; clicking the current one again: disable (back to "None", a meaningful stored value). */
 function toggleActive(item: ManagerItem) {
   settings.nai.activeArtistId = item.preset.id === activeId.value ? '' : item.preset.id;
 }
@@ -94,7 +94,7 @@ function toggleSelectAllFiltered() {
   selected.value = next;
 }
 
-/** 新建:入库 + 设为当前 + 直接开编辑弹窗,一步到位。 */
+/** New: add to the library + set as current + open the editor dialog directly, all in one step. */
 function addArtist() {
   const preset = newNaiArtist(`Artist Tags ${settings.nai.artistPresets.length + 1}`);
   settings.nai.artistPresets.push(preset);
@@ -103,8 +103,8 @@ function addArtist() {
 }
 
 /**
- * 复制:预览图不随副本走——预览文件随原条目删除,共指一个路径会让副本日后破图。
- * 也不切换当前条:管理器里复制常用于批量攒变体,启用哪条由用户点卡片明示。
+ * Duplicate: the preview image doesn't go with the copy; the preview file is deleted with the original entry, and sharing one path would break the copy's image later.
+ * It doesn't switch the current entry either: duplicating in the manager is often for building up variants in bulk, and which one is enabled is the user's explicit card click.
  */
 function duplicate(item: ManagerItem) {
   const src = item.preset;
@@ -116,22 +116,22 @@ function duplicate(item: ManagerItem) {
     negative: src.negative,
   };
   settings.nai.artistPresets.push(preset);
-  toastr.success(`Copied as "${preset.name}」`, 'Artist Tags');
+  toastr.success(`Copied as "${preset.name}"`, 'Artist Tags');
 }
 
-/* ============ 预览图 ============ */
+/* ============ Preview images ============ */
 
-/** 预览图最长边:卡片显示约 200px 宽,512 留足高分屏余量,又不把 user/images 撑大。 */
+/** Longest edge of preview images: cards display about 200px wide; 512 leaves ample room for high-DPI screens without bloating user/images. */
 const PREVIEW_MAX_EDGE = 512;
 
 const previewFileInput = ref<HTMLInputElement | null>(null);
-/** 本次上传要为哪条换图;文件框是共享的一个,靠它在 change 时找回目标。 */
+/** Which entry this upload changes the image for; the file input is one shared element, so this finds the target on change. */
 let previewTarget: NaiArtistPreset | null = null;
 const uploadingId = ref<string | null>(null);
 
 /**
- * 覆盖同名文件后 URL 不变,浏览器缓存会让卡片继续显示旧图;
- * 本组件内记一份 id → 版本号,上传成功后 bump,<img src> 带上 query 即可破缓存。
+ * After overwriting a same-name file the URL is unchanged, and the browser cache would keep showing the old image on the card;
+ * this component keeps an id → version number map, bumped after a successful upload; adding it as a query to <img src> busts the cache.
  */
 const previewVersions = ref<ReadonlyMap<string, number>>(new Map());
 
@@ -159,10 +159,10 @@ async function onPreviewFileChange(event: Event) {
     const dataUrl = await readFileAsDataUrl(file);
     const jpeg = await makeJpegThumbnail(dataUrl, PREVIEW_MAX_EDGE, 0.85);
     const base64 = jpeg.split(',')[1] ?? '';
-    // 文件名 = 条目 id:换图同名覆盖,不会攒孤儿文件
+    // File name = entry id: changing the image overwrites the same name, so no orphan files pile up
     target.previewPath = await uploadUserImage(ARTIST_PREVIEW_FOLDER, target.id, base64, 'jpg');
     previewVersions.value = new Map(previewVersions.value).set(target.id, Date.now());
-    toastr.success(`「${target.name || 'Unnamed artist string'}"Preview has been updated`, 'Artist Tags');
+    toastr.success(`Preview for "${target.name || 'Unnamed artist string'}" updated`, 'Artist Tags');
   } catch (error) {
     toastr.error(errorMessage(error), 'Preview upload failed');
   } finally {
@@ -170,7 +170,7 @@ async function onPreviewFileChange(event: Event) {
   }
 }
 
-/** 移除预览:先清字段(界面立即响应),文件删除 best-effort,失败只警告不回滚。 */
+/** Remove preview: clear the field first (the UI responds immediately); file deletion is best-effort, and failure only warns without rolling back. */
 async function removePreview(preset: NaiArtistPreset) {
   const path = preset.previewPath;
   if (!path) return;
@@ -178,11 +178,11 @@ async function removePreview(preset: NaiArtistPreset) {
   try {
     await deleteUserImage(path);
   } catch (error) {
-    toastr.warning(`Preview image reference removed, but file cleanup failed:${errorMessage(error)}`, 'Artist Tags');
+    toastr.warning(`Preview image reference removed, but file cleanup failed: ${errorMessage(error)}`, 'Artist Tags');
   }
 }
 
-/* ============ 删除(单条与批量共用确认弹窗) ============ */
+/* ============ Delete (single and bulk share the confirm dialog) ============ */
 
 const deleteOpen = ref(false);
 const deleteList = ref<NaiArtistPreset[]>([]);
@@ -204,7 +204,7 @@ async function confirmDelete() {
   deleting.value = true;
   const ids = new Set(deleteList.value.map(p => p.id));
   const plan = planArtistRemoval(settings.nai.artistPresets, ids, activeId.value);
-  // 预览文件清理 best-effort:文件没删掉不阻塞删条目(孤儿文件可手动清,条目删不掉才烦人)
+  // Preview file cleanup is best-effort: a file that wasn't deleted doesn't block deleting the entry (orphan files can be cleaned by hand; an entry that can't be deleted is what's annoying)
   let fileFailures = 0;
   for (const p of plan.removed) {
     if (!p.previewPath) continue;
@@ -231,7 +231,7 @@ async function confirmDelete() {
   }
 }
 
-/* ============ 编辑/查看弹窗(内置条只读) ============ */
+/* ============ Edit/view dialog (built-in entries read-only) ============ */
 
 const editItem = ref<ManagerItem | null>(null);
 const editName = ref('');
@@ -249,13 +249,13 @@ function closeEdit() {
 
 function saveEdit() {
   const item = editItem.value;
-  if (!item || item.builtin) return; // 内置只读(按钮已隐藏,双保险)
+  if (!item || item.builtin) return; // Built-ins are read-only (the button is already hidden; belt and braces)
   item.preset.name = editName.value.trim();
   item.preset.prompt = editPrompt.value;
   closeEdit();
 }
 
-/** 编辑弹窗里复制内置条:副本入库后关掉查看窗,让用户回到网格看到新卡。 */
+/** Duplicating a built-in entry in the edit dialog: once the copy is in the library close the view window, so the user returns to the grid and sees the new card. */
 function duplicateFromEdit() {
   const item = editItem.value;
   if (!item) return;
@@ -378,7 +378,7 @@ function duplicateFromEdit() {
 
             <div class="am-body">
               <div class="am-name-row">
-                <!-- 单选圈:明示「启用是单选切换」;整卡都可点,圈只是状态可视化和提示 -->
+                <!-- Radio circle: makes it explicit that "enabling is a single-choice switch"; the whole card is clickable, the circle only visualises state and hints -->
                 <span
                   class="am-radio"
                   :class="{ 'is-on': item.preset.id === activeId }"
@@ -436,7 +436,7 @@ function duplicateFromEdit() {
     </div>
   </ModalMask>
 
-  <!-- 删除确认:单条与批量共用;叠在管理器之上 -->
+  <!-- Delete confirmation: shared by single and bulk; stacked above the manager -->
   <ConfirmDialog
     v-model:open="deleteOpen"
     top-layer
@@ -455,7 +455,7 @@ function duplicateFromEdit() {
     </template>
   </ConfirmDialog>
 
-  <!-- 编辑/查看:名称 + 内容 + 预览图;绑定的正/负面词仍在面板里随「当前条」编辑 -->
+  <!-- Edit/view: name + content + preview image; bound positive/negative tags are still edited in the panel with "current entry" -->
   <ModalMask :open="!!editItem" top-layer @close="closeEdit">
     <div
       v-if="editItem"
@@ -560,8 +560,8 @@ function duplicateFromEdit() {
 </template>
 
 <style scoped>
-/* 管理器弹窗:比通用弹窗宽一档装卡片网格;固定高度,网格区内滚,头/工具条/底栏钉住。
-   .bbi-modal 默认 overflow-y:auto,这里改为 hidden,滚动交给 .am-scroll。 */
+/* Manager dialog: one step wider than the generic dialog to fit a card grid; fixed height, the grid area scrolls inside, header/toolbar/footer pinned.
+   .bbi-modal defaults to overflow-y:auto; here it becomes hidden, and scrolling is handed to .am-scroll. */
 .am-modal {
   max-width: 760px;
   height: 86vh;
@@ -585,7 +585,7 @@ function duplicateFromEdit() {
   white-space: nowrap;
 }
 
-/* 批量操作条:有勾选时才出现,accent 浅底与常规内容分区 */
+/* Bulk action bar: only appears when something is checked; a light accent background separates it from regular content */
 .am-batch {
   display: flex;
   align-items: center;
@@ -626,7 +626,7 @@ function duplicateFromEdit() {
   color: var(--bbi-ink-soft);
 }
 
-/* —— 卡片:点主体 = 启用/停用;选中态用浅底区分(与启用态的描边是两回事) —— */
+/* —— Cards: clicking the body = enable/disable; the selected state uses a light background (different from the enabled state's outline) —— */
 .am-card {
   display: flex;
   flex-direction: column;
@@ -651,7 +651,7 @@ function duplicateFromEdit() {
   background: var(--bbi-accent-soft);
 }
 
-/* 预览图区:固定 4:3,占位与实图同几何,卡片高度才齐 */
+/* Preview area: fixed 4:3, placeholders and real images share the same geometry so card heights line up */
 .am-art {
   position: relative;
   aspect-ratio: 4 / 3;
@@ -691,7 +691,7 @@ function duplicateFromEdit() {
   color: var(--bbi-ink-muted);
 }
 
-/* 勾选框垫一片 surface 底,压在图上也可辨认 */
+/* The checkbox sits on a patch of surface background so it stays legible over the image */
 .am-check {
   position: absolute;
   top: 6px;
@@ -726,8 +726,8 @@ function duplicateFromEdit() {
   border-color: transparent;
 }
 
-/* 「更换预览图」:hover 才浮现的居中胶囊,平时不挡图;
-   触屏没有 hover,走编辑弹窗里的同款按钮(双通道,不藏死) */
+/* "Change preview image": a centred pill that appears only on hover, not covering the image normally;
+   touch has no hover, so it uses the same button in the editor dialog (two channels; never hidden away) */
 .am-art-change {
   position: absolute;
   left: 50%;
@@ -767,7 +767,7 @@ function duplicateFromEdit() {
   gap: 6px;
   min-width: 0;
 }
-/* 单选圈:与勾选框(方形、批量)形态区分开,传达「启用是互斥单选」 */
+/* Radio circle: shaped differently from the checkbox (square, bulk), conveying "enabling is a mutually exclusive single choice" */
 .am-radio {
   flex: 0 0 auto;
   display: inline-flex;
@@ -792,7 +792,7 @@ function duplicateFromEdit() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 内容摘要:等宽两行截断,min-height 撑齐没填内容的卡 */
+/* Content summary: monospace, truncated to two lines; min-height keeps cards without content aligned */
 .am-prompt {
   font-family: var(--bbi-font-mono);
   font-size: 11px;
@@ -827,7 +827,7 @@ function duplicateFromEdit() {
   color: var(--bbi-accent);
   border-color: var(--bbi-accent);
 }
-/* 删除推到行尾,与编辑/复制两个「建设性」操作拉开距离 */
+/* Delete pushed to the end of the row, away from the two "constructive" actions edit/duplicate */
 .am-op-danger {
   margin-left: auto;
 }
@@ -848,7 +848,7 @@ function duplicateFromEdit() {
   flex: 1 1 auto;
 }
 
-/* —— 编辑/查看弹窗 —— */
+/* —— Edit/view dialog —— */
 .am-edit {
   max-width: 560px;
 }
@@ -878,7 +878,7 @@ function duplicateFromEdit() {
   flex-wrap: wrap;
 }
 
-/* 危险按钮:与设置页/ConfirmDialog 同一口径,scoped 不跨组件故补一份 */
+/* Danger button: same rule as the settings page/ConfirmDialog; scoped doesn't cross components, so a copy is added */
 .am-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);
@@ -889,7 +889,7 @@ function duplicateFromEdit() {
   background: var(--bbi-danger-soft);
 }
 
-/* 组头/弹窗里的小图标钮:与 NaiPanel 同款,scoped 不跨组件故补一份 */
+/* Small icon buttons in group headers/dialogs: same as NaiPanel; scoped doesn't cross components, so a copy is added */
 .bbi-icon-mini {
   flex: 0 0 auto;
   display: inline-flex;

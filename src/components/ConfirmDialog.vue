@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * 通用确认弹窗。替代浏览器原生 confirm()——原生弹窗在 Shadow DOM 外、样式不统一。
- * 受控:用 v-model:open 控制显隐;点确定 emit confirm,点取消/遮罩/关闭 emit cancel。
+ * Generic confirm dialog. Replaces the browser's native confirm(): the native dialog sits outside the Shadow DOM with inconsistent styling.
+ * Controlled: visibility via v-model:open; OK emits confirm; Cancel/mask/close emit cancel.
  *
- * Teleport 到 modalHost(.bbi-root 直接子级,在 .bbi-body 滚动容器之外):
- * 避开 iOS「可滚动祖先内 fixed 后代定位错乱」。宿主仍在 shadow root 内,
- * scoped 样式与 --bbi-* 变量照常生效——故 to 的是 shadow 内元素,而非 Teleport to="body"。
+ * Teleports to modalHost (direct child of .bbi-root, outside the .bbi-body scroll container),
+ * avoiding iOS's "fixed descendants misplaced inside a scrollable ancestor". The host is still inside the shadow root,
+ * so scoped styles and --bbi-* variables work as usual; hence the target is an element inside the shadow, not Teleport to="body".
  */
 import Icon from '@/components/Icon.vue';
 import { modalHost } from '@/state/ui';
@@ -14,19 +14,19 @@ withDefaults(
   defineProps<{
     open: boolean;
     title: string;
-    /** 确定按钮文案 */
+    /** OK button text */
     confirmText?: string;
-    /** 取消按钮文案 */
+    /** Cancel button text */
     cancelText?: string;
-    /** 确定按钮风格:primary=主色,danger=危险(低调描边,hover 显红) */
+    /** OK button style: primary = main colour, danger = dangerous (subtle outline, red on hover) */
     tone?: 'primary' | 'danger';
-    /** 确定按钮前的图标名(可选,如 trash) */
+    /** Icon name before the OK button (optional, e.g. trash) */
     confirmIcon?: string;
-    /** 忙碌中:禁用确定按钮并显示 busyText(供「更新中…」这类需保持弹窗的异步操作) */
+    /** Busy: disables the OK button and shows busyText (for async actions like "Updating…" that keep the dialog open) */
     busy?: boolean;
-    /** 忙碌时确定按钮文案 */
+    /** OK button text while busy */
     busyText?: string;
-    /** 叠加在其它弹窗之上(更高 z-index),如渠道弹窗里再开删除确认 */
+    /** Stacks above other dialogs (higher z-index), e.g. a delete confirmation opened from the channel dialog */
     topLayer?: boolean;
   }>(),
   {
@@ -92,7 +92,7 @@ function confirm() {
 </template>
 
 <style scoped>
-/* 确认弹窗特有样式(基础 .bbi-modal* 在 base.css 全局)。 */
+/* Styles specific to the confirm dialog (the base .bbi-modal* styles are global in base.css). */
 .bbi-modal-mask-top {
   z-index: 10002;
 }
@@ -108,7 +108,7 @@ function confirm() {
 .bbi-modal-foot-spacer {
   flex: 1 1 auto;
 }
-/* 危险操作按钮:描边低调,hover 才显红,避免误触 */
+/* Dangerous-action button: subtle outline, red only on hover, to avoid mis-clicks */
 .bbi-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);

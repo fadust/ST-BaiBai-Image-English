@@ -34,27 +34,27 @@ import {
 } from '@/state/settings';
 
 /**
- * 本次自动 tag 的协议形态。按默认后端与其开关算**一次**,写协议(本模块)与验收/收尾
- * (runner.ts)共用同一份——两边各算各的迟早会漂:协议说只写 tag,验收却还在要 nl。
+ * Protocol shape for this auto-tag run. Computed **once** from the default backend and its toggles, and shared by protocol writing (this module) and
+ * validation/finishing (runner.ts). If each side computed its own, they would drift sooner or later: the protocol says tags only while validation still demands nl.
  */
 export const RULE_ENGLISH_OUTPUT = "Use English for all generated descriptions, explanations, and change reasons, even when the source is in another language. Preserve proper names, character names, JSON keys, enum values, IDs, macros, variable paths, and verbatim evidence exactly.";
 
 export interface AutoTagProfile {
-  /** NAI 4.5/V5:Base + 原生 Character Prompts(characters[])。 */
+  /** NAI 4.5/V5: Base + native Character Prompts (characters[]). */
   naiCharPrompts: boolean;
   /**
-   * 协议含 nl:ComfyUI 当前工作流开了「生成自然语言」,或 NAI 4.5/V5 开了「生成自然语言」。
-   * 两个开关同一口径,只管 AI 写不写;已写进 tag 的 nl 照常发送。
+   * Protocol includes nl: the current ComfyUI workflow has "Generate Natural Language" on, or NAI 4.5/V5 has "Generate Natural Language" on.
+   * Both toggles follow the same rule and only control whether the AI writes nl; nl already written into a tag is sent as usual.
    */
   nl: boolean;
-  /** 渠道锁定的画幅方向;null = 由 AI 按后端规范的判据自选。 */
+  /** Orientation locked by the channel; null = the AI chooses per the backend specification's criteria. */
   lockedSize: Orientation | null;
 }
 
 export function autoTagProfile(): AutoTagProfile {
   const backend = settings.defaultBackend;
   const naiCharPrompts = backend === 'nai' && naiSupportsCharacterPrompts(settings.nai.model);
-  // 两项都取自同一个当前预设 / 渠道:切工作流即同时切走自然语言与画幅锁的口径
+  // Both come from the same current preset / channel: switching workflows switches the natural-language and orientation-lock rules together
   const nl =
     backend === 'comfyui'
       ? activeComfyPreset().naturalLanguage
@@ -64,12 +64,12 @@ export function autoTagProfile(): AutoTagProfile {
 }
 
 /**
- * 展开自然语言条件段:{{#nl}}…{{/nl}} 只在开启自然语言时保留,{{^nl}}…{{/nl}} 只在关闭时保留
- * (写法借 Mustache 的段落语法,与 ComfyUI 规范里整段替换的 {{nl}} 宏互不相干)。
+ * Expands natural-language conditional sections: {{#nl}}…{{/nl}} is kept only when natural language is on, {{^nl}}…{{/nl}} only when it is off
+ * (syntax borrowed from Mustache sections; unrelated to the {{nl}} macro that replaces a whole block in the ComfyUI specification).
  *
- * 用在规范与思维链上,让一份文本在开关两侧各自自洽,而不必维护两份会漂的副本。
- * 不支持嵌套;配不上对的标记原样留着——写错了在请求历史里看得见,比静默吞掉好查。
- * 这两类文本都不经 ST 宏替换(substituteParams),标记不会被宿主吃掉。
+ * Used on specifications and thought chains so one text stays consistent on both sides of the toggle, without maintaining two copies that drift.
+ * Nesting is not supported; unmatched markers are left as-is: a mistake stays visible in the request history, which is easier to debug than silent swallowing.
+ * Neither kind of text goes through ST macro substitution (substituteParams), so the host never eats the markers.
  */
 export function expandNlSections(text: string, nlOn: boolean): string {
   return text.replace(/\{\{([#^])nl\}\}([\s\S]*?)\{\{\/nl\}\}/g, (_match, kind: string, body: string) =>
@@ -78,12 +78,12 @@ export function expandNlSections(text: string, nlOn: boolean): string {
 }
 
 /**
- * 按默认后端取 tag 书写规范:
- * - comfyui → comfySpec(留空回落内置默认);{{nl}} 宏按自然语言开关展开/置空,
- *   自定义内容不含宏时开启开关会把自然语言规范追加在末尾(防止开关静默失效)。
- * - nai → 4.5/V5 取 naiV5Spec、其余模型取 naiSpec(留空各自回落内置默认)。
- * - webui → 暂不附加。
- * 两个后端都先展开自然语言条件段(expandNlSections)。
+ * Picks the tag-writing specification for the default backend:
+ * - comfyui → comfySpec (blank falls back to the built-in default); the {{nl}} macro expands or empties per the natural-language toggle,
+ *   and if custom content has no macro, turning the toggle on appends the natural-language specification at the end (so the toggle never silently fails).
+ * - nai → 4.5/V5 use naiV5Spec, other models use naiSpec (blank falls back to each built-in default).
+ * - webui → nothing appended for now.
+ * Both backends expand natural-language conditional sections first (expandNlSections).
  */
 function backendPromptSpec(options: AutoTagSettings, nlOn: boolean, naiCharPromptsOn: boolean): string {
   if (settings.defaultBackend === 'comfyui') {
@@ -94,7 +94,7 @@ function backendPromptSpec(options: AutoTagSettings, nlOn: boolean, naiCharPromp
       : nlSpec
         ? `${template}\n\n${nlSpec}`
         : template;
-    // 宏置空后可能留下连续空行,折叠掉
+    // Emptying the macro may leave consecutive blank lines; collapse them
     return resolved.replace(/\n{3,}/g, '\n\n').trim();
   }
   if (settings.defaultBackend === 'nai') {
@@ -107,12 +107,12 @@ function backendPromptSpec(options: AutoTagSettings, nlOn: boolean, naiCharPromp
 }
 
 /**
- * 按默认后端取思维链,与 backendPromptSpec 一一配对。
+ * Picks the thought chain for the default backend, paired one-to-one with backendPromptSpec.
  *
- * 拆成三份是因为思维链的槽位块要求填的每个字段,都得在同后端规范里有判据和词表:
- * V5 的规范讲的是 Base + Character Prompts,没有景别词表、没有横竖判据,也明令禁止
- * 邻接绑定——共用一份 ComfyUI 口径的思维链会让它被要求填规范从未教过的东西。
- * webui 暂无专属规范,回落 comfy 那份(该后端尚未接入)。
+ * It is split into three because every field the thought chain's slot block asks for needs criteria and a vocabulary in the same backend's specification:
+ * the V5 specification covers Base + Character Prompts, with no shot-size vocabulary, no landscape/portrait criteria, and it explicitly forbids
+ * adjacency binding; a shared ComfyUI-style thought chain would ask it to fill things its specification never taught.
+ * webui has no dedicated specification yet and falls back to the comfy one (that backend isn't wired up yet).
  */
 function backendThinkingPrompt(options: AutoTagSettings, nlOn: boolean, naiCharPromptsOn: boolean): string {
   if (settings.defaultBackend === 'nai') {
@@ -150,17 +150,17 @@ export async function buildAutoTagMessages(
   targetFloor: number,
   options: AutoTagSettings,
   memory: BookMemoryContext | null,
-  /** Runner 在请求开始时生成的位置快照；缺省时由当前楼层即时生成。 */
+  /** Position snapshot generated by the runner when the request starts; when omitted it is generated on the spot from the current floor. */
   preparedTargetOverride?: PreparedTargetText,
-  /** 角色固定外貌库文本(charAnchors.ts 产出);空/null = 本轮无库,示例改用自行补特征的口径。 */
+  /** Character fixed-appearance library text (produced by charAnchors.ts); empty/null = no library this round, and the example switches to filling in traits itself. */
   library?: string | null,
   /**
-   * 追加给模型的任务备注(单槽重写时说明「只重写第 N 张的提示词、画面不变」,
-   * 并带上该槽位当前提示词作锚点与其余画面清单)。
-   * 空串/缺省时不占消息位;放在角色参考与上下文之后、目标正文之前。
+   * Task note appended for the model (for single-slot rewrites, it says "rewrite only image N's prompt, scene unchanged",
+   * with that slot's current prompt as the anchor and the list of other images).
+   * Takes no message slot when empty/omitted; placed after the character reference and context, before the target text.
    */
   taskNote?: string,
-  /** 协议形态;runner 开跑时快照一份传进来,验收与收尾用同一份(缺省即时现算)。 */
+  /** Protocol shape; the runner snapshots one at start and passes it in, so validation and finishing use the same one (computed on the spot when omitted). */
   profile: AutoTagProfile = autoTagProfile(),
 ): Promise<ChatMsg[]> {
   const target = context.chat[targetFloor];
@@ -179,8 +179,8 @@ export async function buildAutoTagMessages(
     .join('\n\n');
   const memoryText = memory ? memory.text : 'Character reference: BaiBai Book is not provided this time.';
 
-  // 世界书/角色卡/人设:与柏宝书摘要副 API 同口径(有则带,取不到降级为空,不影响主流程)。
-  // 世界书扫描文本 = 目标楼 + 携带的上下文楼(关键词激活与主对话一致)。
+  // Lorebook/character card/persona: same rule as BaiBai Book's summary secondary API (included if available; degrades to empty if not, without affecting the main flow).
+  // Lorebook scan text = target floor + the context floors carried along (keyword activation matches the main chat).
   const scanFloors = recentFloors(context, targetFloor, options.contextMessages);
   const [worldInfo, charCard, persona] = await Promise.all([
     fetchWorldInfo(context.chat, scanFloors, context.name1, context.name2),
@@ -188,15 +188,15 @@ export async function buildAutoTagMessages(
     Promise.resolve(fetchUserPersona(context)),
   ]);
 
-  // 自然语言模式(profile.nl):ComfyUI 当前工作流或 NAI 渠道开启了「生成自然语言」。
-  // 开启后协议变为 tag/nl 两键——自然语言是配合短 tag 用的,不是替代。
-  // 动态负面词同样取自当前预设:切工作流即同时切走自然语言与动态负面词的口径。
+  // Natural-language mode (profile.nl): the current ComfyUI workflow or NAI channel has "Generate Natural Language" on.
+  // When on, the protocol becomes two keys, tag/nl; natural language complements the short tags, it doesn't replace them.
+  // Dynamic negatives also come from the current preset: switching workflows switches the natural-language and dynamic-negative rules together.
   const comfyOn = settings.defaultBackend === 'comfyui';
   const naiCharPromptsOn = profile.naiCharPrompts;
   const comfyPreset = comfyOn ? activeComfyPreset() : null;
   const nlOn = profile.nl;
-  // 动态负面词门槛:custom 模式看工作流是否含 %negative_prompt%;
-  // simple 模式由模板决定(Flux 无真实负面输入,请求了也没地方写)。
+  // Dynamic negative threshold: custom mode checks whether the workflow contains %negative_prompt%;
+  // simple mode is decided by the template (Flux has no real negative input, so there'd be nowhere to put it).
   let negativeOn = false;
   if (comfyPreset) {
     if (comfyPreset.mode === 'simple') {
@@ -205,19 +205,19 @@ export async function buildAutoTagMessages(
       try {
         negativeOn = getWorkflowPlaceholders(comfyPreset.workflow).includes('negative_prompt');
       } catch {
-        // 工作流无效时由渠道面板负责提示；自动 tag 降级为不请求动态负面词。
+        // When the workflow is invalid the channel panel shows the hint; auto-tag degrades to not requesting dynamic negatives.
       }
     }
   }
-  // 示例一律写实际外貌串:@占位符已撤回(见 charAnchors.ts 文件头),
-  // 有库/无库的差别只在「照抄库中字段」还是「自行补基础特征」,示例形态相同。
+  // Examples always write the actual appearance string: @placeholders were withdrawn (see the charAnchors.ts file header);
+  // with or without a library, the only difference is "copy the library fields" vs "fill in basic traits yourself"; the example shape is the same.
   const sampleTag = library
     ? '1girl, long silver hair, red eyes, white dress'
     : '1girl, short black hair, white dress';
   const sampleNl = library
     ? 'A girl with long silver hair and red eyes wearing a white dress'
     : 'A girl with short black hair wearing a white dress';
-  // NAI 关掉自然语言时示例里一个 nl 键都不留:模型照抄示例的倾向比照读规则强得多
+  // When NAI natural language is off, the example keeps not a single nl key: the model copies examples far more readily than it follows rules
   const sampleImage: Record<string, unknown> = naiCharPromptsOn
     ? {
         position: 'P2',
@@ -238,7 +238,7 @@ export async function buildAutoTagMessages(
   if (negativeOn) sampleImage.negative = 'extra people, duplicate character';
   sampleImage.size = profile.lockedSize ?? 'portrait';
   const outputShape = JSON.stringify({ images: [sampleImage], changes: [] });
-  // NAI 两种写法共用的尾段:角色块的取舍与 Base / 角色的分工不随自然语言开关变
+  // Tail shared by both NAI forms: which characters get blocks and the Base / character division don't change with the natural-language toggle
   const naiCharacterRuleTail =
     'This includes visible characters who have no library profile: a one-off unnamed individual gets a Character Prompt too, keyed by the term the story uses for them. Anonymous crowds visible in the frame remain in Base. Character tag uses girl/boy without a numeric count and contains that character appearance, outfit, and action. Do not include quality tags, negative tags, or XML.';
   const contentRule = naiCharPromptsOn
@@ -252,8 +252,8 @@ export async function buildAutoTagMessages(
     ? '\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text.'
     : '';
 
-  // 设置层已维护 0 ≤ min ≤ max；这里仍做一次局部归一,让直接调用/测试传入脏对象也不会
-  // 生成自相矛盾的数量协议。上限至少 1,下限 0 表示保留「本楼无需插图」的质量优先口径。
+  // The settings layer already maintains 0 ≤ min ≤ max; local normalisation is still done here so direct calls/tests passing dirty objects
+  // can't produce a self-contradictory count protocol. The maximum is at least 1; a minimum of 0 keeps the quality-first rule "this floor may need no image".
   const maxImages = Math.max(1, Math.floor(Number(options.maxImages)) || 1);
   const minImages = Math.min(maxImages, Math.max(0, Math.floor(Number(options.minImages)) || 0));
   const imageCountRule =
@@ -261,9 +261,9 @@ export async function buildAutoTagMessages(
       ? `2. images must contain between 0 and ${maxImages} items. An empty array can be returned when there are no visible instants worth drawing; don't try to get closer to the upper limit.`
       : `2. images must contain between ${minImages} and ${maxImages} items. The minimum of ${minImages} is an explicit user requirement: even if the strongest candidate is insufficient, it must be supplemented from a lower but still visible single moment in the target text, and no less than ${minImages} images or an empty array. After meeting the minimum, do not add filler merely to approach the maximum.`;
 
-  // 画幅方向的判定口径写在后端规范的「画幅方向」段;这里只声明键的合法值,不重复规则。
-  // 渠道锁了方向时改口:方向已定,规范里那段选向判据本次不适用,取景要反过来贴合画幅——
-  // 只锁出图不改协议的话,模型照样为群像构思宽画面,出图却是竖的,人被挤成一排小人。
+  // The orientation criteria are in the backend specification's "frame orientation" section; here only the key's valid values are declared, without repeating the rules.
+  // When the channel locks orientation the wording changes: the orientation is fixed, the specification's selection criteria don't apply this time, and framing must fit the frame instead;
+  // locking only the output without changing the protocol would still have the model plan wide group shots while the output is portrait, squeezing people into a row of tiny figures.
   const sizeRule =
     profile.lockedSize === 'portrait'
       ? '5. size has been locked as a vertical image in the channel settings by the user, and "portrait" is filled in for each image; the criteria for selecting horizontal and vertical in the back-end specifications do not apply this time. Framing in a vertical format: For scenes with many people or a wide area, rely on depth, front and rear background levels, or closer scenes to accommodate the subject. Do not squeeze people into a row horizontally.'
@@ -274,7 +274,7 @@ export async function buildAutoTagMessages(
   const libraryReferenceRule = naiCharPromptsOn
     ? `- If a visible character exists in the fixed appearance library or is created in this changes array, copy the fixed fields into that character own characters[].tag; keep appearance wording verbatim but convert 1girl/1boy to girl/boy. The fandom identity tag (fields.fandom) goes first, verbatim. Do not put them in Base or assign them to another character.${nlOn ? ' Library natural-language notes may inform that character nl.' : ''} Use the library entry name verbatim for characters[].name and for any name inside ${nlOn ? 'tag/nl' : 'tag'} — never transliterate, translate, or vary it.`
     : '- As long as the character on the screen has been in the 【 character fixed appearance library 】, or has created a file in this changes, tag and nl must copy the field values in the library/newly created file, and the wording must not be changed word by word. They are not allowed to rewrite or add or delete their fixed appearance by themselves. The fandom field is only used for file records. ComfyUI does not copy it when drawing. The identity of the fan tag is determined on-site according to the issued ComfyUI specification and the brackets are escaped according to the specification. \n - The fixed appearance of the same character is only written once in a picture: when he is mentioned again in the same picture, use a short reference (the boy, the silver-haired girl) to take over, and it is forbidden to repeat the entire series of appearances a second time - repetition will make the model think that there are multiple identical people in the picture, and draw one person into several disconnected pieces.';
-  // 建档 nl 只在协议含 nl 时要求(runner 的验收同一口径,见 autoTagProfile)
+  // Profile nl is only required when the protocol includes nl (the runner's validation follows the same rule; see autoTagProfile)
   const newCharacterNlRule = !naiCharPromptsOn
     ? ''
     : nlOn
@@ -320,19 +320,19 @@ ${characterRule}
 
   const spec = backendPromptSpec(options, nlOn, naiCharPromptsOn);
 
-  // 消息顺序与柏宝书摘要请求一致:破限 → 角色设定 → 主角设定 → 世界设定 → 任务规则 → 正文。
+  // Message order matches BaiBai Book's summary request: Core Prompt → character settings → protagonist settings → world settings → task rules → story text.
   const messages: ChatMsg[] = [];
-  // 破限词与柏宝书同口径:留空回落内置默认(同款文本),永远置顶第一条 system。
+  // Core Prompt follows the same rule as BaiBai Book: blank falls back to the built-in default; always pinned as the first system message.
   const jailbreak = (options.prompts?.jailbreak ?? '').trim() || DEFAULT_JAILBREAK_PROMPT;
   if (jailbreak) messages.push({ role: 'system', content: jailbreak });
   if (charCard) messages.push({ role: 'system', content: buildCharCardSystem(charCard) });
   if (persona) messages.push({ role: 'system', content: buildPersonaSystem(persona) });
   if (worldInfo) messages.push({ role: 'system', content: buildWorldInfoSystem(worldInfo) });
-  // 后端书写规范(ComfyUI/NAI)压在固定协议之前;无适用规范时不占消息位。
+  // Backend writing specification (ComfyUI/NAI) comes before the fixed protocol; takes no message slot when none applies.
   if (spec) messages.push({ role: 'system', content: spec });
   messages.push({ role: 'system', content: RULE_ENGLISH_OUTPUT + '\n\n' + fixedContract });
-  // 思维链:压在任务协议之后,要求模型先在 <thinking> 里过检查点再输出 JSON。
-  // 解析端(protocol.ts)会先剥掉 think 块再取 JSON,二者配套;按后端取对应的那一份。
+  // Thought chain: after the task protocol, asking the model to pass the checkpoints in <thinking> before outputting JSON.
+  // The parsing side (protocol.ts) strips think blocks before taking the JSON; the two go together; the one matching the backend is picked.
   const thinking = backendThinkingPrompt(options, nlOn, naiCharPromptsOn);
   if (thinking) messages.push({ role: 'system', content: thinking });
   const libraryBlock = library?.trim() || `【 character fixed appearance database 】[system-maintained; currently empty]\n (Currently empty, no character has been profiled. The World Info, character card, BaiBai Book and text only provide the basis for creation; official characters not listed in this block must be profiled through field:"new".)`;

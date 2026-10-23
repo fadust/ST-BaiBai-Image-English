@@ -32,7 +32,7 @@ describe('vibeStore', () => {
     fileStore.remove.mockReset();
   });
 
-  it('设置索引不包含原图和编码正文', () => {
+  it('settings index excludes the original image and encoded body', () => {
     const meta = vibeMetaFromData(
       'v1',
       '测试',
@@ -54,7 +54,7 @@ describe('vibeStore', () => {
     expect(meta).not.toHaveProperty('thumbnail');
   });
 
-  it('正文和缩略图使用稳定文件名分别上传', async () => {
+  it('body and thumbnail are uploaded separately under stable file names', async () => {
     fileStore.upload
       .mockResolvedValueOnce('/user/files/bbi-vibe-v1.json')
       .mockResolvedValueOnce('/user/files/bbi-vibe-thumb-v1.jpg');
@@ -67,7 +67,7 @@ describe('vibeStore', () => {
     expect(fileStore.upload).toHaveBeenNthCalledWith(2, 'bbi-vibe-thumb-v1.jpg', 'dGh1bWI=');
   });
 
-  it('按路径读取正文并删除两份文件', async () => {
+  it('reads the body by path and deletes both files', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(data), { status: 200 })));
     const vibe = vibeMetaFromData(
       'v1',
@@ -88,7 +88,7 @@ describe('vibeStore', () => {
 });
 
 describe('clampVibeStrength', () => {
-  it('自由填值不吸附步进,超界夹到 0–1', () => {
+  it('free entry is not snapped to the step; out-of-range is clamped to 0–1', () => {
     expect(clampVibeStrength(0.375)).toBe(0.375);
     expect(clampVibeStrength('0.4321')).toBe(0.4321);
     expect(clampVibeStrength(5)).toBe(1);
@@ -97,15 +97,15 @@ describe('clampVibeStrength', () => {
     expect(clampVibeStrength(1)).toBe(1);
   });
 
-  it('认不出数就回落默认值,而非静默变成 0', () => {
-    // 回归:旧实现用 Number(v),而 Number(null) / Number('') 都是 0,
-    // 「字段缺失」于是被判成「强度 0」——vibe 挂上了却对画面毫无影响。
+  it('unrecognised numbers fall back to the default instead of silently becoming 0', () => {
+    // Regression: the old implementation used Number(v), and Number(null) / Number('') are both 0,
+    // so "field missing" was judged as "strength 0": the vibe was attached but had no effect on the image at all.
     for (const raw of [null, undefined, '', '   ', 'abc', NaN, Infinity, true, {}, []]) {
       expect(clampVibeStrength(raw)).toBe(0.6);
     }
   });
 
-  it('可指定回落值(面板输入非法时保留原强度)', () => {
+  it('a fallback value can be given (keeps the original strength on invalid panel input)', () => {
     expect(clampVibeStrength('', 0.9)).toBe(0.9);
     expect(clampVibeStrength('abc', 0.25)).toBe(0.25);
     expect(clampVibeStrength('0.5', 0.9)).toBe(0.5);

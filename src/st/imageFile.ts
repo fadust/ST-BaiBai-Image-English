@@ -1,8 +1,8 @@
 /**
- * 图片文件的读取与缩放(DOM 侧小工具,与网络层 st/images.ts 分开)。
+ * Reading and resizing image files (a small DOM-side helper, kept apart from the network layer in st/images.ts).
  *
- * NaiPanel 的 vibe 缩略图与画师串预览图共用:canvas 重绘成 jpeg,
- * 既压体积也把 png/webp/gif 统一成静态 jpeg(gif 动图会丢掉动效,预览图不在意)。
+ * Shared by NaiPanel's vibe thumbnails and artist-string preview images: redraws on a canvas as jpeg,
+ * which both shrinks the size and normalises png/webp/gif to a static jpeg (gif animation is lost; previews don't care).
  */
 
 export function readFileAsDataUrl(file: File): Promise<string> {
@@ -23,7 +23,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** 把 dataURL 图片缩到最长边 maxEdge 以内,重编码为 jpeg dataURL。 */
+/** Scales a dataURL image so its longest edge is within maxEdge and re-encodes it as a jpeg dataURL. */
 export async function makeJpegThumbnail(
   dataUrl: string,
   maxEdge: number,

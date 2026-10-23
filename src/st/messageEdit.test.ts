@@ -61,7 +61,7 @@ describe('safe message editing', () => {
 
     const buildNext = vi.fn((text: string) => `${text}\n<bbi_image>scene</bbi_image>`);
     await expect(applyMessageText(0, buildNext, 'chat-a', 0)).resolves.toBe('saved');
-    // 基底是落盘那一刻的正文,不是请求开始时的快照
+    // The base is the text at the moment of saving, not the snapshot from the start of the request
     expect(buildNext).toHaveBeenCalledWith('别的插件刚改过的正文');
     expect(message.mes).toBe('别的插件刚改过的正文\n<bbi_image>scene</bbi_image>');
     expect(saveChat).toHaveBeenCalledOnce();
@@ -125,7 +125,7 @@ describe('safe message editing', () => {
       send_date: '2026-08-27 10:00:00',
       extra: {},
     };
-    // 别的插件整体换壳(chat[i] = {...chat[i], mes}):同一条消息,不该判成楼层变化
+    // Another plugin swapping the whole wrapper (chat[i] = {...chat[i], mes}): the same message, which must not count as a floor change
     const replacement = { ...original, mes: '别的插件改写后的正文', extra: {} };
     const context = {
       chat: [replacement],

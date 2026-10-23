@@ -1,30 +1,30 @@
 import { reactive } from 'vue';
 
 /**
- * 楼层卡片「折叠态」的模块级 store。
+ * Module-level store for the "collapsed" state of floor cards.
  *
- * 为什么必须放在组件外:与 genState.ts 同理——卡片的生命周期由水合决定,swipe、
- * 编辑消息、ST 重渲染楼层都会换锚点、卸载重挂组件,折叠态若放组件 ref 里,
- * 用户折好的图会自己弹开。key 与 genState/registry 同构(chatId|messageId|swipeId|seq),
- * 卡片重建后按 key 认领回自己的折叠态。
+ * Why it must live outside the component: same reason as genState.ts. Card lifetimes are decided by hydration; swiping,
+ * editing a message and ST re-rendering floors all change anchors and unmount/remount components. If collapsed state lived in a component ref,
+ * images the user collapsed would pop open again. The key has the same shape as genState/registry (chatId|messageId|swipeId|seq),
+ * so a rebuilt card reclaims its own collapsed state by key.
  *
- * 为什么不写 message.extra:折叠是「临时遮蔽」性质的 UI 态,不是数据;写 extra 意味着
- * 每次折叠/展开都 saveChat() 落盘一次,代价与语义都不合适。会话内记住即可,
- * 刷新后回落到设置项「楼层图片默认折叠」(settings.ui.autoCollapseImages)。
+ * Why not message.extra: collapsing is temporary-concealment UI state, not data. Writing extra would mean
+ * a saveChat() on every collapse/expand, wrong in both cost and meaning. Remembering it for the session is enough;
+ * after a reload it falls back to the setting "Collapse floor images by default" (settings.ui.autoCollapseImages).
  *
- * 不主动清理:一个槽位只占一个布尔值,旧聊天/已删槽位的残留可忽略;
- * 且切聊天再切回来时折叠态还在,反而是用户期望的行为。
+ * No active cleanup: each slot holds a single boolean, so leftovers from old chats/deleted slots are negligible;
+ * and keeping the state when switching chats and back is actually what users expect.
  */
 
-/** 显式设置过折叠态的槽位;没设过的槽位回落到「默认折叠」设置项。 */
+/** Slots whose collapsed state was set explicitly; others fall back to the "collapse by default" setting. */
 const collapsed = reactive(new Map<string, boolean>());
 
-/** 当前折叠态:手动设置优先,否则用默认值(设置项「楼层图片默认折叠」)。 */
+/** Current collapsed state: a manual setting wins, otherwise the default (setting "Collapse floor images by default"). */
 export function isCollapsed(key: string, defaultCollapsed: boolean): boolean {
   return collapsed.get(key) ?? defaultCollapsed;
 }
 
-/** 手动设置折叠/展开(覆盖默认值,会话内有效)。 */
+/** Manually set collapsed/expanded (overrides the default, valid for the session). */
 export function setCollapsed(key: string, value: boolean): void {
   collapsed.set(key, value);
 }

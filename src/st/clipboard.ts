@@ -1,8 +1,8 @@
 /**
- * 复制到剪贴板 —— 全项目统一入口。
+ * Copy to clipboard: the single entry point for the whole project.
  *
- * 手机常用局域网 HTTP 地址访问 ST，此时异步 Clipboard API 不可用；回退到隐藏
- * textarea + execCommand，和 ST 自身的复制工具保持同一兼容策略。
+ * Phones often reach ST over a LAN HTTP address, where the async Clipboard API is unavailable; fall back to a hidden
+ * textarea + execCommand, the same compatibility strategy as ST's own copy helper.
  */
 function legacyCopy(text: string): boolean {
   const textArea = document.createElement('textarea');

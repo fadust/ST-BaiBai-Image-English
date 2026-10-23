@@ -1,7 +1,7 @@
 /**
- * 正文清洗工具(与柏宝书 timeTag.ts 的 stripCustomTags 完全同口径,改动需双端同步)。
- * 名单来自共享存储(settings.excludes.customStripTags),输入时已由 sanitizeTagName 消毒,
- * 这里只负责按标签名生成「整块删除」正则并执行。
+ * Story-text cleanup helpers (exactly the same rules as stripCustomTags in BaiBai Book's timeTag.ts; keep both in sync when changing).
+ * The list comes from shared storage (settings.excludes.customStripTags) and is sanitised by sanitizeTagName on input;
+ * this module only builds the "remove whole block" regexes from tag names and runs them.
  */
 
 const RE_THINK_BLOCK = /<think(?:ing)?\b[\s\S]*?<\/think(?:ing)?>/gi;
@@ -9,19 +9,20 @@ const RE_START = /<bbs_start\b[^>]*>([\s\S]*?)<\/bbs_start>/gi;
 const RE_END = /<bbs_end\b[^>]*>([\s\S]*?)<\/bbs_end>/gi;
 
 /**
- * 按标签名生成「整块删除」正则(含标签本身与内部内容)。tag 已由 sanitizeTagName 剔除正则元字符,
- * 拼进 RegExp 安全。边界用前瞻 (?=[\s/>]) 而非 \b —— \b 只认 ASCII 词字符,中文标签(如 <雪>)
- * 在 `雪` 与 `>` 之间无词边界会匹配失败;前瞻「标签名后须紧跟空白/斜杠/右括号」对中英文都成立,
- * 且同样防止 <snow> 误吃 <snowball> 前缀。同时删配对块与落单的自闭/单标签。
+ * Builds a "remove whole block" regex for a tag name (the tag itself plus its contents). The tag has had regex metacharacters
+ * removed by sanitizeTagName, so it is safe inside a RegExp. The boundary uses the lookahead (?=[\s/>]) rather than \b: \b only knows
+ * ASCII word characters, so a CJK tag (e.g. <雪>) has no word boundary between `雪` and `>` and would fail to match. The lookahead
+ * "tag name must be followed by whitespace, slash or closing bracket" works for both CJK and Latin names,
+ * and still stops <snow> from eating the <snowball> prefix. Removes paired blocks as well as stray self-closing/single tags.
  */
 function blockStripRegexes(tag: string): RegExp[] {
   return [
-    new RegExp(`<${tag}(?=[\\s/>])[^>]*>[\\s\\S]*?</${tag}>`, 'gi'), // 配对块
-    new RegExp(`<\\/?${tag}(?=[\\s/>])[^>]*\\/?>`, 'gi'), // 落单的开/闭/自闭标签
+    new RegExp(`<${tag}(?=[\\s/>])[^>]*>[\\s\\S]*?</${tag}>`, 'gi'), // Paired blocks
+    new RegExp(`<\\/?${tag}(?=[\\s/>])[^>]*\\/?>`, 'gi'), // Stray open/close/self-closing tags
   ];
 }
 
-/** 删掉用户在设置里配置的自定义标签(整块:标签 + 内部内容)。空名单则原样返回。 */
+/** Removes the custom tags the user configured in settings (whole block: tag + inner content). Returns unchanged for an empty list. */
 function replaceCustomTags(s: string, tags: string[], replacement: string): string {
   let out = s;
   for (const tag of tags) {
@@ -35,7 +36,7 @@ export function stripCustomTags(s: string, tags: string[]): string {
   return replaceCustomTags(s, tags, '');
 }
 
-/** 删柏宝书托管的尾部旁注块(bbs_items/bbs_vars,开/闭标签独占行配对)。 */
+/** Removes BaiBai Book's managed trailing side-note blocks (bbs_items/bbs_vars, open/close tags paired on their own lines). */
 function stripManagedBlock(s: string, tag: string): string {
   const openRe = new RegExp(`^[ \\t]*<${tag}\\b[^>]*>[ \\t]*$`, 'm');
   const closeRe = new RegExp(`^[ \\t]*</${tag}>[ \\t]*$`, 'm');
@@ -88,7 +89,7 @@ function clampToStoryBody(
     .trim();
 }
 
-/** 历史楼层与柏宝书 cleanBody 同口径；本插件的 bbi_image 必须保留供角色外貌续接。 */
+/** History floors use the same rule as BaiBai Book's cleanBody; this plugin's bbi_image must be kept so character appearance can carry over. */
 export function cleanHistoryText(mes: string, tags: string[]): string {
   return clampToStoryBody(mes, tags, true)
     .replace(RE_START, (_, value) => `(Start time:${String(value).trim()})`)
@@ -107,18 +108,18 @@ interface SourceLineRange {
 }
 
 export interface TargetSegment {
-  /** 发给模型的短位置 ID。 */
+  /** Short position ID sent to the model. */
   id: string;
-  /** 对应原始正文的物理行号(0-based，仅插件内部使用)。 */
+  /** Physical line number in the original text (0-based, plugin-internal only). */
   sourceLine: number;
-  /** 删除噪声后的该行叙事文本。 */
+  /** The line's narrative text with noise removed. */
   text: string;
 }
 
 export interface PreparedTargetText {
-  /** 带段尾位置 ID 的目标正文。 */
+  /** Target text with position IDs at the end of paragraphs. */
   promptText: string;
-  /** 位置 ID 到原始物理行的稳定映射。 */
+  /** Stable mapping from position ID to original physical line. */
   segments: TargetSegment[];
 }
 
@@ -223,8 +224,8 @@ function targetRemovalRanges(source: string, tags: string[]): RemovalRange[] {
 }
 
 /**
- * 目标正文删除同款噪声和时间标签，并只给保留下来的非空物理行追加段尾位置 ID。
- * 每个 ID 直接保存原始 sourceLine，不再要求模型复制原文，也不依赖清洗后文本反查。
+ * Removes the same noise and time tags from the target text, and appends a paragraph-end position ID only to the non-empty physical lines kept.
+ * Each ID stores the original sourceLine directly, so the model no longer has to copy the original text, and nothing depends on looking up the cleaned text.
  */
 export function prepareTargetText(mes: string, tags: string[]): PreparedTargetText {
   const source = String(mes ?? '');
@@ -239,7 +240,7 @@ export function prepareTargetText(mes: string, tags: string[]): PreparedTargetTe
   };
 }
 
-/** 不带位置标记的目标清洗结果，供调试/测试查看。 */
+/** Cleaned target text without position markers, for debugging/tests. */
 export function cleanTargetText(mes: string, tags: string[]): string {
   return prepareTargetText(mes, tags).segments.map(segment => segment.text).join('\n\n');
 }

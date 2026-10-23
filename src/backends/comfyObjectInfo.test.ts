@@ -31,7 +31,7 @@ const OBJECT_INFO = {
 };
 
 describe('parseObjectInfo', () => {
-  it('摘出各类文件列表;clips 取 CLIPLoader 与 DualCLIPLoader 并集去重', () => {
+  it('extracts each file list; clips is the deduplicated union of CLIPLoader and DualCLIPLoader', () => {
     const lists = parseObjectInfo(OBJECT_INFO);
     expect(lists.checkpoints).toEqual(['illu.safetensors', 'pony.safetensors']);
     expect(lists.unets).toEqual(['flux1-dev.safetensors', 'anima.safetensors']);
@@ -43,7 +43,7 @@ describe('parseObjectInfo', () => {
     expect(lists.schedulers).toEqual(['normal', 'simple']);
   });
 
-  it('节点未装/形状不符时降级为空数组', () => {
+  it('degrades to empty arrays when nodes are missing/shapes do not match', () => {
     const lists = parseObjectInfo({ KSampler: { input: { required: {} } }, Broken: 42 });
     expect(lists.checkpoints).toEqual([]);
     expect(lists.ggufs).toEqual([]);
@@ -56,7 +56,7 @@ function jsonResponse(data: unknown, ok = true, status = 200) {
 }
 
 describe('fetchComfyModelLists', () => {
-  it('浏览器直连成功 → 全量列表,mode=browser', async () => {
+  it('direct browser connection succeeds → full lists, mode=browser', async () => {
     const fetchMock = vi.fn(async (_input: unknown) => jsonResponse(OBJECT_INFO));
     vi.stubGlobal('fetch', fetchMock);
     const lists = await fetchComfyModelLists('http://127.0.0.1:8188');
@@ -66,7 +66,7 @@ describe('fetchComfyModelLists', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('http://127.0.0.1:8188/object_info');
   });
 
-  it('同 url 命中缓存不重复请求;force 强制重拉', async () => {
+  it('the same url hits the cache without repeat requests; force refetches', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(OBJECT_INFO));
     vi.stubGlobal('fetch', fetchMock);
     await fetchComfyModelLists('http://a:8188');
@@ -76,7 +76,7 @@ describe('fetchComfyModelLists', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('网络级失败回退 ST 转发;loras/clips 为空,models 按 UNet:/GGUF: 前缀分类', async () => {
+  it('network-level failure falls back to ST forwarding; loras/clips empty, models classified by UNet:/GGUF: prefix', async () => {
     const fetchMock = vi.fn(async (input: unknown) => {
       const url = String(input);
       if (url.endsWith('/object_info')) throw new TypeError('Failed to fetch');
@@ -103,14 +103,14 @@ describe('fetchComfyModelLists', () => {
     expect(lists.samplers).toEqual(['euler']);
   });
 
-  it('HTTP 错误是服务端真实反馈,不回退转发', async () => {
+  it('HTTP errors are real server feedback and do not fall back to forwarding', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}, false, 500));
     vi.stubGlobal('fetch', fetchMock);
     await expect(fetchComfyModelLists('http://c:8188')).rejects.toThrow('500');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('空 url 直接报错', async () => {
+  it('an empty url errors immediately', async () => {
     await expect(fetchComfyModelLists('  ')).rejects.toThrow("service address");
   });
 });

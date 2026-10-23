@@ -4,21 +4,21 @@ import { modalHost } from '@/state/ui';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 /**
- * 自绘下拉选择(替代原生 <select>):触发器与弹出菜单都跟随 --bbi-* 主题,
- * 选项可带图标;与设置页的 bbi-select-row 行布局配套。
+ * Custom-drawn dropdown select (replacing the native <select>): both the trigger and the popup menu follow the --bbi-* theme,
+ * options can carry icons; pairs with the settings page's bbi-select-row layout.
  *
- * 菜单为什么 Teleport 到 modalHost 而不是就地绝对定位:
- * 设置项都在 Collapsible(overflow:hidden)与 .bbi-body 滚动容器里,就地定位会被裁剪
- * (柏宝书踩过同款坑)。modalHost 是 .bbi-root 直接子级,菜单用视口级 fixed 定位,
- * 由触发器的 getBoundingClientRect 推算,下方空间不足时向上翻。
- * 窗口元素平时无 transform(仅移动端拖动抽屉时临时有),fixed 相对视口成立。
+ * Why the menu teleports to modalHost instead of being absolutely positioned in place:
+ * settings items sit inside Collapsible (overflow:hidden) and the .bbi-body scroll container, where in-place positioning gets clipped
+ * (BaiBai Book hit the same pitfall). modalHost is a direct child of .bbi-root; the menu uses viewport-level fixed positioning,
+ * computed from the trigger's getBoundingClientRect, flipping upward when there isn't enough space below.
+ * The window element normally has no transform (only temporarily while dragging the drawer on mobile), so fixed is relative to the viewport.
  *
- * 交互:点外部 / Esc / 滚动 / 缩放关闭;↑↓ 移动高亮,Enter/Space 选中,Home/End 跳首尾。
+ * Interaction: clicking outside / Esc / scrolling / resizing closes; ↑↓ move the highlight, Enter/Space select, Home/End jump to the ends.
  */
 const props = defineProps<{
   modelValue: string;
   options: { value: string; label: string; icon?: string }[];
-  /** 无障碍名称(行标题是纯文本 span,与控件无 label 关联,靠它补上) */
+  /** Accessible name (the row title is a plain-text span with no label association to the control; this fills that gap) */
   ariaLabel?: string;
 }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>();
@@ -27,7 +27,7 @@ const open = ref(false);
 const trigger = ref<HTMLElement | null>(null);
 const menu = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
-/** 键盘/悬停高亮项索引 */
+/** Index of the keyboard/hover-highlighted item */
 const activeIndex = ref(0);
 
 const current = computed(() => props.options.find(o => o.value === props.modelValue) ?? null);
@@ -40,7 +40,7 @@ function openMenu() {
   const el = trigger.value;
   if (!el || open.value) return;
   const rect = el.getBoundingClientRect();
-  // 估算菜单高度决定朝向:下方不够且上方更宽裕就向上翻
+  // Estimate the menu height to decide direction: if below is insufficient and above has more room, flip upward
   const estimated = Math.min(MENU_MAX_HEIGHT, props.options.length * 34 + 10);
   const below = window.innerHeight - rect.bottom - MENU_GAP - VIEWPORT_MARGIN;
   const upward = below < estimated && rect.top - VIEWPORT_MARGIN > below;
@@ -60,8 +60,8 @@ function openMenu() {
   open.value = true;
   document.addEventListener('mousedown', onDocMousedown, true);
   document.addEventListener('keydown', onDocKeydown, true);
-  // 菜单是视口级 fixed,不随内容滚动;滚动/缩放时直接关掉,比重算位置干净。
-  // (菜单最高 240px、选项就几个,自身几乎不会出现内部滚动,故不排除菜单内滚动。)
+  // The menu is viewport-level fixed and doesn't scroll with content; closing it on scroll/resize is cleaner than recomputing its position.
+  // (The menu is at most 240px tall with only a few options, so it almost never scrolls internally; scrolling inside the menu isn't excluded.)
   document.addEventListener('scroll', closeOnViewportChange, true);
   window.addEventListener('resize', closeOnViewportChange);
 }
@@ -91,7 +91,7 @@ function pick(option: { value: string }) {
 }
 
 function onDocMousedown(event: MouseEvent) {
-  // composedPath 穿透 shadow root;点到触发器或菜单内部都不算外部
+  // composedPath crosses the shadow root; clicks on the trigger or inside the menu don't count as outside
   const path = event.composedPath();
   if (trigger.value && path.includes(trigger.value)) return;
   if (menu.value && path.includes(menu.value)) return;
@@ -108,7 +108,7 @@ function onDocKeydown(event: KeyboardEvent) {
   if (!open.value) return;
   const count = props.options.length;
   if (event.key === 'Escape') {
-    // 捕获阶段拦截,只关菜单,别触发窗口级 Esc(关整个面板)
+    // Intercept in the capture phase, only closing the menu, without triggering the window-level Esc (which closes the whole panel)
     event.preventDefault();
     event.stopPropagation();
     closeMenu(true);
@@ -128,7 +128,7 @@ function onDocKeydown(event: KeyboardEvent) {
   }
 }
 
-/** 原生 select 习惯:收起态按 ↑/↓ 直接展开 */
+/** Native select habit: in the collapsed state ↑/↓ opens it directly */
 function onTriggerKeydown(event: KeyboardEvent) {
   if (open.value) return;
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -141,8 +141,8 @@ onBeforeUnmount(() => closeMenu());
 </script>
 
 <template>
-  <!-- 根类名不能叫 bbi-select:base.css 里那个类是给美化原生 <select> 用的,
-       带背景图三角 + padding-right,撞上会在触发器右边多画一个三角 -->
+  <!-- The root class can't be bbi-select: that class in base.css styles native <select> elements,
+       with a background-image arrow + padding-right; a clash would draw an extra arrow to the right of the trigger -->
   <div class="bbi-select-box">
     <button
       ref="trigger"
@@ -238,13 +238,13 @@ onBeforeUnmount(() => closeMenu());
   transform: rotate(180deg);
 }
 
-/* 菜单 Teleport 到 modalHost(scoped 样式在同 shadow root 内照常生效) */
+/* The menu teleports to modalHost (scoped styles still apply within the same shadow root) */
 .bbi-select-menu {
   position: fixed;
-  /* 10003:高于普通弹窗遮罩(10001)与叠加层遮罩(10002)。
-     本组件现在也用在弹窗内部(渠道弹窗的「思考强度」),菜单与遮罩会同时存在;
-     同级时靠「后插入者胜出」能侥幸盖住,但删除确认那类 -top 遮罩(10002)会反压菜单,
-     故显式抬高,不依赖插入顺序。 */
+  /* 10003: above the ordinary dialog mask (10001) and the overlay mask (10002).
+     This component is now also used inside dialogs ("Reasoning effort" in the channel dialog), so the menu and a mask can coexist;
+     at the same level "last inserted wins" might happen to cover it, but -top masks such as delete confirmations (10002) would press over the menu,
+     so it is raised explicitly rather than relying on insertion order. */
   z-index: 10003;
   margin: 0;
   padding: 4px;

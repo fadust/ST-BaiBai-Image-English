@@ -7,7 +7,7 @@ const segments = [
   { id: 'P2', sourceLine: 2, text: '第二幕结束' },
 ];
 
-/** 大部分协议测试关注内容解析,沿用允许 0 张的默认范围;数量下限另列专门用例。 */
+/** Most protocol tests focus on content parsing and keep the default range that allows 0 images; minimum counts have their own cases. */
 function parseImagePlan(
   raw: string,
   targetSegments: typeof segments,
@@ -120,7 +120,7 @@ describe('auto tag position protocol', () => {
   });
 
   it('falls back to portrait for a missing or garbled size instead of throwing', () => {
-    // 为方向抛错会白白吃掉 runner 的重试次数,所以一律容忍降级
+    // Throwing over orientation would waste the runner's retries, so it always tolerates and degrades
     expect(parseImagePlan('{"images":[{"position":"P1","tag":"a"}]}', segments, 1).images[0].size).toBe('portrait');
     expect(parseImagePlan('{"images":[{"position":"P1","tag":"a","size":"随便"}]}', segments, 1).images[0].size).toBe('portrait');
     expect(parseImagePlan('{"images":[{"position":"P1","tag":"a","size":123}]}', segments, 1).images[0].size).toBe('portrait');
@@ -299,7 +299,7 @@ describe('changes parsing', () => {
   });
 
   it('drops unusable new profiles without failing the whole plan', () => {
-    // 建档坏一条只该丢这条:为它作废整次输出会连图一起没有,那是更坏的结果
+    // One bad profile should only drop that profile: discarding the whole output for it would lose the images too, which is worse
     const raw =
       '{"images":[{"position":"P1","tag":"a"}],"changes":[{"name":"旧格式","field":"new","value":"1girl, red eyes","position":"P1"},{"name":"缺瞳色","field":"new","fields":{"hair":"long black hair"},"position":"P1"}]}';
     const plan = parseImagePlan(raw, segments, 1);
@@ -308,7 +308,7 @@ describe('changes parsing', () => {
   });
 
   it('treats a new profile as floor-wide, defaulting a missing or unknown position', () => {
-    // 建档不是「从某处开始」的变化,位置只作记录 —— 缺了/坏了都不该丢掉这条档案
+    // Profile creation is not a change "starting somewhere"; the position is only recorded, so a missing/bad one must not drop the profile
     const raw =
       '{"images":[],"changes":[{"name":"无位置","field":"new","fields":{"hair":"silver hair","eyes":"red eyes"}},{"name":"坏位置","field":"new","fields":{"hair":"black hair","eyes":"blue eyes"},"position":"P9"}]}';
     expect(parseImagePlan(raw, segments, 1).changes).toMatchObject([
@@ -318,7 +318,7 @@ describe('changes parsing', () => {
   });
 
   it('drops permanent changes without a valid effective position', () => {
-    // 永久变化必须知道从哪一格开始生效,位置坏 = 无法定位 = 丢弃(但不连累 images)
+    // A permanent change must know which slot it takes effect from; a bad position = can't be located = discarded (without affecting images)
     const raw =
       '{"images":[{"position":"P1","tag":"a"}],"changes":[{"name":"小雪","field":"hair","value":"red hair"},{"name":"小雪","field":"eyes","value":"red eyes","position":"P9"}]}';
     const plan = parseImagePlan(raw, segments, 1);

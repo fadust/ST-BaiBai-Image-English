@@ -71,7 +71,7 @@ import {
 } from '@/state/settings';
 import { computed, nextTick, onMounted, ref } from 'vue';
 
-/** 本渠道是否为当前出图渠道;「使用此渠道」按钮与设置页选择器、页签徽标同属一个开关。 */
+/** Whether this channel is the current image channel; the "Use this channel" button, the settings page selector and the tab badge are one switch. */
 const inUse = computed(() => settings.defaultBackend === 'nai');
 
 const testing = ref(false);
@@ -86,7 +86,7 @@ async function onTestConnection() {
   if (testing.value) return;
   testing.value = true;
   try {
-    // 测当前选中那条接入点(而非渠道级存量 url/key),与出图同一份连接
+    // Tests the currently selected endpoint (not the channel-level legacy url/key), the same connection used for generation
     const result = await testNaiConnection(effectiveNai());
     toastr.success(result.message, `NAI connection · ${endpoint.value.name}`);
   } catch (error) {
@@ -96,22 +96,22 @@ async function onTestConnection() {
   }
 }
 
-/* ============ 接入点库(地址 + 密钥;形制照搬下方画师串行) ============ */
+/* ============ Endpoint library (address + key; same shape as the artist string row below) ============ */
 
 /**
- * 多条接入点解决的是「公益站换着用」:同一套出图参数,换个出口。
- * 故这里只管 url/key,模型/采样器/尺寸一概留在渠道级,切站不用重配。
+ * Multiple endpoints solve "switching between community-run sites": the same image parameters, a different exit.
+ * So this only handles url/key; model/sampler/size all stay at the channel level, and switching sites needs no reconfiguration.
  */
 const endpoint = computed<NaiEndpoint>(() => activeNaiEndpoint());
 
-/** 官方那条只读:名字/地址不给改、不给删,复制出来的副本才随便改。 */
+/** The official one is read-only: its name/address can't be changed or deleted; only duplicated copies can be changed freely. */
 const isOfficialEndpoint = computed(() => isOfficialNaiEndpoint(endpoint.value.id));
 
 const endpointOptions = computed(() =>
   settings.nai.endpoints.map(e => ({ value: e.id, label: e.name || 'Unnamed access point' })),
 );
 
-/** 下拉取「实际生效的那条」而非存的 id:悬空时 activeNaiEndpoint 回落首条,下拉要跟着显示。 */
+/** The dropdown takes "the one actually in effect", not the stored id: when dangling, activeNaiEndpoint falls back to the first, and the dropdown must follow. */
 const activeEndpointId = computed<string>({
   get: () => endpoint.value.id,
   set: id => {
@@ -119,20 +119,20 @@ const activeEndpointId = computed<string>({
   },
 });
 
-/** 改名低频:平时只显示下拉,点「改名」才把选择器原地换成输入框(同画师串行)。 */
+/** Renaming is rare: normally only the dropdown shows; clicking "Rename" swaps the picker in place for an input box (same as the artist string row). */
 const renamingEndpoint = ref(false);
 const endpointNameDraft = ref('');
 const endpointNameInput = ref<HTMLInputElement | null>(null);
 const endpointDeleteOpen = ref(false);
 
 function startRenameEndpoint() {
-  if (isOfficialEndpoint.value) return; // 官方条只读(按钮已禁用,双保险)
+  if (isOfficialEndpoint.value) return; // The official entry is read-only (the button is already disabled; belt and braces)
   endpointNameDraft.value = endpoint.value.name;
   renamingEndpoint.value = true;
   nextTick(() => endpointNameInput.value?.focus());
 }
 
-/** Enter / 失焦都算确认;Esc 直接置 false 不经过这里,即为取消。 */
+/** Enter / blur both confirm; Esc sets false directly without going through here, which is cancel. */
 function commitRenameEndpoint() {
   if (renamingEndpoint.value && !isOfficialEndpoint.value) {
     endpoint.value.name = endpointNameDraft.value.trim() || endpoint.value.name;
@@ -147,7 +147,7 @@ function addEndpoint() {
 }
 
 function duplicateEndpoint() {
-  // 官方条也走这里:复制出来的是普通条目,地址可改 —— 这是「照着官方改个镜像」的捷径
+  // The official entry goes through here too: the copy is a normal entry with an editable address; a shortcut for "make a mirror based on the official one"
   const src = endpoint.value;
   const preset: NaiEndpoint = { ...newNaiEndpoint(), name: `${src.name} copy`, url: src.url, key: src.key };
   settings.nai.endpoints.push(preset);
@@ -156,41 +156,41 @@ function duplicateEndpoint() {
 
 function confirmRemoveEndpoint() {
   endpointDeleteOpen.value = false;
-  if (isOfficialEndpoint.value) return; // 官方条不可删:endpoints 恒非空靠它保底
+  if (isOfficialEndpoint.value) return; // The official entry can't be deleted: it guarantees endpoints is never empty
   const list = settings.nai.endpoints;
   const index = list.findIndex(e => e.id === endpoint.value.id);
   if (index < 0) return;
   list.splice(index, 1);
-  // 接位到原位置那一条(已是最后一条则退一格)。**不**像画师串那样回落空串:
-  // 地址是必需品,空了就出不了图 —— 与工作流库同口径。
+  // The entry at the original position takes its place (step back one if it was the last). **Unlike** the artist string, it doesn't fall back to an empty string:
+  // the address is essential, and without one no image can be generated; same rule as the workflow library.
   settings.nai.activeEndpointId = list[Math.min(index, list.length - 1)].id;
 }
 
-/* ============ 画师串库(形制照搬 ComfyUI 工作流库) ============ */
+/* ============ Artist string library (same shape as the ComfyUI workflow library) ============ */
 
 /**
- * 当前选中的画师串;null = 不使用(库为空、用户主动选了「不使用」、或 id 悬空)。
- * settings 是 reactive,直接把它的字段绑 v-model 即可就地编辑。
+ * The currently selected artist string; null = none used (empty library, the user actively chose "None", or a dangling id).
+ * settings is reactive, so its fields can be bound with v-model directly for in-place editing.
  */
 const artist = computed<NaiArtistPreset | null>(() => activeNaiArtist());
 
-/** 当前是否 V5 模型:控制画师串编辑区的 V5 差异提醒。 */
+/** Whether the current model is V5: controls the V5 difference reminder in the artist string editing area. */
 const isV5Model = computed(() => isNai5(settings.nai.model));
 
-/** 「不使用」的下拉值。preset id 恒为 art_* / bi_* 形状,空串不会与任何一条相撞,无需装箱。 */
+/** Dropdown value for "None". Preset ids always have the art_* / bi_* shape, so an empty string can't collide with any entry; no boxing needed. */
 const NO_ARTIST = '';
 
 const artistOptions = computed(() => [
   { value: NO_ARTIST, label: 'Not used' },
-  // 内置配方排用户库前面:新用户默认选中的是内置条,放在「不使用」旁边最顺;
-  // 名称后括注内置,与用户自建的同名条目区分开
+  // Built-in recipes go before the user library: new users have a built-in entry selected by default, which sits most naturally next to "None";
+  // a built-in note in parentheses after the name sets it apart from user-made entries with the same name
   ...BUILTIN_NAI_ARTISTS.map(a => ({ value: a.id, label: `${a.name}(built-in)` })),
   ...settings.nai.artistPresets.map(a => ({ value: a.id, label: a.name || 'Unnamed artist string' })),
 ]);
 
 /**
- * 下拉的值取「实际生效的那一条」而非存的 id:存的 id 悬空时 activeNaiArtist 返回 null,
- * 下拉也该跟着显示「不使用」,不能显示空白。
+ * The dropdown's value takes "the one actually in effect", not the stored id: when the stored id dangles, activeNaiArtist returns null,
+ * and the dropdown should show "None" accordingly, not a blank.
  */
 const activeArtistId = computed<string>({
   get: () => artist.value?.id ?? NO_ARTIST,
@@ -199,30 +199,30 @@ const activeArtistId = computed<string>({
   },
 });
 
-/** 改名/复制/删除都只对「真的选中了一条」有意义;选「不使用」时一律禁用。 */
+/** Rename/duplicate/delete only make sense when an entry is really selected; all are disabled when "None" is chosen. */
 const hasArtist = computed(() => artist.value !== null);
 
-/** 当前选中的是内置配方:只读(改名/删除/内容编辑禁用),「复制」是自定义的唯一入口。 */
+/** The current selection is a built-in recipe: read-only (rename/delete/content editing disabled); "Duplicate" is the only way to customise. */
 const isBuiltinArtist = computed(() =>
   artist.value ? isBuiltinNaiArtist(artist.value.id) : false,
 );
 
-/** 改名是低频操作:平时只显示下拉,点「改名」才把选择器原地换成输入框。 */
+/** Renaming is a rare action: normally only the dropdown shows; clicking "Rename" swaps the picker in place for an input box. */
 const renamingArtist = ref(false);
 const artistNameDraft = ref('');
 const artistNameInput = ref<HTMLInputElement | null>(null);
 const artistDeleteOpen = ref(false);
-/** 管理器弹窗:搜索/预览图/勾选批量删除都在那边,下拉这里只留高频切换。 */
+/** Manager dialog: search/preview images/bulk deletion by ticking are all there; the dropdown here keeps only frequent switching. */
 const artistManagerOpen = ref(false);
 
 function startRenameArtist() {
-  if (!artist.value || isBuiltinArtist.value) return; // 内置只读(按钮已禁用,双保险)
+  if (!artist.value || isBuiltinArtist.value) return; // Built-ins are read-only (the button is already disabled; belt and braces)
   artistNameDraft.value = artist.value.name;
   renamingArtist.value = true;
   nextTick(() => artistNameInput.value?.focus());
 }
 
-/** Enter / 失焦都算确认;Esc 直接置 renamingArtist=false 不经过这里,即为取消。 */
+/** Enter / blur both confirm; Esc sets renamingArtist=false directly without going through here, which is cancel. */
 function commitRenameArtist() {
   if (renamingArtist.value && artist.value) artist.value.name = artistNameDraft.value.trim();
   renamingArtist.value = false;
@@ -237,9 +237,9 @@ function addArtist() {
 function duplicateArtist() {
   const src = artist.value;
   if (!src) return;
-  // 只换 id 与名字;id 生成仍由 settings 统一口径。
-  // 内置配方也走这里:复制出来的副本是普通用户条目,随便改——这是内置条唯一的自定义路径。
-  // 显式逐字段拷贝,不带 previewPath:预览文件随原条目删除,共指一个路径会让副本日后破图。
+  // Change only the id and name; id generation still follows settings' single rule.
+  // Built-in recipes go through here too: the copy is a normal user entry, freely editable; this is the only customisation path for built-ins.
+  // Explicit field-by-field copy, without previewPath: the preview file is deleted with the original entry, and sharing one path would break the copy's image later.
   const preset: NaiArtistPreset = {
     id: newNaiArtist().id,
     name: `${src.name} copy`,
@@ -256,39 +256,39 @@ async function confirmRemoveArtist() {
   const list = settings.nai.artistPresets;
   const index = list.findIndex(a => a.id === artist.value?.id);
   if (index < 0) return;
-  // 预览图文件 best-effort 连带清理(与管理器删除同口径:文件删不掉不阻塞删条目)
+  // The preview image file is cleaned up along with it, best-effort (same rule as deleting in the manager: a file that can't be deleted doesn't block deleting the entry)
   const previewPath = list[index].previewPath;
   if (previewPath) {
     try {
       await deleteUserImage(previewPath);
     } catch (error) {
-      toastr.warning(`The entry was deleted, but the preview file cleanup failed:${errorMessage(error)}`, 'Artist Tags');
+      toastr.warning(`The entry was deleted, but the preview file cleanup failed: ${errorMessage(error)}`, 'Artist Tags');
     }
   }
   list.splice(index, 1);
-  // 接位到原位置那一条(已是最后一条则退一格);删空了就回「不使用」——
-  // `?? ''` 正是画师串库与工作流库的分水岭(那边恒非空、回落 [0]),不能省。
+  // The entry at the original position takes its place (step back one if it was the last); when emptied, go back to "None":
+  // `?? ''` is exactly the dividing line between the artist string library and the workflow library (that one is never empty and falls back to [0]); it can't be dropped.
   settings.nai.activeArtistId = list[Math.min(index, list.length - 1)]?.id ?? '';
 }
 
-/* ============ 从智绘姬迁移提示词预设 ============ */
+/* ============ Migrate prompt presets from Chiehime ============ */
 
 /**
- * 智绘姬(st-chatu8)的提示词预设整批搬过来,映射与智绘姬拼装位置一致:
- * 前置固定正向 → 画师串,后置固定正向 → 正面质量词,固定负向 → 负面提示词(前面拼上当前模型官方基线)。
- * 与 vibe 迁移同原则:只建副本、不改源数据;同名条目重新导入会覆盖更新
- * (旧版迁移把正向整体塞进画师串的条目,重导即被修好),内容完全相同的跳过,随时可再来。
- * 纯逻辑在 chatu8Vibe.ts(collect/detect/import 三件套),这里只做检测展示、弹窗预览与落盘。
+ * Moves Chiehime (st-chatu8)'s prompt presets over in one batch, mapped the same way Chiehime assembles them:
+ * leading fixed positive → artist string, trailing fixed positive → positive quality tags, fixed negative → negative prompt (prefixed with the current model's official baseline).
+ * Same principle as vibe migration: only copies are made, the source data is untouched; re-importing a same-name entry overwrites and updates it
+ * (entries where the old migration stuffed the whole positive into the artist string are fixed by re-importing), entries with identical content are skipped, and it can be rerun any time.
+ * The pure logic is in chatu8Vibe.ts (the collect/detect/import trio); here it only handles detection display, the dialog preview and saving.
  *
- * 刻意不做「还剩 N 个可导入」的常驻提示:去重键是名字+内容,用户改过或删过
- * 本地副本后键就对不上,提示会反复复活,很吵。入口收进下方「从智绘姬迁移」
- * 折叠区,手动点开弹窗时才算预览,有没有新预设一看便知。
+ * There is deliberately no permanent "N left to import" hint: the dedup key is name + content, and once the user edits or deletes
+ * a local copy the keys no longer match, so the hint would keep coming back, which is noisy. The entry point is tucked into the "Migrate from Chiehime"
+ * fold below; the preview is only computed when the dialog is opened manually, and whether there are new presets is clear at a glance.
  */
 const chatu8ArtistDetect = ref<Chatu8ArtistDetectInfo>({ found: false, total: 0 });
-/** 弹窗打开时算一次的预览结果(纯函数,不落盘);plans 逐条带徽标状态。 */
+/** Preview result computed once when the dialog opens (pure function, nothing saved); plans carries a badge state per entry. */
 const artistImportResult = ref<Chatu8ArtistImportResult | null>(null);
 const artistImportOpen = ref(false);
-/** 导入后是否把智绘姬当前使用的预设设为柏宝绘当前画师串。 */
+/** Whether to set the preset Chiehime currently uses as BaiBai Image's current artist string after importing. */
 const switchActiveArtist = ref(true);
 
 const chatu8ActiveRef = computed(() => artistImportResult.value?.plans.find(p => p.active) ?? null);
@@ -300,7 +300,7 @@ function openArtistImport() {
   artistImportOpen.value = true;
 }
 
-/** 纯同步:结果在打开弹窗时就算好了,确认只是 push/覆盖 + 可选切换。 */
+/** Purely synchronous: the result was computed when the dialog opened; confirming is only push/overwrite + an optional switch. */
 function runArtistImport() {
   const result = artistImportResult.value;
   artistImportOpen.value = false;
@@ -330,30 +330,30 @@ function runArtistImport() {
   artistImportResult.value = null;
 }
 
-/* ============ 提示词:正/负面词分两级——画师串绑定值 → 渠道覆盖值 → 内置默认 ============ */
+/* ============ Prompts: positive/negative words in tiers: artist string bound value → channel override → built-in default ============ */
 
 /**
- * 一条正/负面词的编辑目标;渠道级与画师串绑定级共用同一个弹窗。
+ * Edit target for one positive/negative entry; the channel level and the artist-string binding level share one dialog.
  *
- * fallback = 留空时跟随的下一级取值(渠道级 → 模型官方词;绑定级 → 渠道值 → 官方词)。
- * 打开弹窗预填它——框里空着就是把「看不到实际生效了什么」的老问题原地搬家;
- * 保存时与回落一致就存空串(与设置页 saveTagPrompt 同口径:不把下一级的值冗余存进来,
- * 保留「跟随」语义,下一级变了能跟着变)。
+ * fallback = the next level's value followed when left blank (channel level → the model's official words; binding level → channel value → official words).
+ * The dialog is prefilled with it: an empty box would just move the old problem of "can't see what is actually in effect" somewhere else;
+ * on save, a value equal to the fallback is stored as an empty string (same rule as the settings page's saveTagPrompt: the next level's value isn't stored redundantly,
+ * keeping the "follow" meaning, so it changes along when the next level changes).
  *
- * fallback 必须是函数而非常量:它随 settings.nai.model / 渠道覆盖值变,要在读取时才求值。
+ * fallback must be a function, not a constant: it changes with settings.nai.model / the channel override and must be evaluated when read.
  */
 interface NaiPromptTarget {
   key: 'quality' | 'negative';
   label: string;
   hint: string;
-  /** 内置配方的绑定位只读:弹窗纯查看,不给保存(写进模块常量就糟了)。 */
+  /** A built-in recipe's binding slots are read-only: the dialog is view-only and can't save (writing into a module constant would be bad). */
   readonly?: boolean;
   fallback: () => string;
   read: () => string;
   write: (v: string) => void;
 }
 
-/** 渠道级两条:画师串未绑定对应字段时生效,再留空则按模型取官方词。 */
+/** The two channel-level entries: in effect when the artist string doesn't bind the matching field; left blank too, the model's official words are used. */
 const CHANNEL_PROMPT_TARGETS: NaiPromptTarget[] = [
   {
     key: 'quality',
@@ -374,8 +374,8 @@ const CHANNEL_PROMPT_TARGETS: NaiPromptTarget[] = [
 ];
 
 /**
- * 当前画师串的两个绑定位;read/write 直接落在选中条目上(settings 是 reactive,就地编辑)。
- * 只在真的选中了一条时存在(选「不使用」时没有绑定对象,列表整个不渲染)。
+ * The current artist string's two binding slots; read/write land directly on the selected entry (settings is reactive; edited in place).
+ * They exist only when an entry is really selected (with "None" there is no bound object, and the whole list isn't rendered).
  */
 const artistBoundTargets = computed<NaiPromptTarget[]>(() => {
   const a = artist.value;
@@ -408,25 +408,25 @@ const artistBoundTargets = computed<NaiPromptTarget[]>(() => {
   ];
 });
 
-/** 该条是否已有自定义值(非空即视为覆盖下一级)。 */
+/** Whether this entry already has a custom value (non-empty counts as overriding the next level). */
 function isTargetCustom(target: NaiPromptTarget): boolean {
   return target.read().trim().length > 0;
 }
 
-/** 当前画师串是否绑定了该字段——绑定时渠道值被覆盖,渠道列表的徽标要说出这件事。 */
+/** Whether the current artist string binds this field: when bound, the channel value is overridden, and the channel list's badge should say so. */
 function isShadowedByArtist(key: NaiPromptTarget['key']): boolean {
   const a = artist.value;
   if (!a) return false;
   return key === 'quality' ? !!a.quality.trim() : !!a.negative.trim();
 }
 
-// 正在编辑的那条;draft 是草稿,点「完成」才写回 settings(取消则丢弃)。
+// The entry being edited; draft is the draft, written back to settings only on "Done" (discarded on cancel).
 const editingNaiPrompt = ref<NaiPromptTarget | null>(null);
 const naiPromptDraft = ref('');
 
 function openNaiPrompt(target: NaiPromptTarget) {
   editingNaiPrompt.value = target;
-  // 已自定义→载入用户内容;未自定义→预填下一级回落值,方便直接在其上改
+  // Customised → load the user's content; not customised → prefill the next level's fallback, for easy editing on top of it
   naiPromptDraft.value = target.read().trim() || target.fallback();
 }
 function closeNaiPrompt() {
@@ -435,18 +435,18 @@ function closeNaiPrompt() {
 }
 function saveNaiPrompt() {
   const target = editingNaiPrompt.value;
-  if (!target || target.readonly) return; // 内置配方的绑定位只读(按钮已隐藏,双保险)
+  if (!target || target.readonly) return; // A built-in recipe's binding slots are read-only (the button is already hidden; belt and braces)
   const v = naiPromptDraft.value.trim();
   target.write(v === target.fallback().trim() ? '' : naiPromptDraft.value);
   closeNaiPrompt();
 }
-/** 「恢复默认」:把草稿重置回落值(保存后即变回「跟随下一级」) */
+/** "Restore default": resets the draft to the fallback (after saving it goes back to "follow the next level") */
 function resetNaiPromptDraft() {
   const target = editingNaiPrompt.value;
   if (target) naiPromptDraft.value = target.fallback();
 }
 
-/* ============ Vibe 库 ============ */
+/* ============ Vibe library ============ */
 
 const vibeEncoding = ref(false);
 const vibeFileInput = ref<HTMLInputElement | null>(null);
@@ -454,13 +454,13 @@ const vibeImportInput = ref<HTMLInputElement | null>(null);
 
 let vibeSeq = 0;
 
-/** 当前模型的 vibe 编码 key;vibe 缺此 key 时生成会被跳过,列表里给「补编码」入口。 */
+/** The current model's vibe encoding key; vibes missing this key are skipped during generation, and the list offers an "Add encoding" entry. */
 const currentVibeKey = computed(() => vibeModelKey(settings.nai.model));
 const vibesSupported = computed(() => naiSupportsVibes(settings.nai.model));
 const samplerOptions = computed(() => naiSamplers(settings.nai.model));
 
-/** BbiSelect 的 modelValue 是 string,而 nai.model 是字面量联合;这层 get/set 只为搭桥。
- *  写入前对一遍 NAI_MODELS:下拉本就只发合法值,但少了这句类型断言就是空口无凭。 */
+/** BbiSelect's modelValue is a string, while nai.model is a literal union; this get/set only bridges them.
+ *  Checked against NAI_MODELS before writing: the dropdown only emits valid values anyway, but without this the type assertion would be an empty promise. */
 const modelSel = computed<string>({
   get: () => settings.nai.model,
   set: v => {
@@ -469,7 +469,7 @@ const modelSel = computed<string>({
   },
 });
 
-/** 生成 vibe 列表缩略图(最长边 96px 的 jpeg dataURL);失败回空串,由入库方按「无缩略图」处理。 */
+/** Generates the vibe list thumbnail (a jpeg data URL with a longest side of 96px); returns an empty string on failure, which the importer treats as "no thumbnail". */
 async function makeThumbnail(dataUrl: string): Promise<string> {
   try {
     return await makeJpegThumbnail(dataUrl, 96);
@@ -479,11 +479,11 @@ async function makeThumbnail(dataUrl: string): Promise<string> {
 }
 
 /**
- * 取闸门槽位跑一次 vibe 编码。
+ * Takes a gate slot to run one vibe encoding.
  *
- * 编码是一次真实的 NAI 请求,所以与楼层卡片共用同一个闸门(floor/genQueue.ts):
- * 否则「一边出图一边编码」在账号上就是两条并发,且完全绕过 429 冷却。
- * 代价是出图在跑时点编码会先等出图完 —— 这是对的,按钮那边有 vibeEncoding 转圈提示。
+ * Encoding is a real NAI request, so it shares the same gate as floor cards (floor/genQueue.ts):
+ * otherwise "generating and encoding at once" would be two concurrent requests on the account, bypassing the 429 cooldown entirely.
+ * The cost is that clicking encode while an image is generating waits for the image first; that is correct, and the button shows a vibeEncoding spinner.
  */
 async function encodeVibeGated(imageBase64: string): Promise<string> {
   const release = await acquireNaiSlot();
@@ -494,7 +494,7 @@ async function encodeVibeGated(imageBase64: string): Promise<string> {
   }
 }
 
-/** 上传参考图 → 调 /ai/encode-vibe 编码(按当前模型)→ 入库。 */
+/** Upload a reference image → call /ai/encode-vibe to encode it (for the current model) → add it to the library. */
 async function onVibeFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -537,7 +537,7 @@ async function onVibeFileChange(event: Event) {
   }
 }
 
-/**  vibe 缺当前模型编码时单独补(切换模型后常见)。 */
+/** Adds a vibe's missing encoding for the current model on its own (common after switching models). */
 async function reencodeVibe(vibe: NaiVibe) {
   if (!vibe.hasImage || vibeEncoding.value) return;
   vibeEncoding.value = true;
@@ -551,7 +551,7 @@ async function reencodeVibe(vibe: NaiVibe) {
     vibe.thumbnailPath = paths.thumbnailPath;
     vibe.modelKeys = Object.keys(data.encodings);
     vibe.fingerprint = vibeFingerprint(data.encodings);
-    toastr.success(`「${vibe.name}"Complemented ${settings.nai.model} encoding`, 'Vibe');
+    toastr.success(`Added ${settings.nai.model} encoding for "${vibe.name}"`, 'Vibe');
   } catch (error) {
     toastr.error(errorMessage(error), 'Vibe encoding failed');
   } finally {
@@ -559,21 +559,21 @@ async function reencodeVibe(vibe: NaiVibe) {
   }
 }
 
-/* ============ Vibe 分组 ============ */
+/* ============ Vibe groups ============ */
 
-/** 归拢/搜索/生效判定的纯逻辑在 backends/vibeGroups.ts,此处只做交互与落盘。 */
+/** The pure logic for gathering/search/effective checks is in backends/vibeGroups.ts; this only handles interaction and saving. */
 const vibeSearch = ref('');
-/** 收起的组 key 集合(默认全展开;只存「收起」的,新建组自然是展开的)。 */
+/** Set of collapsed group keys (all expanded by default; only "collapsed" is stored, so new groups are naturally expanded). */
 const collapsedGroups = ref<Set<string>>(new Set());
 
 const vibeGroups = computed(() => groupVibes(settings.nai.vibes, vibeSearch.value));
 
-/** 搜索命中总数:用于「没有匹配」空态,不必再算一遍列表。 */
+/** Total search hits: for the "no matches" empty state, without computing the list again. */
 const matchedCount = computed(() =>
   settings.nai.vibes.reduce((n, v) => n + (matchVibe(v, vibeSearch.value) ? 1 : 0), 0),
 );
 
-/** 库里已有的组名(去重,给「移到分组」下拉用;基于全库而非搜索结果)。 */
+/** Group names already in the library (deduplicated, for the "Move to group" dropdown; based on the whole library, not search results). */
 const groupNames = computed(() => {
   const names = new Set<string>();
   for (const vibe of settings.nai.vibes) {
@@ -583,14 +583,14 @@ const groupNames = computed(() => {
   return [...names];
 });
 
-/** 单条 vibe 的「所属分组」下拉项:未分组 + 已有组 + 新建(组名装箱,避免与哨兵撞名)。 */
+/** "Group" dropdown options for a single vibe: ungrouped + existing groups + new (group names are boxed to avoid clashing with sentinels). */
 const groupOptions = computed(() => [
   { value: UNGROUPED, label: 'Ungrouped' },
   ...groupNames.value.map(name => ({ value: `${GROUP_PREFIX}${name}`, label: name })),
   { value: NEW_GROUP, label: '+ Create new group…' },
 ]);
 
-/** 选「新建分组」时就地问一个名字;取消或空名则维持原值(下拉是受控的,得回写)。 */
+/** Choosing "New group" asks for a name on the spot; on cancel or an empty name the old value stays (the dropdown is controlled, so it must be written back). */
 function onGroupPick(vibe: NaiVibe, value: string) {
   if (value === UNGROUPED) {
     vibe.group = '';
@@ -618,13 +618,13 @@ function groupActive(group: VibeGroup): boolean {
   return isGroupActive(group, settings.nai.vibes);
 }
 
-/** 只开这组:清掉组外的勾选并开启本组。解决「换一套搭配」要逐条点的痛点。 */
+/** Enable only this group: clears ticks outside the group and enables this group. Solves the pain of clicking one by one to "switch to another set". */
 function soloGroup(group: VibeGroup) {
   const ids = new Set(group.all.map(v => v.id));
   for (const vibe of settings.nai.vibes) vibe.enabled = ids.has(vibe.id);
 }
 
-/** 全开/全关只动本组,组外不碰——想叠加两组就各点一次「全开」。 */
+/** Enable all/disable all only touches this group, never others; to stack two groups, click "Enable all" on each. */
 function setGroupEnabled(group: VibeGroup, enabled: boolean) {
   for (const vibe of group.all) vibe.enabled = enabled;
 }
@@ -635,7 +635,7 @@ function groupEnabledCount(group: VibeGroup): number {
   return group.all.filter(v => v.enabled).length;
 }
 
-/** 重命名整组:对成员 group 字段批量赋值,不存在悬空引用。 */
+/** Renames a whole group: assigns the members' group field in bulk, leaving no dangling references. */
 function renameGroup(group: VibeGroup) {
   if (!group.name) return;
   const name = window.prompt('Rename group', group.name)?.trim();
@@ -643,7 +643,7 @@ function renameGroup(group: VibeGroup) {
   for (const vibe of settings.nai.vibes) {
     if (vibe.group.trim() === group.name) vibe.group = name;
   }
-  // 收起状态跟着改名走(集合里存的是装箱 key),否则改完名字会莫名展开
+  // The collapsed state follows the rename (the set stores boxed keys), otherwise the group would inexplicably expand after renaming
   const from = groupKey(group.name);
   if (collapsedGroups.value.has(from)) {
     const next = new Set(collapsedGroups.value);
@@ -653,7 +653,7 @@ function renameGroup(group: VibeGroup) {
   }
 }
 
-/** 解散分组:只清 group 字段,vibe 本体与启用状态都不动(不是删除)。 */
+/** Disbands a group: only clears the group field; the vibes themselves and their enabled state are untouched (it isn't deletion). */
 function dissolveGroup(group: VibeGroup) {
   if (!group.name) return;
   for (const vibe of settings.nai.vibes) {
@@ -662,9 +662,9 @@ function dissolveGroup(group: VibeGroup) {
 }
 
 /**
- * 旧版从智绘姬迁移时把组名拼进了显示名(「组名 · 原名」),分组结构因此丢失。
- * 这里按前缀还原:只动未分组的条目,不覆盖用户已手工分好的组。
- * 按钮仅在真有可整理的条目时出现——没得整理时摆一颗点不出反应的按钮不如不摆。
+ * The old version, when migrating from Chiehime, joined the group name into the display name ("group name · original name"), losing the group structure.
+ * This restores it by prefix: only ungrouped entries are touched, never overwriting groups the user already sorted by hand.
+ * The button only appears when there really are entries to tidy; a button that does nothing when clicked is worse than none.
  */
 const prefixGroupPlans = computed(() => planPrefixGroups(settings.nai.vibes));
 
@@ -682,11 +682,11 @@ function applyPrefixGroups() {
   toastr.success(`Already put ${plans.length} Vibe sorted into ${groups} groups`, 'Vibe');
 }
 
-/* ============ 从智绘姬迁移 ============ */
+/* ============ Migrate from Chiehime ============ */
 
 /**
- * 智绘姬 vibe 检测:面板挂载时做一次(读的是 settings 里的引用列表,同步廉价)。
- * 不做「只问一次」那套:区块常驻,迁移幂等(内容指纹去重),用户随时可以再来。
+ * Chiehime vibe detection: done once when the panel mounts (it reads the reference list in settings; synchronous and cheap).
+ * No "ask only once" logic: the section is permanent, migration is idempotent (deduplicated by content fingerprint), and users can rerun it any time.
  */
 const chatu8Detect = ref<Chatu8DetectInfo>({ found: false, total: 0, presets: 0, groups: 0 });
 onMounted(() => {
@@ -713,12 +713,12 @@ async function runMigrate() {
     const parts = [`New ${result.imported} items`];
     if (result.duplicates) parts.push(`Repeat skip ${result.duplicates}`);
     if (result.failed) parts.push(`Failed ${result.failed}`);
-    migrateMsg.value = `Migration completed:${parts.join(' / ')}。`;
+    migrateMsg.value = `Migration completed: ${parts.join(' / ')}. `;
     if (result.imported) migrateMsg.value += 'The newly migrated Vibe is not enabled by default, please enable it as needed.';
     if (result.failed) migrateMsg.value += 'The failed item may not be in the native browser, or there may be an error while saving the file.';
     toastr.success(migrateMsg.value, 'Migrate from Chiehime');
   } catch (error) {
-    migrateMsg.value = `Migration failed:${errorMessage(error)}`;
+    migrateMsg.value = `Migration failed: ${errorMessage(error)}`;
   } finally {
     migrating.value = false;
   }
@@ -737,7 +737,7 @@ async function onVibeImportChange(event: Event) {
     settings.nai.vibes.push(
       vibeMetaFromData(id, parsed.name, paths.dataPath, paths.thumbnailPath, data, parsed.strength, true),
     );
-    toastr.success(`Imported "${parsed.name}」`, 'Vibe');
+    toastr.success(`Imported "${parsed.name}"`, 'Vibe');
   } catch (error) {
     toastr.error(errorMessage(error), 'Vibe import failed');
   }
@@ -759,18 +759,18 @@ async function exportVibe(vibe: NaiVibe) {
 }
 
 /**
- * 强度取值:滑块与数字框共用 clampVibeStrength(与设置反序列化、vibe 导入同一口径)。
- * 滑块步进 0.01 只是「拖着好用」的粒度,数字框 step="any" 才是真正的自由填值——
- * 想要 0.375 就填 0.375,不再被步进吸附到 5 的倍数上。
+ * Strength values: the slider and number box share clampVibeStrength (the same rule as settings deserialisation and vibe import).
+ * The slider's 0.01 step is only granularity that's "nice to drag"; the number box's step="any" is real free entry:
+ * want 0.375, type 0.375, no longer snapped to multiples of 5 by the step.
  */
 function setVibeStrength(vibe: NaiVibe, raw: unknown) {
   vibe.strength = clampVibeStrength(raw, vibe.strength);
 }
 
 /**
- * 数字框走 change(而非 input):中途输入 "0." / "-" 这类残缺串不该立刻被夹成 0。
- * 夹取后回写 input.value——填了 5 会被夹到 1,而当强度本来就是 1 时模型值没变、
- * Vue 不会重渲染,框里就会留着一个骗人的 "5"。
+ * The number box uses change (not input): half-typed strings like "0." / "-" shouldn't be clamped to 0 immediately.
+ * After clamping, input.value is written back: typing 5 is clamped to 1, and when the strength was already 1 the model value doesn't change,
+ * Vue doesn't re-render, and a misleading "5" would stay in the box.
  */
 function commitVibeStrength(vibe: NaiVibe, event: Event) {
   const input = event.target as HTMLInputElement;
@@ -787,7 +787,7 @@ async function removeVibe(vibe: NaiVibe) {
   }
   const index = settings.nai.vibes.indexOf(vibe);
   if (index >= 0) settings.nai.vibes.splice(index, 1);
-  if (deleteError) toastr.warning(`Index deleted, but file cleanup failed:${errorMessage(deleteError)}`, 'Vibe');
+  if (deleteError) toastr.warning(`Index deleted, but file cleanup failed: ${errorMessage(deleteError)}`, 'Vibe');
 }
 </script>
 
@@ -799,8 +799,8 @@ async function removeVibe(vibe: NaiVibe) {
 
     <div class="bbi-sections">
       <Collapsible title="Config" :open="false">
-        <!-- 接入点库:公益站换着用的人不止一个出口,但换站只换地址+密钥,
-             模型/采样器/尺寸等出图参数一概留在下面,渠道级共用,切站不用重配 -->
+        <!-- Endpoint library: people who rotate community relays have more than one exit, but switching sites only changes address + key;
+             image parameters such as model/sampler/size all stay below, shared at channel level, so switching sites needs no reconfiguration -->
         <div class="art-row">
           <span class="bbi-field-label">access point</span>
           <input
@@ -912,7 +912,7 @@ async function removeVibe(vibe: NaiVibe) {
               <Icon :name="showKey ? 'eye-off' : 'eye'" />
             </button>
           </div>
-          <!-- key 随条目走而非渠道级共用:公益站各有各的 key,共用一份等于每次换站都要重填 -->
+          <!-- The key travels with the entry rather than being shared at channel level: each community relay has its own key, and a shared one would mean re-entering it on every switch -->
           <p class="bbi-field-hint">
             {{
               isOfficialEndpoint
@@ -941,7 +941,7 @@ async function removeVibe(vibe: NaiVibe) {
       </Collapsible>
 
       <Collapsible title="prompt word" :open="false">
-        <!-- 画师串库:形制与 ComfyUI 工作流库一致,多一个「不使用」选项 -->
+        <!-- Artist-string library: same layout as the ComfyUI workflow library, plus a "None" option -->
         <div class="art-row">
           <span class="bbi-field-label">Artist Tags</span>
           <input
@@ -1034,9 +1034,9 @@ async function removeVibe(vibe: NaiVibe) {
           </span>
         </div>
 
-        <!-- 从智绘姬导入提示词预设的入口在下方「从智绘姬迁移」折叠区,这里不做常驻提示 -->
+        <!-- The entry for importing prompt presets from Chiehime is in the "Migrate from Chiehime" section below; no permanent hint here -->
 
-        <!-- 内容内联编辑:画师串通常就几个 tag,让「选中哪条」与「这条写了什么」一眼同框 -->
+        <!-- Inline content editing: an artist string is usually just a few tags, so "which one is selected" and "what it says" are visible together -->
         <template v-if="artist">
           <BbiTextarea
             v-model="artist.prompt"
@@ -1049,12 +1049,12 @@ async function removeVibe(vibe: NaiVibe) {
           <p v-if="isBuiltinArtist" class="bbi-field-hint art-hint">
             The built-in artist string is updated with the plug-in version and cannot be modified directly; click the copy button above to create your own string and then modify it.
           </p>
-          <!-- 仅 V5 模型下提醒:V5 与 4.5 的画师串响应差异大,4.5 及以下不需要这条噪音 -->
+          <!-- Only shown for V5 models: V5 and 4.5 respond to artist strings very differently; 4.5 and below don't need this noise -->
           <p v-if="isV5Model" class="bbi-field-hint art-hint art-hint-warn">
             The response of NAI 5 to the artist tags is very different from that of 4.5. The effect of direct application of the old artist tags may go wrong. It is recommended to re-debug.
           </p>
 
-          <!-- 随画师串一起切换的正/负面词:设置了覆盖下面渠道级,没设置就用下面的 -->
+          <!-- Positive/negative tags that switch together with the artist string: if set, they override the channel level below; if not, the ones below apply -->
           <ul class="bbi-prompt-list art-bound-list">
             <li v-for="t in artistBoundTargets" :key="t.key" class="bbi-prompt-item">
               <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
@@ -1070,11 +1070,11 @@ async function removeVibe(vibe: NaiVibe) {
             The prompt words set here will overwrite the ones below and switch with the artist string; if there is no setting here, the ones below will be used.
           </p>
         </template>
-        <!-- 不选画师串时无提示:下拉里「不使用」已自明 -->
+        <!-- No hint when no artist string is selected: "None" in the dropdown speaks for itself -->
 
         <hr class="art-divider" />
 
-        <!-- 渠道级质量词/负面词:只读列表行,点行进弹窗编辑(与设置页「自定义提示词」同款) -->
+        <!-- Channel-level quality/negative tags: read-only list rows; click a row to edit in a dialog (same as "Custom prompts" on the settings page) -->
         <ul class="bbi-prompt-list">
           <li v-for="t in CHANNEL_PROMPT_TARGETS" :key="t.key" class="bbi-prompt-item">
             <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
@@ -1095,7 +1095,7 @@ async function removeVibe(vibe: NaiVibe) {
       </Collapsible>
 
       <Collapsible title="Default parameters" :open="false">
-        <!-- 语义配对紧凑行:双字段行两列、数字参数行四列;说明统一收进行下的一行 hint -->
+        <!-- Compact semantically paired rows: two columns for two-field rows, four for numeric rows; descriptions go into a one-line hint below the row -->
         <div class="bbi-field">
           <div class="bbi-field-head">
             <span class="bbi-field-label">Model</span>
@@ -1506,7 +1506,7 @@ async function removeVibe(vibe: NaiVibe) {
 
         <hr class="art-divider" />
 
-        <!-- 提示词预设导入:与 vibe 同区同级;有没有新预设不在这里报,点开弹窗看预览 -->
+        <!-- Prompt preset import: same section and level as vibes; whether new presets exist isn't reported here; open the dialog to see the preview -->
         <p class="bbi-field-hint vibe-hint">
           The prompt word preset is the same: fixed positive in the front → artist tags, fixed positive in the back → positive quality word, fixed negative → negative prompt word (automatically brought with the official baseline of the current model).
         </p>
@@ -1552,7 +1552,7 @@ async function removeVibe(vibe: NaiVibe) {
       </div>
     </ModalMask>
 
-    <!-- ===== 从智绘姬导入提示词预设:预览 + 确认(打开时算一次结果,纯函数不落盘) ===== -->
+    <!-- ===== Import prompt presets from Chiehime: preview + confirm (computed once on open; pure function, nothing saved) ===== -->
     <ModalMask :open="artistImportOpen" @close="artistImportOpen = false">
       <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Import prompt word presets from Tomoehime">
         <header class="bbi-modal-head">
@@ -1610,7 +1610,7 @@ async function removeVibe(vibe: NaiVibe) {
       </div>
     </ModalMask>
 
-    <!-- ===== 画师串库管理器:搜索/预览图/勾选批量删除 ===== -->
+    <!-- ===== Artist-string library manager: search/preview images/check and bulk delete ===== -->
     <NaiArtistManager v-model:open="artistManagerOpen" />
 
     <ConfirmDialog
@@ -1635,7 +1635,7 @@ async function removeVibe(vibe: NaiVibe) {
       Confirm to delete the artist string &quot;{{ artist?.name || 'Unnamed artist string' }}”? It cannot be restored after deletion.
     </ConfirmDialog>
 
-    <!-- ===== 质量词 / 负面词编辑弹窗(与设置页自定义提示词同款) ===== -->
+    <!-- ===== Quality/negative tag editor dialog (same as custom prompts on the settings page) ===== -->
     <ModalMask :open="!!editingNaiPrompt" @close="closeNaiPrompt">
       <div
         v-if="editingNaiPrompt"
@@ -1684,10 +1684,10 @@ async function removeVibe(vibe: NaiVibe) {
 </template>
 
 <style scoped>
-/* 默认参数的语义配对紧凑行:双字段行两列、数字参数行四列;
-   窄屏双字段行落单列、数字行落 2×2。
-   垂直节奏由行容器统一管(行内字段的 margin-bottom 归零),
-   不靠 .bbi-field 自带的:last-child 规则——行尾字段会被它吃掉下间距。 */
+/* Compact semantically paired rows for default parameters: two columns for two-field rows, four for numeric rows;
+   on narrow screens two-field rows become one column and numeric rows 2×2.
+   Vertical rhythm is managed by the row container (fields in a row have margin-bottom zeroed),
+   not by .bbi-field's own :last-child rule, which would eat the bottom spacing of the last field in a row. */
 .be-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1699,8 +1699,8 @@ async function removeVibe(vibe: NaiVibe) {
   margin-bottom: 0;
 }
 
-/* 参数区的自绘下拉吃满字段宽:与同行的 .bbi-input(模型名/尺寸)左右对齐,
-   子组件根类默认 180px/flex:none,这里压过去。 */
+/* Custom dropdowns in the parameter area fill the field width, aligning left and right with the .bbi-input (model name/size) on the same row;
+   the child's root class defaults to 180px/flex:none, overridden here. */
 .be-select {
   width: 100%;
 }
@@ -1732,7 +1732,7 @@ async function removeVibe(vibe: NaiVibe) {
   align-items: center;
   margin-top: 12px;
 }
-/* 左侧「使用此渠道 / 当前出图渠道」与右侧测试连接分据两端 */
+/* "Use this channel / Current image channel" on the left and Test connection on the right, at opposite ends */
 .conn-use,
 .conn-inuse {
   margin-right: auto;
@@ -1748,9 +1748,9 @@ async function removeVibe(vibe: NaiVibe) {
   margin-top: 0;
 }
 
-/* —— 画师串库(形制照搬 ComfyUIPanel 的 .wf-*) —— */
-/* 选择行:grid 而非 flex——靠 flex-basis 撑出的对齐一 wrap 就散,
-   固定首列宽让标签列与下方各行的标签列同起点。 */
+/* —— Artist-string library (layout copied from ComfyUIPanel's .wf-*) —— */
+/* Selector row: grid rather than flex; alignment built from flex-basis falls apart as soon as it wraps,
+   and a fixed first column makes the label column start where the labels of the rows below start. */
 .art-row {
   display: grid;
   grid-template-columns: 5.5em minmax(0, 1fr) auto;
@@ -1764,7 +1764,7 @@ async function removeVibe(vibe: NaiVibe) {
 .art-row > .bbi-input {
   min-width: 0;
 }
-/* 下拉不吃满:名称通常很短,拉满只会拖出半截空白(子组件根类默认 180px/不伸缩,此处 0,2,0 压过) */
+/* The dropdown doesn't fill the row: names are usually short, and stretching only drags out empty space (the child's root class defaults to 180px/no flex; 0,2,0 overrides it here) */
 .art-row > .art-select {
   width: auto;
   max-width: 320px;
@@ -1775,7 +1775,7 @@ async function removeVibe(vibe: NaiVibe) {
   gap: 4px;
   justify-self: end;
 }
-/* 四个操作低频且同级,图标化后整行只剩下拉一个视觉重点;文案退到 title/aria-label */
+/* The four actions are rare and equal in rank; with icons the row has only the dropdown as its visual focus; text moves to title/aria-label */
 .art-op {
   width: 30px;
   height: 30px;
@@ -1796,18 +1796,18 @@ async function removeVibe(vibe: NaiVibe) {
   margin-top: 8px;
 }
 
-/* V5 画师串差异提醒:警示色,与常规说明区分开 */
+/* V5 artist-string difference warning: warning colour, set apart from regular hints */
 .art-hint-warn {
   color: var(--bbi-warning);
 }
-/* 画师串与下方质量词/负面词的分界 */
+/* Divider between the artist string and the quality/negative tags below */
 .art-divider {
   border: 0;
   border-top: 1px dashed var(--bbi-line);
   margin: 12px 0;
 }
-/* 绑定列表与上方画师串编辑区拉开一点;「已被画师串覆盖」用警示色——渠道值正被覆盖,
-   用户在渠道行改了却不生效,需要一眼看出原因 */
+/* Some space between the bound list and the artist-string editor above; "overridden by artist string" uses the warning colour: the channel value is being overridden,
+   and users who change the channel row without effect need to see why at a glance */
 .art-bound-list {
   margin-top: 10px;
 }
@@ -1816,7 +1816,7 @@ async function removeVibe(vibe: NaiVibe) {
   background: transparent;
 }
 
-/* —— 从智绘姬迁移提示词预设 —— */
+/* —— Migrate prompt presets from Chiehime —— */
 .art-import-list {
   list-style: none;
   margin: 10px 0 4px;
@@ -1900,8 +1900,8 @@ async function removeVibe(vibe: NaiVibe) {
   padding: 0 4px;
 }
 
-/* 操作按钮基类:.bbi-icon-btn 只在 App.vue 的 scoped 块里声明,此处补一份
-   (与 ComfyUIPanel 同款处理;漏了会渲染成浏览器原生按钮,shadow DOM 里也拿不到 ST 样式) */
+/* Action button base class: .bbi-icon-btn is only declared in App.vue's scoped block, so a copy is added here
+   (same handling as ComfyUIPanel; without it they render as native browser buttons, and the shadow DOM can't get ST's styles either) */
 .bbi-icon-btn {
   width: 36px;
   height: 36px;
@@ -1923,7 +1923,7 @@ async function removeVibe(vibe: NaiVibe) {
   background: var(--bbi-line-strong);
 }
 
-/* —— 质量词/负面词列表行 + 弹窗:样式随设置页「自定义提示词」,scoped 不跨组件故补一份 —— */
+/* —— Quality/negative tag list rows + dialog: styled like "Custom prompts" on the settings page; scoped doesn't cross components, so a copy is added —— */
 .bbi-prompt-list {
   list-style: none;
   margin: 0;
@@ -1932,7 +1932,7 @@ async function removeVibe(vibe: NaiVibe) {
   flex-direction: column;
   gap: 8px;
 }
-/* 整行可点进弹窗编辑(状态药丸 .bbi-prompt-state 在 base.css 全局,无需补) */
+/* The whole row is clickable to open the editor dialog (the .bbi-prompt-state status pill is global in base.css; no copy needed) */
 .bbi-prompt-open {
   width: 100%;
   display: flex;
@@ -1968,7 +1968,7 @@ async function removeVibe(vibe: NaiVibe) {
 .bbi-prompt-open:hover .bbi-prompt-edit {
   color: var(--bbi-accent);
 }
-/* 弹窗:更宽 + 大文本框 */
+/* Dialog: wider + large text box */
 .bbi-modal-wide {
   max-width: 680px;
 }
@@ -1979,12 +1979,12 @@ async function removeVibe(vibe: NaiVibe) {
   overflow-wrap: anywhere;
   tab-size: 2;
 }
-/* 把「恢复默认」推到最左(本文件的迁移弹窗此前裸用过此类名,靠 foot 的 flex-end 蒙对) */
+/* Push "Restore default" to the far left (this file's migration dialog used this class name bare before, getting it right by luck via the footer's flex-end) */
 .bbi-modal-foot-spacer {
   flex: 1 1 auto;
 }
-/* 危险按钮:与设置页/ConfirmDialog 同一份口径。base 规则不能只写 :hover ——
-   scoped 不跨组件、base.css 里也没有,只写 hover 的话平时是默认墨色,鼠标一过才变红。 */
+/* Danger button: same rule as the settings page/ConfirmDialog. The base rule can't be just :hover:
+   scoped doesn't cross components and base.css doesn't have it, so with only hover it would be the default ink colour and turn red only on mouse-over. */
 .bbi-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);
@@ -2069,10 +2069,10 @@ async function removeVibe(vibe: NaiVibe) {
 .vibe-strength input[type='range'] {
   flex: 1 1 auto;
   min-width: 0;
-  /* .bbi-range 的 margin 是给「整行占一栏」的设置页留的,这里在同一行里要压掉 */
+  /* .bbi-range's margin is meant for the settings page's "one row per item"; it must be removed when sharing a row here */
   margin: 0;
 }
-/* 数字框窄一档:四位小数够用,再宽就把滑块挤没了 */
+/* Number box one step narrower: four decimals are enough; any wider and the slider gets squeezed out */
 .vibe-strength-num {
   flex: 0 0 auto;
   width: 68px;
@@ -2082,8 +2082,8 @@ async function removeVibe(vibe: NaiVibe) {
   -moz-appearance: textfield;
   appearance: textfield;
 }
-/* step="any" 下浏览器仍画上下箭头,但规范让 stepUp/stepDown 直接抛错 → 按了没反应。
-   摆一对点不动的箭头不如不摆;要微调用左边滑块(方向键 0.01 一档)。 */
+/* With step="any" browsers still draw the up/down arrows, but the spec makes stepUp/stepDown throw → pressing them does nothing.
+   A pair of arrows that don't work is worse than none; use the slider on the left for fine adjustment (arrow keys step 0.01). */
 .vibe-strength-num::-webkit-inner-spin-button,
 .vibe-strength-num::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -2101,10 +2101,10 @@ async function removeVibe(vibe: NaiVibe) {
   color: #c44747;
 }
 
-/* —— 分组 —— */
-/* 工具条:搜索框吃满,计数与「整理分组」靠右。长列表口径与设置页排除弹窗一致
-   (搜索 + 子串匹配收敛渲染量),故不做分页——vibe 靠缩略图认人,翻页只会
-   把「我那张图在第几页」变成新的记忆负担。 */
+/* —— Groups —— */
+/* Toolbar: the search box fills; the count and "Tidy groups" sit on the right. Long lists follow the settings page's exclusion dialog
+   (search + substring matching keeps rendering small), so there is no pagination: vibes are recognised by thumbnail, and pages would only
+   turn "which page is my image on" into a new memory burden. */
 .vibe-toolbar {
   display: flex;
   align-items: center;
@@ -2123,7 +2123,7 @@ async function removeVibe(vibe: NaiVibe) {
   color: var(--bbi-ink-muted);
   white-space: nowrap;
 }
-/* 组头:整块浅底,把「组」和组内条目在视觉上分层;粘顶让长组滚动时组名不丢 */
+/* Group header: a solid light background separating "group" from its entries visually; sticky so the group name stays visible when scrolling a long group */
 .vibe-group {
   margin-top: 10px;
 }
@@ -2136,7 +2136,7 @@ async function removeVibe(vibe: NaiVibe) {
   border-radius: var(--bbi-radius-sm);
   background: var(--bbi-surface-2);
 }
-/* 组名区整体可点(折叠):按钮撑满剩余宽度,点空白处也能收起 */
+/* The group name area is clickable as a whole (collapse): the button fills the remaining width, so clicking empty space also collapses */
 .vibe-group-toggle {
   display: inline-flex;
   align-items: center;
@@ -2158,7 +2158,7 @@ async function removeVibe(vibe: NaiVibe) {
   color: var(--bbi-ink-muted);
   transition: transform var(--bbi-dur) var(--bbi-ease);
 }
-/* 展开态朝下(与 Collapsible 同口径:收起时回到未旋转的朝右/朝上) */
+/* Expanded points down (same rule as Collapsible: collapsed returns to the unrotated right/up) */
 .vibe-group-chevron.is-collapsed {
   transform: rotate(-90deg);
 }
@@ -2174,7 +2174,7 @@ async function removeVibe(vibe: NaiVibe) {
   color: var(--bbi-ink-muted);
   font-variant-numeric: tabular-nums;
 }
-/* 「生效中」复用状态药丸基样式,上色口径与 wf-state.is-ok 一致 */
+/* "Active" reuses the status pill base style, coloured the same as wf-state.is-ok */
 .vibe-group-active {
   color: var(--bbi-accent);
   background: var(--bbi-accent-soft);
@@ -2186,18 +2186,18 @@ async function removeVibe(vibe: NaiVibe) {
   gap: 4px;
   flex: 0 0 auto;
 }
-/* 组内条目左缩进一格,读得出层级 */
+/* Entries in a group are indented one step so the hierarchy reads */
 .vibe-group-body {
   padding-left: 10px;
 }
-/* 组头本身就是一条分界,组内首条不再画上边线(否则紧贴组头是两道线) */
+/* The group header is itself a divider, so the first entry in a group draws no top border (otherwise there would be two lines against the header) */
 .vibe-group-body > .vibe-item:first-child {
   border-top: 0;
 }
 .vibe-group-select {
   width: 130px;
 }
-/* 组头操作里的小图标钮:.bbi-icon-mini 只在其它页的 scoped 块里声明,此处补一份 */
+/* Small icon buttons in group header actions: .bbi-icon-mini is only declared in other pages' scoped blocks, so a copy is added here */
 .bbi-icon-mini {
   flex: 0 0 auto;
   display: inline-flex;
@@ -2217,7 +2217,7 @@ async function removeVibe(vibe: NaiVibe) {
   border-color: var(--bbi-accent);
 }
 @media (max-width: 640px) {
-  /* 窄屏:组头两行——组名一行,操作另起一行靠右,避免按钮把组名挤成一条缝 */
+  /* Narrow screens: group header on two rows, name on one row and actions on another aligned right, so buttons don't squeeze the name into a slit */
   .vibe-group-ops {
     width: 100%;
     justify-content: flex-end;
@@ -2225,8 +2225,8 @@ async function removeVibe(vibe: NaiVibe) {
   .vibe-group-body {
     padding-left: 0;
   }
-  /* 同理:四个图标钮 + 标签会把画师串下拉挤成一条缝,标签独占首行,
-     下拉与操作组同行分据两端 */
+  /* Likewise: four icon buttons + a label would squeeze the artist-string dropdown into a slit, so the label takes the first row alone,
+     and the dropdown and action group share a row at opposite ends */
   .art-row {
     grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 8px;

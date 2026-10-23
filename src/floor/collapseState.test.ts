@@ -3,12 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { isCollapsed, setCollapsed } from '@/floor/collapseState';
 
 describe('collapseState', () => {
-  it('未手动设置的槽位回落到默认值', () => {
+  it('slots never set manually fall back to the default', () => {
     expect(isCollapsed('c|1|0|0', false)).toBe(false);
     expect(isCollapsed('c|1|0|0', true)).toBe(true);
   });
 
-  it('手动设置后覆盖默认值', () => {
+  it('a manual setting overrides the default', () => {
     setCollapsed('c|2|0|1', true);
     expect(isCollapsed('c|2|0|1', false)).toBe(true);
 
@@ -16,10 +16,10 @@ describe('collapseState', () => {
     expect(isCollapsed('c|3|0|0', true)).toBe(false);
   });
 
-  it('不同槽位互不影响', () => {
+  it('different slots do not affect each other', () => {
     setCollapsed('c|4|0|0', true);
     expect(isCollapsed('c|4|0|1', false)).toBe(false);
-    // swipeId 是 key 的一部分:切 swipe 是另一个槽位
+    // swipeId is part of the key: switching swipe is another slot
     expect(isCollapsed('c|4|1|0', false)).toBe(false);
   });
 });

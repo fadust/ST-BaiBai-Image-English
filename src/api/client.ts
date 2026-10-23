@@ -10,12 +10,12 @@ import {
 } from '@/state/history';
 
 /**
- * 通过 SillyTavern 的服务端代理调用任意 OpenAI 兼容端点。
- * (与柏宝书 src/api/client.ts 同源,行为保持一致。)
+ * Calls any OpenAI-compatible endpoint through SillyTavern's server-side proxy.
+ * (Same origin as BaiBai Book's src/api/client.ts; behaviour is kept identical.)
  *
- * 关键:以 chat_completion_source='openai' + reverse_proxy(base url)+ proxy_password(key)
- * 走 /api/backends/chat-completions/generate。请求由 ST 服务端转发,
- * 因此没有浏览器 CORS 问题,也无需把密钥存进 ST 的 secrets。
+ * Key point: uses chat_completion_source='openai' + reverse_proxy (base url) + proxy_password (key)
+ * via /api/backends/chat-completions/generate. The ST server forwards the request,
+ * so there is no browser CORS problem, and the key need not be stored in ST's secrets.
  */
 
 const GENERATE_URL = '/api/backends/chat-completions/generate';
@@ -34,10 +34,10 @@ export class ApiError extends Error {
 }
 
 /**
- * 规范化 OpenAI 兼容 base url:
- * - 用户填完整 /chat/completions 时只去掉端点后缀;
- * - 纯域名自动补 /v1;
- * - 已带路径的地址原样保留,避免破坏 /v2/coding 等自定义路由。
+ * Normalises an OpenAI-compatible base url:
+ * - if the user entered the full /chat/completions, only the endpoint suffix is removed;
+ * - a bare domain gets /v1 appended;
+ * - addresses that already carry a path are kept as-is, so custom routes such as /v2/coding are not broken.
  */
 function normalizeUrl(url: string): string {
   const u = url.trim().replace(/\/+$/, '');
@@ -47,7 +47,7 @@ function normalizeUrl(url: string): string {
   return u;
 }
 
-/** 测试渠道时备用的 /v1 形式。只在首个地址明确返回 404/405 时才会尝试。 */
+/** Fallback /v1 form when testing a channel. Only tried when the first address explicitly returns 404/405. */
 function alternateUrl(url: string): string {
   return /\/v1$/i.test(url) ? url.replace(/\/v1$/i, '') : `${url}/v1`;
 }
@@ -55,24 +55,24 @@ function alternateUrl(url: string): string {
 export interface RequestOptions {
   signal?: AbortSignal;
   /**
-   * 用途标签,只用于请求历史页的展示(如「自动 tag」)。
-   * 不传也不影响请求本身,历史里显示为「未标注」。
+   * Purpose label, used only for display on the request history page (e.g. "Auto tag").
+   * Omitting it doesn't affect the request itself; history shows it as "Unmarked".
    */
   source?: string;
   /**
-   * 调用方验收回调:拿到文本后、记入历史前执行。
+   * Caller validation callback: runs after the text arrives and before it is recorded in history.
    *
-   * 历史里「成功」的口径是「调用方验收通过」,不是「HTTP 拿到了文本」——
-   * 否则「返回了但协议解析不过 → 调用方重试」会留下两条绿色成功记录,
-   * 看历史的人会误以为成功也重复调用。验收抛错 = 记为失败并把错误原样抛出,
-   * 由调用方决定重试/放弃。
+   * In history, "success" means "the caller's validation passed", not "HTTP returned text";
+   * otherwise "returned but the protocol failed to parse → caller retries" would leave two green success records,
+   * and readers of the history would think a success was called twice. A validation throw = recorded as failed and the error rethrown as-is,
+   * leaving the caller to decide whether to retry or give up.
    */
   validate?: (content: string) => void;
 }
 
-/* ============ 请求历史埋点(纯辅助,绝不允许影响主流程) ============ */
+/* ============ Request history tracking (purely auxiliary; never allowed to affect the main flow) ============ */
 
-/** 从响应体取 OpenAI 标准 usage。ST 代理非流式分支原样透传上游 JSON,故这里拿到的是真值。 */
+/** Reads OpenAI-standard usage from the response body. ST's proxy passes the upstream JSON through unchanged on the non-streaming branch, so this is the real value. */
 function readUsage(data: any): { prompt: number | null; completion: number | null } {
   const usage = data?.usage;
   const num = (v: unknown): number | null =>
@@ -84,11 +84,11 @@ function readUsage(data: any): { prompt: number | null; completion: number | nul
 }
 
 /**
- * 本地估算 token(拿不到真值时的兜底):流式与「跟随主 API」两条路都没有 usage。
+ * Local token estimate (fallback when no real value is available): neither streaming nor "follow main API" has usage.
  *
- * 用 ST 的 getTokenCountAsync —— 但它用的是**主界面当前模型**的分词器,
- * 与副 API 渠道的模型未必同源,所以结果只能当估算,UI 上以 ≈ 标注。
- * 任何失败都降级为 null(不显示数字),不抛。
+ * Uses ST's getTokenCountAsync, but that uses the tokenizer of **the main screen's current model**,
+ * which may not match the secondary API channel's model, so the result is only an estimate, marked with ≈ in the UI.
+ * Any failure degrades to null (no number shown) without throwing.
  */
 async function estimateTokens(id: number, messages: ChatMsg[], response: string): Promise<void> {
   try {
@@ -116,8 +116,8 @@ function validTimeoutSec(value: unknown): number {
 }
 
 /**
- * 给完整请求生命周期套超时:不仅覆盖 fetch 建连,也覆盖非流式 JSON 读取和流式 SSE 读取。
- * 外部 signal 仍可提前取消;只有本定时器触发时才转换成明确的超时报错。
+ * Applies a timeout to the whole request lifecycle: not only the fetch connection, but also non-streaming JSON reading and streaming SSE reading.
+ * The external signal can still cancel early; only when this timer fires is it turned into an explicit timeout error.
  */
 async function withTimeout<T>(
   timeoutSec: number,
@@ -139,7 +139,7 @@ async function withTimeout<T>(
   try {
     return await task(ctrl.signal);
   } catch (e) {
-    if (timedOut) throw new ApiError(`${label}Timed out (>${timeoutSec} seconds)`);
+    if (timedOut) throw new ApiError(`${label} timed out (>${timeoutSec} seconds)`);
     throw e;
   } finally {
     clearTimeout(timer);
@@ -148,7 +148,7 @@ async function withTimeout<T>(
 }
 
 /**
- * 发起一次补全请求,返回文本内容。
+ * Sends one completion request and returns the text content.
  */
 export async function requestCompletion(
   channel: ApiChannel,
@@ -159,42 +159,42 @@ export async function requestCompletion(
 }
 
 /**
- * 构造发给 ST 代理的请求体(纯函数,便于测两条分支的产物)。
+ * Builds the request body sent to the ST proxy (pure function, so both branches' output can be tested).
  *
- * 两条分支,按渠道有没有设思考强度二选一:
+ * Two branches, chosen by whether the channel sets a reasoning effort:
  *
- * ① 未设(reasoningEffort 为空 = auto):走 `chat_completion_source: 'openai'`,
- *    除下面固定的 `tool_choice` 外,与加本功能之前**逐字节一致**——存量用户零变化。
+ * ① Not set (reasoningEffort empty = auto): uses `chat_completion_source: 'openai'`,
+ *    **byte-for-byte identical** to before this feature apart from the fixed `tool_choice` below, so existing users see no change.
  *
- * ② 已设:走 `'custom'`。因为 ST 代理对 openai 源的 reasoning_effort 卡**模型名白名单**
- *    (src/constants.js 的 OPENAI_REASONING_EFFORT_MODELS,精确匹配 o1/o3/gpt-5 那批),
- *    模型名对不上就静默丢弃、还照样返回 200(实测确认),用户设了却无效且看不出来。
- *    custom 源的 custom_include_body 由服务端 mergeObjectWithYaml 直接并进上游请求体,
- *    不过任何白名单,任意字段/嵌套对象都能透传。
+ * ② Set: uses `'custom'`. ST's proxy gates reasoning_effort on the openai source with a **model-name allowlist**
+ *    (OPENAI_REASONING_EFFORT_MODELS in src/constants.js, exact matches for the o1/o3/gpt-5 family);
+ *    a non-matching model name is silently dropped while still returning 200 (confirmed by testing), so users set it with no effect and can't tell.
+ *    The custom source's custom_include_body is merged into the upstream body directly by the server's mergeObjectWithYaml,
+ *    without any allowlist, so any field/nested object passes through.
  *
- * 两条路都仍然走 ST 服务端转发(同一个 /generate 端点),没有浏览器直连,
- * 因此 CORS、密钥不落浏览器、SSE 转发等性质完全不变。
+ * Both paths still go through ST's server-side forwarding (the same /generate endpoint), with no direct browser connection,
+ * so CORS, keeping keys out of the browser, SSE forwarding and the like are completely unchanged.
  *
- * custom 源的两个坑(都已规避):
- * - 它**不读 proxy_password**,只读 ST 自己存的 Custom 密钥,所以 key 必须靠
- *   custom_include_headers 注入 Authorization(服务端 `...headers` 排在默认
- *   Authorization 之后,覆盖成立);
- * - custom_include_* 是 YAML 字符串且**解析失败会静默忽略**(util.js 的 catch 是空的)。
- *   key 里带 `:` `#` `{` 或以 `*` 开头都会让 YAML 解析炸 → header 没注入 →
- *   退回用 ST 的 Custom 密钥,可能把用户另一个服务商的 key 发到本端点。
- *   故一律用 JSON.stringify 生成(YAML 是 JSON 的超集),转义交给它,不手拼。
+ * Two pitfalls of the custom source (both avoided):
+ * - it **doesn't read proxy_password**, only ST's own stored Custom key, so the key must be injected as Authorization via
+ *   custom_include_headers (the server's `...headers` comes after the default
+ *   Authorization, so the override holds);
+ * - custom_include_* are YAML strings and **parse failures are silently ignored** (the catch in util.js is empty).
+ *   A key containing `:` `#` `{` or starting with `*` breaks YAML parsing → the header isn't injected →
+ *   it falls back to ST's Custom key, possibly sending the user's key for another provider to this endpoint.
+ *   So they are always generated with JSON.stringify (YAML is a superset of JSON), leaving escaping to it rather than hand-building them.
  *
- * 另:请求体固定带 `tool_choice: 'none'`,这是给第三方 fetch 拦截器的声明式放行握手。
- * 酒馆助手预设脚本(如 Kemini Dramatron 面板)可能 monkey-patch `window.parent.fetch`,
- * 拦截所有 `/api/backends/…/generate` 请求并注入合成工具 + 控制消息,让模型把整段输出
- * 塞进工具调用。对生图 tag 这种「要严格 JSON 协议」的请求,它会把控制消息插进对话、
- * 诱导模型改用工具调用而非直接输出 JSON,拖慢数倍甚至逼出重试。
- * 这类拦截器普遍支持「调用方自带 tool_choice 就放行」(Dramatron 的 callerControlsTools
- * 对 'none' 明确 bypass),所以我们主动声明不用工具。
- * 对上游无影响:ST 服务端只在 tools 为非空数组时才转发 tool_choice
- * (src/endpoints/backends/chat-completions.js),本函数从不发 tools,该字段到不了服务商。
+ * Also: the body always carries `tool_choice: 'none'`, a declarative pass-through handshake for third-party fetch interceptors.
+ * SillyTavern helper preset scripts (such as the Kemini Dramatron panel) may monkey-patch `window.parent.fetch`,
+ * intercepting all `/api/backends/…/generate` requests and injecting synthetic tools + control messages so the model stuffs its whole output
+ * into a tool call. For requests like image tags that need a strict JSON protocol, it inserts control messages into the conversation,
+ * nudging the model to use tool calls instead of outputting JSON directly, slowing things several times or forcing retries.
+ * Such interceptors commonly support "let it through if the caller brings its own tool_choice" (Dramatron's callerControlsTools
+ * explicitly bypasses 'none'), so we declare up front that we don't use tools.
+ * No upstream effect: the ST server only forwards tool_choice when tools is a non-empty array
+ * (src/endpoints/backends/chat-completions.js), and this function never sends tools, so the field never reaches the provider.
  *
- * (与柏宝书 src/api/client.ts 的同名函数同源,行为保持一致。)
+ * (Same origin as the function of the same name in BaiBai Book's src/api/client.ts; behaviour is kept identical.)
  */
 export function buildRequestBody(
   channel: ApiChannel,
@@ -209,9 +209,9 @@ export function buildRequestBody(
     temperature: channel.temperature ?? 1.0,
     max_tokens: channel.maxTokens ?? 65535,
     stream,
-    // 不用工具:见函数头注释,防第三方 fetch 拦截器把生图 tag 改写成工具调用
+    // No tools: see the function header comment; stops third-party fetch interceptors from rewriting image tags into tool calls
     tool_choice: 'none',
-    // 静默:不影响主对话状态
+    // Quiet: doesn't affect the main chat state
     presence_penalty: 0,
     frequency_penalty: 0,
   };
@@ -231,7 +231,7 @@ export function buildRequestBody(
         ...common,
       };
 
-  // 排除参数:把用户指定的字段从 body 删掉,规避不接受这些参数的兼容端点报错。
+  // Excluded parameters: delete the user-specified fields from the body, avoiding errors from compatible endpoints that reject them.
   for (const p of channel.excludeParams ?? []) {
     const key = p.trim();
     if (key) delete body[key];
@@ -254,7 +254,7 @@ async function requestCompletionAtUrl(
 
   const timeoutSec = validTimeoutSec(channel.timeoutSec);
 
-  // 历史埋点:登记在真正发请求之前,失败/超时也留痕(排查时要看的往往正是失败那次)。
+  // History tracking: registered before the request is actually sent, so failures/timeouts leave a trace too (the failed one is often exactly what you need to inspect).
   const historyId = safeHistory(() =>
     beginLlm({
       source: opts.source || 'Unmarked',
@@ -279,12 +279,12 @@ async function requestCompletionAtUrl(
         throw new ApiError(`Auxiliary API request failed (${resp.status}): ${text.slice(0, 300)}`, resp.status);
       }
 
-      // 流式:按 SSE 增量拼接;非流式:直接解析 JSON。
+      // Streaming: concatenate SSE increments; non-streaming: parse JSON directly.
       if (stream) {
         const streamed = await readSseContent(resp);
         if (!streamed) throw new ApiError('Auxiliary API returned no content');
-        // 流式无 usage:ST 构造上游请求体是字段白名单,不含 stream_options,
-        // 没法让上游在末尾回 usage chunk。只能事后本地估算。
+        // Streaming has no usage: ST builds the upstream body from a field allowlist without stream_options,
+        // so the upstream can't be asked to send a usage chunk at the end. Only a local estimate afterwards is possible.
         return { content: streamed, usage: { prompt: null, completion: null } };
       }
 
@@ -295,11 +295,11 @@ async function requestCompletionAtUrl(
 
       const parsed = extractContent(data);
       if (!parsed) throw new ApiError('Auxiliary API returned no content');
-      // ST 代理非流式分支是 response.send(json) 原样透传,故 usage 是上游真值。
+      // ST's proxy non-streaming branch passes through with response.send(json), so usage is the real upstream value.
       return { content: parsed, usage: readUsage(data) };
     });
 
-    // 验收在记历史之前:验收不过 → 落进 catch 记失败,不给「HTTP 成功」的假象
+    // Validation comes before recording history: a failed validation → falls into catch and is recorded as a failure, never giving the false impression of "HTTP success"
     opts.validate?.(result.content);
 
     if (historyId !== null) {
@@ -312,7 +312,7 @@ async function requestCompletionAtUrl(
           tokensEstimated: false,
         }),
       );
-      // 没有真值(流式)才估算。估算是异步的,不 await——不能让它拖慢主流程。
+      // Only estimate when there is no real value (streaming). The estimate is async and not awaited, so it can't slow the main flow.
       if (!hasReal) void estimateTokens(historyId, messages, result.content);
     }
     return result.content;
@@ -326,15 +326,15 @@ async function requestCompletionAtUrl(
 }
 
 /**
- * 读取 SSE 流(text/event-stream),拼接 delta.content。
- * ST 的 generate 端点在 stream=true 时透传上游 SSE:每行 `data: {json}`,以 `data: [DONE]` 结束。
- * 推理模型的思维链增量(delta.reasoning 等)单独缓冲:只有 content 全空时才回退用它,
- * 避免在 content 正常时把思维链混进正文。
+ * Reads an SSE stream (text/event-stream) and concatenates delta.content.
+ * With stream=true, ST's generate endpoint passes the upstream SSE through: each line is `data: {json}`, ending with `data: [DONE]`.
+ * Reasoning-model thought increments (delta.reasoning etc.) are buffered separately and only used as a fallback when content is entirely empty,
+ * avoiding mixing the thought chain into the text when content is normal.
  */
 export async function readSseContent(resp: Response): Promise<string> {
   const reader = resp.body?.getReader();
   if (!reader) {
-    // 无法流式读取(理论上不会):退回当作整体 JSON 处理
+    // Can't read as a stream (shouldn't happen): fall back to treating it as a whole JSON
     const data = await resp.json().catch(() => null);
     return data ? extractContent(data) : '';
   }
@@ -346,7 +346,7 @@ export async function readSseContent(resp: Response): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    // 按行解析,保留最后一段不完整的行到下次
+    // Parse line by line, keeping the last incomplete line for next time
     const lines = buf.split('\n');
     buf = lines.pop() ?? '';
     for (const line of lines) {
@@ -366,14 +366,14 @@ export async function readSseContent(resp: Response): Promise<string> {
         if (reasoningPiece) reasoningOut += reasoningPiece;
       } catch (e) {
         if (e instanceof ApiError) throw e;
-        // 单行解析失败忽略(可能是注释行/心跳)
+        // Ignore lines that fail to parse (may be comment lines/heartbeats)
       }
     }
   }
   return out.trim() || reasoningOut.trim();
 }
 
-/** 把可能是 string / content-parts 数组 / 其他类型的值转成文本;非字符串成分一律丢弃。 */
+/** Converts a value that may be a string / content-parts array / other type into text; non-string parts are always dropped. */
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) {
@@ -391,11 +391,11 @@ function textOf(value: unknown): string {
 }
 
 /**
- * 从响应体提取答案文本。
- * 标准链:message.content / choices[0].text / data.content;
- * 推理模型(如 deepseek-v4-flash)可能把整段答案(思维链+最终 JSON)全放进
- * reasoning / reasoning_content / thinking 而 content 为空——标准链全空时回退取之,
- * 混入的思维链由 parseImagePlan 的 JSON 块扫描自然剔除。
+ * Extracts the answer text from the response body.
+ * Standard chain: message.content / choices[0].text / data.content;
+ * reasoning models (such as deepseek-v4-flash) may put the whole answer (thought chain + final JSON) into
+ * reasoning / reasoning_content / thinking with content empty; when the whole standard chain is empty it falls back to those,
+ * and the mixed-in thought chain is naturally stripped by parseImagePlan's JSON block scan.
  */
 export function extractContent(data: any): string {
   const msg = data?.choices?.[0]?.message;
@@ -407,26 +407,26 @@ export function extractContent(data: any): string {
   ).trim();
 }
 
-/* ============ 跟随主 API(主界面当前在用的 API 设置) ============ */
+/* ============ Follow main API (the API settings currently in use on the main screen) ============ */
 
-/** 跟随主 API 时的响应上限:够装下思维链 + 输出,避免被主 API 默认 max tokens 截断。 */
+/** Response limit when following the main API: enough for the thought chain + output, avoiding truncation by the main API's default max tokens. */
 const MAIN_API_RESPONSE_LENGTH = 65535;
 
 /**
- * 是否具备「跟随主 API」的条件:ST 暴露了 generateRaw(稳定 API)即可。
- * 不再依赖连接管理/连接档——直接借用主界面当前正在用的 API。
+ * Whether "follow main API" is possible: it is enough that ST exposes generateRaw (stable API).
+ * No longer depends on connection management/connection profiles; it simply borrows the API currently in use on the main screen.
  */
 export function mainApiAvailable(): boolean {
   return typeof getContext()?.generateRaw === 'function';
 }
 
 /**
- * 用「当前主 API」(主界面正在用的聊天补全/文本补全设置)发一次补全。
- * 走 ST 的 generateRaw:只发我们给的这几条消息,不带聊天历史/角色卡;无需连接档。
- * quiet 类型内部强制非流式,返回清洗后的整段文本;失败抛 ApiError。
+ * Sends one completion with the "current main API" (the chat/text completion settings in use on the main screen).
+ * Uses ST's generateRaw: sends only the messages we give, without chat history/character card; no connection profile needed.
+ * The quiet type forces non-streaming internally and returns the whole cleaned text; failures throw ApiError.
  *
- * ⚠️ 这条路径的请求体由 ST 构造,带不上 `tool_choice: 'none'`,第三方 fetch 拦截器
- * (如 Kemini 防截断脚本)仍可能改写它。生成 tag 尽量指派副 API 渠道,走 buildRequestBody 那条路。
+ * ⚠️ On this path ST builds the request body, so `tool_choice: 'none'` can't be included, and third-party fetch interceptors
+ * (such as Kemini's anti-truncation script) may still rewrite it. For tag generation, prefer assigning a secondary API channel, which uses buildRequestBody.
  */
 export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOptions = {}): Promise<string> {
   const ctx = getContext();
@@ -434,7 +434,7 @@ export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOption
     throw new ApiError('The current ST version does not support generateRaw and cannot follow the main API');
   }
 
-  // 历史埋点。跟随主 API 走 ST 内部黑盒,拿不到 usage,token 一律靠估算。
+  // History tracking. Following the main API goes through ST's internal black box with no usage available, so tokens are always estimated.
   const historyId = safeHistory(() =>
     beginLlm({
       source: opts.source || 'Unmarked',
@@ -448,7 +448,7 @@ export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOption
   try {
     const content = (await ctx.generateRaw({ prompt: messages, responseLength: MAIN_API_RESPONSE_LENGTH }))?.trim();
     if (!content) throw new ApiError('Main API returned no content');
-    // 与副 API 同口径:验收不过记失败,不记「成功」
+    // Same rule as the secondary API: a failed validation is recorded as a failure, not a "success"
     opts.validate?.(content);
     if (historyId !== null) {
       safeHistory(() =>
@@ -471,7 +471,7 @@ export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOption
   }
 }
 
-/** 连通性测试:发一条极短请求 */
+/** Connectivity test: sends a very short request */
 export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; message: string }> {
   const primaryUrl = normalizeUrl(channel.url);
   try {
@@ -509,7 +509,7 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
         message: `Connection successful; automatically switched to: ${fallbackUrl}, response: ${reply.slice(0, 40)}`,
       };
     } catch {
-      // 备用地址也失败时保留首个错误,避免把模型名等真实问题掩盖成路径错误。
+      // If the fallback address fails too, keep the first error, so real problems such as the model name aren't disguised as path errors.
       return { ok: false, message: e.message };
     }
   }
@@ -518,8 +518,8 @@ export async function testChannel(channel: ApiChannel): Promise<{ ok: boolean; m
 const STATUS_URL = '/api/backends/chat-completions/status';
 
 /**
- * 拉取渠道可用的模型列表(走 ST 的 /status 代理,标准 /v1/models)。
- * 只需 url + key,不需要先填 model。
+ * Fetches the channel's available model list (via ST's /status proxy, standard /v1/models).
+ * Only needs url + key; model doesn't have to be filled in first.
  */
 export async function fetchModels(
   channel: Pick<ApiChannel, 'url' | 'key'> & Partial<Pick<ApiChannel, 'timeoutSec'>>,

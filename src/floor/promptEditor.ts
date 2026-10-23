@@ -18,53 +18,53 @@ import {
 import { applyMessageText, type ApplyMessageResult } from '@/st/messageEdit';
 
 /**
- * 命令式打开「编辑提示词」弹窗(供楼层卡片调用)。
+ * Opens the "Edit prompt" dialog imperatively (called by floor cards).
  *
- * 挂载位置与 components/confirm.ts、floor/lightbox.ts 同款:插件 host 的 shadow root ——
- * 那里有 dist/index.css 与 --bbi-* 主题变量,挂 document.body 会裸奔无样式。
- * 特意**不**挂进卡片自己的 shadow root:弹窗是 fixed 全屏层,而卡片活在 .mes_text 内部,
- * 那里的层叠上下文与 overflow 会把它裁掉(灯箱同理,见 lightbox.ts)。
+ * Mount point is the same as components/confirm.ts and floor/lightbox.ts: the plugin host's shadow root,
+ * which holds dist/index.css and the --bbi-* theme variables; mounting on document.body would render it unstyled.
+ * Deliberately **not** mounted in the card's own shadow root: the dialog is a fixed full-screen layer, while the card lives inside .mes_text,
+ * whose stacking context and overflow would clip it (same as the lightbox; see lightbox.ts).
  *
- * 【提示词的真源是正文】
- * tag 原文存在 message.mes 里,不在 extra、不在 store。所以「编辑提示词」本质是一次
- * 正文写回:序列化新 tag → 原位替换第 seq 条 → applyMessageText(身份 CAS)→
- * 重水合。新 tag 换出新 promptHash,老图自动落进 stale 桶(卡片已有「旧提示词」角标
- * 与提示行),故「应用」不需要任何额外落地逻辑。
+ * [The story text is the prompt's source of truth]
+ * The raw tag text lives in message.mes, not in extra or a store. So "edit prompt" is really a
+ * write-back of the text: serialise the new tag → replace tag number seq in place → applyMessageText (identity CAS) →
+ * re-hydrate. A new tag yields a new promptHash, and old images fall into the stale bucket automatically (the card already has an "old prompt" badge
+ * and hint line), so "Apply" needs no extra persistence logic.
  */
 
-// 与 index.ts 的 HOST_ID 一致
+// Matches HOST_ID in index.ts
 const HOST_ID = 'bbi-app-host';
 
-/** 楼层坐标快照。弹窗活得比卡片长,这些一律开窗时取值,回调里绝不读 props。 */
+/** Snapshot of floor coordinates. The dialog outlives the card, so these are all read when it opens; callbacks never read props. */
 export interface PromptEditorAt {
   chatId: string;
   messageId: number;
   swipeId: number;
   seq: number;
-  /** 开窗时的 tag 原文:写回前用它确认 seq 还指向同一条 tag。 */
+  /** Raw tag text when the dialog opened: used before write-back to confirm seq still points at the same tag. */
   rawTag: string;
 }
 
 export interface PromptEditorOptions {
   at: PromptEditorAt;
-  /** 解析出的原始内容(弹窗的初值与「有没有真的改」的基准)。 */
+  /** Parsed original content (the dialog's initial value and the baseline for "was anything really changed"). */
   content: ImageTagContent;
-  /** 当前提示词下已有几张图。 */
+  /** How many images exist for the current prompt. */
   historyCount: number;
-  /** 后端是否已配置好。 */
+  /** Whether the backend is configured. */
   configured: boolean;
 }
 
-/** 同一时刻只允许一个编辑弹窗,重复调用先关旧的。 */
+/** Only one editor dialog at a time; a repeat call closes the old one first. */
 let closeCurrent: (() => void) | null = null;
 
-/** 离场动画时长,与 base.css 的 .bbi-modal-enter/leave-active(0.15s)对齐。 */
+/** Leave-animation duration, matching .bbi-modal-enter/leave-active (0.15s) in base.css. */
 const LEAVE_MS = 160;
 
-/** 补水合的延时,与 hydrate.ts 的 LATE_HYDRATION_DELAY 同一口径。 */
+/** Delay for the follow-up hydration, same rule as LATE_HYDRATION_DELAY in hydrate.ts. */
 const LATE_HYDRATION_MS = 100;
 
-/** 写回未成功时给用户的说法(exhaustive:新增 ApplyMessageResult 分支时这里会编译报错)。 */
+/** What to tell the user when write-back fails (exhaustive: adding an ApplyMessageResult branch makes this fail to compile). */
 function failureReason(result: Exclude<ApplyMessageResult, 'saved'>): string {
   switch (result) {
     case 'chat-changed':
@@ -81,10 +81,10 @@ function failureReason(result: Exclude<ApplyMessageResult, 'saved'>): string {
 }
 
 /**
- * 写回正文。返回 true 表示已落盘。
+ * Writes back the story text. Returns true once saved.
  *
- * 失败一律 toast 并返回 false,**弹窗不关** —— 用户可能刚打了几十个 tag,
- * 因为切了个 swipe 就把草稿吞掉是不可接受的。
+ * Every failure shows a toast and returns false, **without closing the dialog**: the user may have just typed dozens of tags,
+ * and swallowing the draft because of a swipe switch is unacceptable.
  */
 async function writeBack(
   at: PromptEditorAt,
@@ -103,8 +103,8 @@ async function writeBack(
   }
 
   const nextTag = serializeImageTag(content);
-  // 标记必须挂在写回**之前**:写回即触发重水合、卡片挂载时消费标记(同 autoTag/runner.ts)。
-  // force 模式无条件开跑 —— 用户点的就是「重新生成」,即便这条提示词以前出过图。
+  // The mark must be set **before** writing back: write-back triggers re-hydration, and the card consumes the mark on mount (same as autoTag/runner.ts).
+  // force mode always starts: the user clicked "Regenerate", even if this prompt produced images before.
   if (regenerate) {
     markForAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq, 'force');
   }
@@ -114,9 +114,9 @@ async function writeBack(
     result = await applyMessageText(
       at.messageId,
       currentText => {
-        // 弹窗可能开着好几分钟。身份 CAS 只认聊天/楼层/swipe,**刻意不比对正文内容**
-        // (那是与别的改正文插件共存的关键),所以「tag 数变了 / 这条 tag 被别人改了」
-        // 拦不住,只能在这里按原文自己核对:seq 指的还是不是同一条。
+        // The dialog may stay open for minutes. The identity CAS only checks chat/floor/swipe and **deliberately does not compare the text**
+        // (that is key to coexisting with other text-editing plugins), so "the tag count changed / someone else edited this tag"
+        // can't be caught there; it has to be checked here against the original text: does seq still point at the same tag.
         if (parseImageTags(currentText)[at.seq] !== at.rawTag) return null;
         return replaceImageTagAt(currentText, at.seq, nextTag);
       },
@@ -125,7 +125,7 @@ async function writeBack(
       message,
     );
   } catch (error) {
-    // 撤销标记:只取回自己这一枚,不能用 clearAutoGenerateForFloor(会连累同楼兄弟槽位)
+    // Revoke the mark: take back only our own one; clearAutoGenerateForFloor can't be used (it would hit sibling slots on the same floor)
     if (regenerate) consumeAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq);
     toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
     return false;
@@ -137,10 +137,10 @@ async function writeBack(
     return false;
   }
 
-  // applyMessageText 内部会触发 MESSAGE_EDITED / MESSAGE_UPDATED,楼层通常已自行重水合;
-  // 但 ST 编辑框开着时它走 settleActiveEditor 分支(**不发 MESSAGE_UPDATED**),没人来水合,
-  // 故这里自己补。补两次的理由同 hydrate.ts 的 scheduleHydration:别的 ST 监听器可能在这之后
-  // 才替换 .mes_text,晚班那次若锚点没变只是一次廉价 props patch(零重建、零重复消费标记)。
+  // applyMessageText internally fires MESSAGE_EDITED / MESSAGE_UPDATED, so the floor usually re-hydrates by itself;
+  // but while ST's edit box is open it takes the settleActiveEditor branch (**no MESSAGE_UPDATED**), and nobody hydrates,
+  // so we do it here. Twice, for the same reason as scheduleHydration in hydrate.ts: other ST listeners may replace .mes_text
+  // after this; if the anchor hasn't changed, the late run is just a cheap props patch (zero rebuilds, no mark consumed twice).
   hydrateMessage(at.messageId, context);
   setTimeout(() => {
     const later = getContext();
@@ -151,13 +151,13 @@ async function writeBack(
 }
 
 /**
- * 从正文里重读第 seq 条 tag,算出重写落盘后弹窗该换成什么(纯函数,便于单测)。
+ * Re-reads tag number seq from the story text and works out what the dialog should switch to after a rewrite is saved (pure function, easy to unit test).
  *
- * 返回 null = 什么都别动:正文读不到、seq 已不存在、或原文压根没变。不猜、不兜底——
- * 正文是提示词的唯一真源(见文件头),读不出就该保留用户眼前的东西。
+ * Returns null = touch nothing: the text can't be read, seq no longer exists, or the raw text didn't change at all. No guessing, no fallback:
+ * the story text is the prompt's single source of truth (see the file header), and if it can't be read, what the user sees should stay.
  *
- * **rawTag 与 content 必须一起换**:只换 content(回填了输入框)不换 rawTag,用户接着点
- * 「应用」会撞上「这条 tag 已被改动」,而改动它的正是我们自己触发的这次重写。
+ * **rawTag and content must change together**: changing only content (refilling the input) without rawTag means the user's next click on
+ * "Apply" runs into "this tag has been changed", and the change was our own rewrite.
  */
 export function nextEditorState(
   text: string | undefined,
@@ -178,50 +178,50 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   const container = document.createElement('div');
   root.appendChild(container);
   let busy = false;
-  /** 草稿是否已改动:由组件 emit('dirty') 推上来。 */
+  /** Whether the draft was changed: pushed up by the component's emit('dirty'). */
   let dirty = false;
-  /** 已请求关闭:置上后重渲染一次让组件播离场动画,LEAVE_MS 后真卸载。 */
+  /** Close requested: once set, re-render once so the component plays its leave animation, then really unmount after LEAVE_MS. */
   let closing = false;
-  /** 正在问「放弃修改?」:ConfirmDialog 自己不处理 Esc,而本弹窗的捕获监听还活着,
-   *  不挡住的话连按 Esc 会叠出好几个确认框。 */
+  /** Asking "Discard changes?": ConfirmDialog doesn't handle Esc itself, while this dialog's capture listener is still active;
+   *  without blocking, repeated Esc presses would stack several confirm dialogs. */
   let asking = false;
   /**
-   * 弹窗当前展示的内容。AI 重写落盘后换成正文里的新版本,组件 watch 到即回填输入框。
-   * 与 options.content 分开:那是开窗时的快照,不该被改。
+   * Content the dialog currently shows. After an AI rewrite is saved it switches to the new version from the text, and the component's watch refills the input.
+   * Kept apart from options.content: that is the snapshot from opening and must not change.
    */
   let content: ImageTagContent = options.content;
   /**
-   * 写回 CAS 用的 tag 原文。**重写落盘后必须换成新的** ——
-   * 否则用户接着点「应用」会撞上「这条 tag 已被改动」,而改动它的正是我们自己。
+   * Raw tag text used for the write-back CAS. **It must switch to the new one after a rewrite is saved**;
+   * otherwise the user's next click on "Apply" runs into "this tag has been changed", and the change was ours.
    */
   let rawTag = options.at.rawTag;
   /**
-   * 本窗内 AI 重写已经落过盘。弹窗不自动关,用户回头看到的是一份「已经存进正文」的提示词,
-   * 与他自己手打、还没点应用的草稿长得一样 —— 不明说一句,没法分辨哪份已经生效。
+   * An AI rewrite has already been saved in this dialog. The dialog doesn't close automatically, and the prompt the user sees is one "already saved in the text",
+   * which looks the same as a draft they typed and haven't applied; without saying so, there is no way to tell which one is in effect.
    */
   let rewritten = false;
-  /** 本槽位的运行态 key,与 genState / tagPlanState 同构。 */
+  /** This slot's runtime key, same shape as genState / tagPlanState. */
   const planKey = slotKey(options.at.chatId, options.at.messageId, options.at.swipeId, options.at.seq);
   /**
-   * 本窗已经关了(含被后来者顶掉)。**迟到的回调一律不准再渲染** ——
-   * 重写跑在 tagPlanState 里、活得比弹窗长,它的收尾回调会在关窗之后才到。
+   * This dialog is closed (including being replaced by a newer one). **Late callbacks must never render again**:
+   * the rewrite runs in tagPlanState and outlives the dialog, so its finish callback can arrive after the dialog closed.
    *
-   * 这道闸门不是洁癖:容器虽已 remove,但 ModalMask 是 <Teleport> 到 modalHost 的,
-   * **容器脱离文档并不等于看不见** —— 往脱档容器里 render 一次,弹窗会原地复活到屏幕上,
-   * 而且复活的是全新实例(closing 的 watch 没有 immediate,顶着 closing=true 挂载也不会自行隐藏),
-   * 随后 requestClose / onApply 又都在 closing 上早退 → 叉、取消、应用全部点不动,窗关不掉。
+   * This gate is not fussiness: the container is removed, but ModalMask teleports to modalHost, so
+   * **a detached container does not mean invisible**. Rendering once into the detached container brings the dialog back on screen,
+   * as a brand-new instance (the closing watch has no immediate, so mounting with closing=true doesn't hide itself),
+   * and then requestClose / onApply both bail out early on closing → the ×, Cancel and Apply all stop working, and the dialog can't be closed.
    */
   let closed = false;
 
   const close = () => {
-    if (closeCurrent !== close) return; // 已被后来者替换,不重复清理
+    if (closeCurrent !== close) return; // Already replaced by a newer one; don't clean up twice
     closeCurrent = null;
-    // 先让组件播离场动画(ModalMask 的 Transition 要求容器仍挂着),再真卸载
+    // Let the component play its leave animation first (ModalMask's Transition needs the container still attached), then really unmount
     closing = true;
     paint();
     setTimeout(() => {
-      // 置 closed 必须在 render(null) **之前**:两者之间若插进一次迟到的 paint,
-      // 卸载的就是刚被它重新挂上的那个实例,等于白关。
+      // closed must be set **before** render(null): if a late paint slipped in between them,
+      // the instance being unmounted would be the one it just remounted, and the close would be wasted.
       closed = true;
       render(null, container);
       container.remove();
@@ -230,9 +230,9 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   closeCurrent = close;
 
   /**
-   * 重写收尾后:从**当前正文**把这一槽的 tag 重新读一份,回填输入框。
-   * 判定在 nextEditorState(纯函数,有单测),这里只负责取正文与赋值。
-   * 返回 true = 确实换了新提示词(据此给一行「已保存」的说明)。
+   * After a rewrite finishes: re-reads this slot's tag from the **current text** and refills the input.
+   * The decision is in nextEditorState (pure function, unit tested); this only fetches the text and assigns.
+   * Returns true = the prompt really changed (used to show a one-line "saved" note).
    */
   const refreshFromMessage = (): boolean => {
     const next = nextEditorState(
@@ -248,11 +248,11 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   };
 
   /**
-   * 真正发起重写。
+   * Actually starts the rewrite.
    *
-   * 跑在 tagPlanState 里而不是本弹窗里:**关掉弹窗不中断重写**(用户的明确要求)。
-   * runner 自己会落盘并 force 出图,所以这里只负责收尾后把新提示词读回来、重绘。
-   * 弹窗**不自动关**——点一下就闪退像是崩了。
+   * Runs in tagPlanState rather than this dialog: **closing the dialog does not interrupt the rewrite** (an explicit user requirement).
+   * The runner saves and force-generates by itself, so this only reads the new prompt back after it finishes and re-renders.
+   * The dialog **does not close automatically**: vanishing after one click looks like a crash.
    */
   const startRewrite = (): void => {
     if (busy || closing || isTagPlanning(planKey)) return;
@@ -260,7 +260,7 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     paint();
     void task
       .catch(() => {
-        // 失败原因 runner 已经 toast 过了,这里只负责把转圈停掉
+        // The runner already showed the failure reason as a toast; this only stops the spinner
       })
       .finally(() => {
         refreshFromMessage();
@@ -269,11 +269,11 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   };
 
   /**
-   * 「AI 重写提示词」按钮。
+   * The "AI rewrite prompt" button.
    *
-   * 草稿改过就先问一句:重写是**真落盘**的,收尾后草稿必然被新提示词顶掉
-   * (不顶掉更糟——用户接着点「应用」会拿旧草稿把刚重写的覆盖回去)。手打了半天被一次
-   * 点击无声吞掉是丢数据,口径同 requestClose;共用 asking 挡住叠出好几个确认框。
+   * If the draft was changed, ask first: the rewrite **really saves**, and after it finishes the draft is necessarily replaced by the new prompt
+   * (not replacing it would be worse: the user's next click on "Apply" would overwrite the fresh rewrite with the old draft). Silently swallowing
+   * a long hand-typed draft in one click is data loss, same rule as requestClose; sharing asking prevents stacking several confirm dialogs.
    */
   const rewrite = (): void => {
     if (busy || asking || closing || isTagPlanning(planKey)) return;
@@ -292,8 +292,8 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     });
   };
 
-  // 重开弹窗时接上在途的重写:请求属于 store,关窗没有中断它。
-  // 不重复发起,只等它收尾后照样回填(用户要的「续上」)。
+  // When the dialog reopens, resume the in-flight rewrite: the request belongs to the store, and closing the dialog didn't interrupt it.
+  // Don't start another; just wait for it to finish and refill as usual (the "resume" users want).
   const rejoin = awaitTagPlan(planKey);
   if (rejoin) {
     void rejoin
@@ -304,7 +304,7 @@ export function openPromptEditor(options: PromptEditorOptions): void {
       });
   }
 
-  /** 关窗请求:草稿改过就先问一句,免得手打半天被一下 Esc 吞掉。 */
+  /** Close request: if the draft was changed, ask first, so a long hand-typed draft isn't swallowed by one Esc. */
   const requestClose = () => {
     if (busy || asking || closing) return;
     if (!dirty) {
@@ -325,16 +325,16 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   };
 
   /**
-   * 重渲染(props patch,组件实例与草稿都留着 —— 写回失败时用户不丢输入)。
+   * Re-renders (props patch; the component instance and draft are kept, so users don't lose input if write-back fails).
    *
-   * **不用 ref 拿组件实例**:命令式 render 没有父组件,`ref` 的 owner 为 null,
-   * 挂载时 Vue 因 parentComponent 护栏静默跳过、卸载时无护栏直接抛
-   * "Cannot read properties of null (reading 'refs')",且 ref 从未生效
-   * → 拿不到实例 → 关不掉弹窗。状态一律走 props/emit。
+   * **No ref to get the component instance**: an imperative render has no parent component, so `ref`'s owner is null;
+   * on mount Vue silently skips it because of the parentComponent guard, and on unmount, with no guard, it throws
+   * "Cannot read properties of null (reading 'refs')"; the ref never takes effect
+   * → no instance → the dialog can't be closed. All state goes through props/emit.
    */
   const paint = () => {
-    // 迟到的重绘一律丢弃(见 closed 的注释):容器已脱档,但 ModalMask 会 Teleport 出去,
-    // 渲染进去等于把关掉的弹窗又贴回屏幕,且再也关不掉。
+    // Late re-renders are always discarded (see the comment on closed): the container is detached, but ModalMask teleports out,
+    // so rendering into it would stick the closed dialog back on screen, and it could never be closed again.
     if (closed) return;
     render(
       h(PromptEditor, {

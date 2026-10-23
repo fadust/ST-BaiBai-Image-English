@@ -10,60 +10,60 @@ import { activeOrientationLock } from '@/state/settings';
 import { containsTagMarkup, type ImageTagContent } from '@/st/imageTagRegex';
 
 /**
- * 手动编辑生图提示词的弹窗(楼层卡片 ⋯ 菜单里的铅笔钮)。
+ * Dialog for manually editing an image prompt (the pencil button in the floor card's ⋯ menu).
  *
- * 【为什么编辑结构化字段而不是一个大文本框】
- * 卡片上那个 promptText(Card.vue)是拼给人看的展示串,带「角色: 小雪」「Negative: 」
- * 前缀,**不可逆解析**。这里按 ImageTagContent 的五个字段分别编辑,保存时由
- * serializeImageTag 统一序列化 —— 没给编辑的字段也原样带回,不会静默吃掉 characters。
+ * [Why edit structured fields rather than one big text box]
+ * The card's promptText (Card.vue) is a display string assembled for people, with prefixes such as "Role: 小雪" and "Negative: ",
+ * and it **cannot be parsed back**. Here the five fields of ImageTagContent are edited separately and serialised together by
+ * serializeImageTag on save; fields without an editor are carried back unchanged, so characters is never silently dropped.
  *
- * 【本组件是命令式挂载的(floor/promptEditor.ts),活得比卡片长】
- * 任一兄弟槽位出图都会重水合、销毁卡片,而弹窗还开着。故楼层坐标一律由调用方快照后
- * 传参,组件内绝不去读卡片的 props —— 与 Lightbox 同一条纪律。
+ * [This component is mounted imperatively (floor/promptEditor.ts) and outlives the card]
+ * Any sibling slot's image re-hydrates and destroys cards while the dialog stays open. So floor coordinates are always snapshotted by the caller
+ * and passed in; the component never reads the card's props. The same discipline as Lightbox.
  */
 
 const props = defineProps<{
-  /** 打开时的原始内容(解析结果);草稿以此为基准比对「有没有真的改」。 */
+  /** Original content when opened (parse result); the draft is compared against it to decide "was anything really changed". */
   content: ImageTagContent;
-  /** 当前提示词下已有几张图(>1 时提示改提示词会收成一张)。 */
+  /** How many images exist for the current prompt (>1 warns that changing the prompt collapses them into one). */
   historyCount: number;
-  /** 后端是否已配置好(未配置时「应用并重新生成」不可点)。 */
+  /** Whether the backend is configured ("Apply and regenerate" is disabled when not). */
   configured: boolean;
-  /** 忙碌中(写回正在进行):禁用底部按钮,避免连点写两次。 */
+  /** Busy (write-back in progress): disables the bottom buttons to avoid writing twice on double clicks. */
   busy?: boolean;
   /**
-   * AI 重写提示词在途(运行态在 floor/tagPlanState.ts,**不属于本弹窗**)。
-   * 关窗不中断重写,重开的弹窗照样看到它亮着 —— 故由调用方按 store 传进来。
+   * An AI prompt rewrite is in flight (its runtime state is in floor/tagPlanState.ts and **does not belong to this dialog**).
+   * Closing the dialog doesn't interrupt the rewrite, and a reopened dialog still sees it lit, so the caller passes it in from the store.
    */
   rewriting?: boolean;
-  /** 本窗内已有过一次 AI 重写落盘:下面输入框里的是**已保存**的版本,明说一句。 */
+  /** An AI rewrite has already been saved in this dialog: the inputs below hold the **saved** version; say so plainly. */
   rewritten?: boolean;
   /**
-   * 调用方要求关闭:置 true 后本组件播离场动画。
-   * **不能反过来用 ref 拿组件实例**——本组件是 render(h(...)) 命令式挂载的,
-   * 没有父组件实例,`ref` 的 owner 为 null:挂载时 Vue 静默跳过(有 parentComponent 护栏),
-   * 卸载时那道护栏没有,直接读 owner.refs 抛 "Cannot read properties of null"。
-   * 状态一律走 props/emit,别把 ref 当逃生口。
+   * The caller requests closing: once true, this component plays its leave animation.
+   * **Never get the component instance via ref instead**: this component is mounted imperatively with render(h(...)),
+   * has no parent component instance, and `ref`'s owner is null: Vue silently skips it on mount (guarded by parentComponent),
+   * but on unmount there is no such guard, and reading owner.refs throws "Cannot read properties of null".
+   * All state goes through props/emit; don't use ref as an escape hatch.
    */
   closing?: boolean;
 }>();
 
 const emit = defineEmits<{
-  /** 应用;regenerate=true 表示写回后直接开跑出图。 */
+  /** Apply; regenerate=true means start generating right after write-back. */
   (e: 'apply', value: ImageTagContent, regenerate: boolean): void;
-  /** 请求 AI 重写这一张的提示词(落盘与出图由调用方做,本组件只负责把结果读回草稿)。 */
+  /** Requests an AI rewrite of this image's prompt (the caller saves and generates; this component only reads the result back into the draft). */
   (e: 'rewrite'): void;
-  /** 取消在途的 AI 重写。 */
+  /** Cancels the in-flight AI rewrite. */
   (e: 'cancel-rewrite'): void;
-  /** 草稿是否已改动(调用方据此决定关窗前要不要问「放弃修改?」)。 */
+  /** Whether the draft was changed (the caller uses it to decide whether to ask "Discard changes?" before closing). */
   (e: 'dirty', value: boolean): void;
   (e: 'close'): void;
 }>();
 
 /**
- * 显隐态。**初值必须是 false**:Vue 的 <Transition> 默认不给首次渲染播动画(没有 appear),
- * 挂载时就 true 的话弹窗会硬邦邦地直接出现。挂载后翻成 true 才有入场动画 ——
- * 与设置页那些「open 从 false 翻上来」的弹窗表现一致。
+ * Visibility. **The initial value must be false**: Vue's <Transition> doesn't animate the first render by default (no appear),
+ * so if it were true on mount the dialog would just pop up abruptly. Flipping to true after mount gives the enter animation,
+ * matching the settings page dialogs whose open flips up from false.
  */
 const open = ref(false);
 
@@ -76,21 +76,21 @@ const characters = ref<ImageCharacterPrompt[]>(
 );
 
 /**
- * 当前渠道的画幅锁(null = 未锁,见 settings.ts 的 activeOrientationLock)。
- * 锁定时方向按钮显示锁定值并禁用:出图一律按锁走(generate.ts),这里再让人选只是个
- * 不起作用的开关。草稿里的 size 不动——正文里记下的方向原样保留,渠道改回「自动」即恢复。
+ * The current channel's orientation lock (null = unlocked; see activeOrientationLock in settings.ts).
+ * When locked, the orientation buttons show the locked value and are disabled: generation always follows the lock (generate.ts), so letting people choose here
+ * would be a switch with no effect. The draft's size is untouched: the orientation recorded in the text stays, and switching the channel back to "Auto" restores it.
  */
 const lockedSize = computed<Orientation | null>(() => {
   const lock = activeOrientationLock();
   return lock === 'auto' ? null : lock;
 });
 
-/** 换行折成空格:与 parseImageTagContent 的 oneLine 同口径(提示词里换行没有意义)。 */
+/** Folds newlines into spaces: same rule as oneLine in parseImageTagContent (newlines mean nothing in a prompt). */
 function oneLine(text: string): string {
   return text.trim().replace(/[\r\n]+/g, ' ');
 }
 
-/** 草稿归一后的结果 —— 保存与「有没有改」都以它为准,两处不能各算一次。 */
+/** Normalised draft: both saving and "was anything changed" use it; the two must not compute it separately. */
 const draft = computed<ImageTagContent>(() => ({
   tag: oneLine(tag.value),
   nl: oneLine(nl.value),
@@ -101,7 +101,7 @@ const draft = computed<ImageTagContent>(() => ({
       tag: oneLine(character.tag),
       nl: oneLine(character.nl),
     }))
-    // 与 parseImageTagContent 同口径:name/tag 缺一条即丢弃(空行不落进正文)
+    // Same rule as parseImageTagContent: an entry missing name or tag is dropped (blank rows never reach the text)
     .filter(character => character.name && character.tag),
   size: size.value,
 }));
@@ -115,10 +115,10 @@ function sameCharacters(a: ImageCharacterPrompt[], b: ImageCharacterPrompt[]): b
 }
 
 /**
- * 草稿与原始内容是否一致。**按字段比对,不比对序列化结果**:
- * 解析是容忍式的(裸文本 / 显式 <tag> / 缺子标签都收),序列化是规范式的,
- * 一个手写的非规范 tag 打开再原样保存,序列化出来的原文就变了 → promptHash 变了 →
- * 明明什么都没改,老图却全变成「旧提示词」。
+ * Whether the draft matches the original content. **Compares field by field, not the serialised result**:
+ * parsing is lenient (accepts bare text / explicit <tag> / missing sub-tags) while serialisation is canonical,
+ * so opening a hand-written non-canonical tag and saving it unchanged would change the serialised raw text → promptHash changes →
+ * nothing was changed, yet every old image becomes "old prompt".
  */
 const dirty = computed(() => {
   const next = draft.value;
@@ -131,7 +131,7 @@ const dirty = computed(() => {
   );
 });
 
-/** 校验:tag 必填 + 全字段禁含子标签字面量(口径与 AI 侧同一份)。 */
+/** Validation: tag is required + no field may contain sub-tag literals (same rule as the AI side). */
 const error = computed(() => {
   const next = draft.value;
   if (!next.tag) return 'Screen tag cannot be empty';
@@ -141,11 +141,11 @@ const error = computed(() => {
     ['negative cue words', next.negative],
   ];
   for (const character of next.characters) {
-    fields.push([`role "${character.name}」`, `${character.name} ${character.tag} ${character.nl}`]);
+    fields.push([`Character "${character.name}"`, `${character.name} ${character.tag} ${character.nl}`]);
   }
   for (const [label, value] of fields) {
     if (value && containsTagMarkup(value)) {
-      return `${label}Cannot contain <bbi_image> / <tag> / <nl> / <negative> / <characters> / <size> tags`;
+      return `${label} cannot contain <bbi_image> / <tag> / <nl> / <negative> / <characters> / <size> tags`;
     }
   }
   return '';
@@ -154,12 +154,12 @@ const error = computed(() => {
 const canApply = computed(() => !error.value && !props.busy && !props.rewriting);
 
 /**
- * AI 重写落盘后,把新提示词读回输入框。
+ * After an AI rewrite is saved, reads the new prompt back into the input box.
  *
- * 重写是**真落盘**的(runner 写正文 + 出图),所以 content 变了就意味着「正文里现在
- * 是这一份」;弹窗里的草稿必须跟着换,否则用户点「应用」会拿旧草稿把刚重写的覆盖掉。
- * 刻意不问「要不要丢弃草稿」:重写是用户自己点的,且草稿内容原样躺在下面的输入框里,
- * 他看得见、随时能再改。
+ * The rewrite is **really saved** (the runner writes the text + generates the image), so a change in content means "this is the version
+ * now in the text"; the dialog's draft must follow, otherwise clicking "Apply" would overwrite the fresh rewrite with the old draft.
+ * It deliberately doesn't ask "discard the draft?": the user clicked the rewrite themselves, and the draft content lies unchanged in the input box below,
+ * where they can see it and edit it again at any time.
  */
 watch(
   () => props.content,
@@ -191,19 +191,19 @@ function rewrite(): void {
 }
 
 /**
- * 关闭前的丢弃确认交给调用方(它有 confirmDialog,且要按 dirty 决定问不问)。
- * 重写在途时照常允许关闭:请求属于 tagPlanState 而非本弹窗,关窗不中断它,
- * 重开时还能接上(见 promptEditor.ts 的 rejoin)。
+ * Discard confirmation before closing is left to the caller (it has confirmDialog, and decides by dirty whether to ask).
+ * Closing is allowed as usual while a rewrite is in flight: the request belongs to tagPlanState, not this dialog, so closing doesn't interrupt it,
+ * and reopening can rejoin it (see rejoin in promptEditor.ts).
  */
 function requestClose(): void {
   if (props.busy) return;
   emit('close');
 }
 
-// 草稿改动态推给调用方(它没有组件实例可读,见 closing prop 的注释)
+// Push draft changes to the caller (it has no component instance to read; see the comment on the closing prop)
 watch(dirty, value => emit('dirty', value), { immediate: true });
 
-// 调用方要求关闭 → 播离场动画;真正的卸载由调用方在动画时长后做
+// The caller asks to close → play the exit animation; the real unmount is done by the caller after the animation duration
 watch(
   () => props.closing,
   value => {
@@ -213,14 +213,14 @@ watch(
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Escape') return;
-  // 捕获阶段:抢在 ST 的全局快捷键之前拿到 Esc(否则会连带关掉别的东西)
+  // Capture phase: get Esc before ST's global shortcuts (otherwise it would close other things too)
   event.stopPropagation();
   requestClose();
 }
 
 onMounted(() => {
   document.addEventListener('keydown', onKeydown, true);
-  // 翻开 open 触发入场动画(见 open 的声明处);同一 tick 内改不算变化,故等一帧
+  // Flipping open triggers the enter animation (see where open is declared); a change within the same tick doesn't count, so wait one frame
   requestAnimationFrame(() => {
     open.value = true;
   });
@@ -245,8 +245,8 @@ onBeforeUnmount(() => {
         </button>
       </header>
 
-      <!-- AI 重写:手改与 AI 改是同一件事的两种手段,故聚在同一个弹窗里。
-           跑完直接落盘并出图(见 promptEditor.ts),结果回填到下面的输入框。 -->
+      <!-- AI rewrite: editing by hand and by AI are two means to the same end, so they share one dialog.
+           When it finishes it saves and generates directly (see promptEditor.ts), and the result is refilled into the inputs below. -->
       <div class="bbi-rewrite-row">
         <button
           v-if="!rewriting"
@@ -276,8 +276,8 @@ onBeforeUnmount(() => {
         After the rewriting is completed, it will be saved directly and the picture will be output according to the new prompt word, and the result will be filled back in the input box below.
         Closing this window now will not interrupt it, and you can still see the progress when you open it again.
       </p>
-      <!-- 已落盘却没关窗:下面的输入框与「用户自己打了一半」长得一样,不说清哪份已生效,
-           用户会以为还得再点一次「应用」(或反过来以为草稿也存了)。 -->
+      <!-- Saved but the dialog is still open: the inputs below look the same as "something the user half-typed"; without saying which one is in effect,
+           users would think they still need to click "Apply" (or, conversely, that the draft was saved too). -->
       <p v-else-if="rewritten" class="bbi-editor-note">
         AI The rewriting is completed, the new prompt word has been saved and the drawing has started. It is filled in below. If you still want to make adjustments, just make the changes directly and click &quot;Apply&quot; after making the changes.
       </p>
@@ -387,8 +387,8 @@ onBeforeUnmount(() => {
         <span class="bbi-field-hint">It will take effect only when the character name and tag are both filled in. Blank lines will be automatically discarded when saving.</span>
       </div>
 
-      <!-- 改提示词会换 promptHash 桶,而 stale 态只显示最新一张、翻页器不出现。
-           这是既有存储设计,但手动改提示词会让它从边角情况变成日常,故明确告知。 -->
+      <!-- Changing the prompt switches the promptHash bucket, and the stale state shows only the newest image with no pager.
+           That is the existing storage design, but manual prompt edits turn it from an edge case into an everyday one, so it is stated explicitly. -->
       <p v-if="historyCount > 1" class="bbi-editor-note">
         There are already items under the current prompt word {{ historyCount }} Picture. After modification, only the latest one will be displayed (the picture has not been deleted,
         Change the prompt word back to its original form to retrieve them all).
@@ -417,8 +417,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* —— 以下四条在 base.css 里不是全局的,scoped 过不了组件边界,各处各抄一份
-      (同 ConfirmDialog.vue 的做法) —— */
+/* —— The four rules below aren't global in base.css, and scoped styles don't cross component boundaries, so each place keeps its own copy
+      (same approach as ConfirmDialog.vue) —— */
 .bbi-modal-wide {
   max-width: 680px;
 }
@@ -454,7 +454,7 @@ onBeforeUnmount(() => {
   tab-size: 2;
 }
 
-/* —— 角色行:名字窄、tag 与自然语言各占一半,删除钮跟在末尾 —— */
+/* —— Character row: narrow name, tag and natural language take half each, delete button at the end —— */
 .bbi-char-row {
   display: flex;
   gap: 6px;
@@ -475,7 +475,7 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
-/* —— AI 重写行:钉在标题下方,与下面的字段区拉开 —— */
+/* —— AI rewrite row: pinned below the title, separated from the field area below —— */
 .bbi-rewrite-row {
   display: flex;
   gap: 8px;
@@ -523,7 +523,7 @@ onBeforeUnmount(() => {
   color: var(--bbi-danger);
 }
 
-/* 窄屏:角色行改竖排,否则三个输入框挤成条 */
+/* Narrow screens: the character row stacks vertically, otherwise the three inputs squeeze into slivers */
 @media (max-width: 560px) {
   .bbi-char-row {
     flex-wrap: wrap;

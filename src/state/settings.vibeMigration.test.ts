@@ -9,15 +9,15 @@ vi.mock('@/st/context', () => ({
   getContext: () => mocks.context,
 }));
 
-// 只替换真正需要拦截的 saveVibeFiles(要断言调用与失败路径),其余导出取真身。
-// 曾经这里手抄了 vibeFingerprint / vibeMetaFromData 的实现,于是 vibeStore 每加一个
-// 导出都会让本文件以「No xxx export is defined on the mock」炸掉,且抄件与真身还会悄悄漂移。
+// Only replace saveVibeFiles, which really needs intercepting (to assert calls and the failure path); other exports use the real thing.
+// This once hand-copied the implementations of vibeFingerprint / vibeMetaFromData, so every export added to vibeStore
+// would make this file blow up with "No xxx export is defined on the mock", and the copies would quietly drift from the real thing.
 vi.mock('@/backends/vibeStore', async () => ({
   ...(await vi.importActual<typeof import('@/backends/vibeStore')>('@/backends/vibeStore')),
   saveVibeFiles: mocks.saveVibeFiles,
 }));
 
-describe('旧版 Vibe 设置迁移', () => {
+describe('legacy vibe settings migration', () => {
   beforeEach(() => {
     vi.resetModules();
     mocks.saveVibeFiles.mockReset();
@@ -32,7 +32,7 @@ describe('旧版 Vibe 设置迁移', () => {
     });
   });
 
-  it('把大字段上传后只留下文件路径和小型索引', async () => {
+  it('uploads the large fields and keeps only file paths and a small index', async () => {
     const saveSettingsDebounced = vi.fn();
     const legacy = {
       id: 'legacy-v1',
@@ -76,7 +76,7 @@ describe('旧版 Vibe 设置迁移', () => {
     expect(saveSettingsDebounced).toHaveBeenCalled();
   });
 
-  it('每条落盘后立即释放该条大字段', async () => {
+  it('frees each entry large fields right after it is saved', async () => {
     const vibes = [
       { id: 'legacy-1', image: 'A'.repeat(1024), thumbnail: '', encodings: {} },
       { id: 'legacy-2', image: 'B'.repeat(1024), thumbnail: '', encodings: {} },
@@ -100,7 +100,7 @@ describe('旧版 Vibe 设置迁移', () => {
     expect(vibes[1]).not.toHaveProperty('image');
   });
 
-  it('单条保存失败时保留原数据且不进入正常设置回写', async () => {
+  it('when a single save fails, keeps the original data and does not enter the normal settings write-back', async () => {
     const saveSettingsDebounced = vi.fn();
     const legacy = {
       id: 'legacy-failed',
@@ -122,7 +122,7 @@ describe('旧版 Vibe 设置迁移', () => {
     expect(saveSettingsDebounced).not.toHaveBeenCalled();
   });
 
-  it('部分失败时保存已释放条目并保留失败条目', async () => {
+  it('on partial failure, saves the freed entries and keeps the failed ones', async () => {
     const saveSettingsDebounced = vi.fn();
     const vibes = [
       { id: 'legacy-ok', image: 'A'.repeat(1024), thumbnail: '', encodings: {} },

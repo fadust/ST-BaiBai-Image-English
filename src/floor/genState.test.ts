@@ -23,27 +23,27 @@ describe('genState', () => {
     clearAllGen();
   });
 
-  it('slotKey 区分 chat / 楼层 / swipe / 槽位', () => {
+  it('slotKey distinguishes chat / floor / swipe / slot', () => {
     expect(slotKey('c', 1, 0, 0)).toBe('c|1|0|0');
     expect(slotKey('c', 1, 0, 1)).not.toBe(slotKey('c', 1, 0, 0));
     expect(slotKey('c', 1, 1, 0)).not.toBe(slotKey('c', 1, 0, 0));
     expect(slotKey('d', 1, 0, 0)).not.toBe(slotKey('c', 1, 0, 0));
   });
 
-  it('beginGen 登记运行态并给出未取消的 signal', () => {
+  it('beginGen registers runtime state and gives a non-aborted signal', () => {
     const { signal } = beginGen(KEY, 'hash1');
     expect(signal.aborted).toBe(false);
     expect(getGenRecord(KEY)).toMatchObject({ phase: 'generating', error: '', hash: 'hash1' });
   });
 
-  it('同槽位再次 beginGen 会中止上一个任务', () => {
+  it('beginGen again on the same slot aborts the previous task', () => {
     const first = beginGen(KEY, 'hash1');
     const second = beginGen(KEY, 'hash1');
     expect(first.signal.aborted).toBe(true);
     expect(second.signal.aborted).toBe(false);
   });
 
-  it('每个任务拿到不同票据', () => {
+  it('each task gets a different ticket', () => {
     const a = beginGen(KEY, 'hash1');
     const b = beginGen(KEY, 'hash1');
     expect(a.token).not.toBe(b.token);
@@ -51,26 +51,26 @@ describe('genState', () => {
     expect(isCurrentGen(KEY, b.token)).toBe(true);
   });
 
-  it('cancelGen 中止在途请求并清掉记录', () => {
+  it('cancelGen aborts the in-flight request and clears the record', () => {
     const { signal } = beginGen(KEY, 'hash1');
     cancelGen(KEY);
     expect(signal.aborted).toBe(true);
     expect(getGenRecord(KEY)).toBeUndefined();
   });
 
-  it('failGen 保留 error 相位与信息(重水合后仍可见)', () => {
+  it('failGen keeps the error phase and message (still visible after re-hydration)', () => {
     const { token } = beginGen(KEY, 'hash1');
     failGen(KEY, token, '出图失败了');
     expect(getGenRecord(KEY)).toMatchObject({ phase: 'error', error: '出图失败了' });
   });
 
-  it('clearGen 清空记录,卡片回落派生态', () => {
+  it('clearGen clears the record and the card falls back to derived state', () => {
     const { token } = beginGen(KEY, 'hash1');
     clearGen(KEY, token);
     expect(getGenRecord(KEY)).toBeUndefined();
   });
 
-  it('setGenPhase / setQueueAhead 就地更新展示态', () => {
+  it('setGenPhase / setQueueAhead update display state in place', () => {
     const { token } = beginGen(KEY, 'hash1', 'queued');
     expect(getGenRecord(KEY)?.phase).toBe('queued');
     setGenPhase(KEY, token, 'generating');
@@ -78,24 +78,24 @@ describe('genState', () => {
     expect(getGenRecord(KEY)).toMatchObject({ phase: 'generating', queueAhead: 2 });
   });
 
-  it('reconcileGen:hash 变了才作废在途任务', () => {
+  it('reconcileGen: voids the in-flight task only when the hash changed', () => {
     const { signal } = beginGen(KEY, 'hash1');
-    // 同 hash:不动
+    // Same hash: untouched
     expect(reconcileGen(KEY, 'hash1')).toBe(false);
     expect(signal.aborted).toBe(false);
-    // hash 变了(用户改了 tag):旧任务作废
+    // The hash changed (the user edited the tag): the old task is voided
     expect(reconcileGen(KEY, 'hash2')).toBe(true);
     expect(signal.aborted).toBe(true);
     expect(getGenRecord(KEY)).toBeUndefined();
   });
 
   /**
-   * 回归:旧任务迟到的回调不得改到新任务头上。
-   * 典型触发——A 被 abort 后以非 AbortError 失败(HTTP 500/429 与 abort 撞车),
-   * 其 catch 若无票据校验就会把正在跑的 B 标成 error。
+   * Regression: an old task's late callback must not land on the new task.
+   * Typical trigger: A fails with a non-AbortError after being aborted (HTTP 500/429 colliding with the abort),
+   * and without a ticket check its catch would mark the running B as error.
    */
-  describe('票据隔离(旧任务不得污染新任务)', () => {
-    it('旧任务 failGen 不影响新任务', () => {
+  describe('ticket isolation (old tasks must not pollute new ones)', () => {
+    it('old task failGen does not affect the new task', () => {
       const a = beginGen(KEY, 'h');
       const b = beginGen(KEY, 'h');
       failGen(KEY, a.token, 'A 的报错');
@@ -103,14 +103,14 @@ describe('genState', () => {
       expect(getGenRecord(KEY)?.error).toBe('');
     });
 
-    it('旧任务 clearGen 不会清掉新任务', () => {
+    it('old task clearGen does not clear the new task', () => {
       const a = beginGen(KEY, 'h');
       const b = beginGen(KEY, 'h');
       clearGen(KEY, a.token);
       expect(getGenRecord(KEY)?.token).toBe(b.token);
     });
 
-    it('旧任务 setQueueAhead / setGenPhase 被忽略', () => {
+    it('old task setQueueAhead / setGenPhase ignored', () => {
       const a = beginGen(KEY, 'h');
       const b = beginGen(KEY, 'h', 'queued');
       setQueueAhead(KEY, a.token, 99);
@@ -118,20 +118,20 @@ describe('genState', () => {
       expect(getGenRecord(KEY)).toMatchObject({ phase: 'queued', queueAhead: null, token: b.token });
     });
 
-    it('isCurrentGen 让旧任务在落盘前自我放弃', () => {
+    it('isCurrentGen lets an old task give itself up before saving', () => {
       const a = beginGen(KEY, 'h');
       expect(isCurrentGen(KEY, a.token)).toBe(true);
       cancelGen(KEY);
-      // 记录已清:迟到的 A 不该再落盘
+      // The record was cleared: the late A shouldn't save any more
       expect(isCurrentGen(KEY, a.token)).toBe(false);
     });
   });
 
-  it('reconcileGen 对无记录的槽位是安全空操作', () => {
+  it('reconcileGen is a safe no-op for slots without records', () => {
     expect(reconcileGen(KEY, 'hash1')).toBe(false);
   });
 
-  it('clearAllGen 中止全部并清空(切聊天/删楼)', () => {
+  it('clearAllGen aborts everything and clears it (chat switch/floor delete)', () => {
     const a = beginGen(slotKey('c', 1, 0, 0), 'h');
     const b = beginGen(slotKey('c', 2, 0, 0), 'h');
     clearAllGen();
@@ -140,7 +140,7 @@ describe('genState', () => {
     expect(activeGenCount()).toBe(0);
   });
 
-  it('activeGenCount 只数在途,不数 error', () => {
+  it('activeGenCount counts only in-flight tasks, not errors', () => {
     beginGen(slotKey('c', 1, 0, 0), 'h');
     beginGen(slotKey('c', 2, 0, 0), 'h', 'queued');
     const failed = slotKey('c', 3, 0, 0);
@@ -150,12 +150,12 @@ describe('genState', () => {
   });
 
   describe('pruneGenSlots', () => {
-    it('删掉越界槽位(tag 变少后消失的那些),保留仍存在的', () => {
+    it('deletes out-of-range slots (those gone after tags decreased), keeping ones that still exist', () => {
       const kept = slotKey('c', 5, 0, 0);
       const gone = slotKey('c', 5, 0, 2);
       const { signal: keptSignal } = beginGen(kept, 'h');
       const { signal: goneSignal } = beginGen(gone, 'h');
-      // 正文现在只剩 1 个 tag → seq >= 1 的都该清掉
+      // The text now has only 1 tag → everything with seq >= 1 should be cleared
       pruneGenSlots('c', 5, 0, 1);
       expect(getGenRecord(kept)).toBeDefined();
       expect(keptSignal.aborted).toBe(false);
@@ -163,16 +163,16 @@ describe('genState', () => {
       expect(goneSignal.aborted).toBe(true);
     });
 
-    it('清掉消失槽位残留的 error,同 key 复现时不会认领旧报错', () => {
+    it('clears errors left by vanished slots, so a reappearing key never claims an old error', () => {
       const key = slotKey('c', 5, 0, 1);
       const { token } = beginGen(key, 'h');
       failGen(key, token, '上一轮的报错');
-      // tag 全被删掉
+      // All tags deleted
       pruneGenSlots('c', 5, 0, 0);
       expect(getGenRecord(key)).toBeUndefined();
     });
 
-    it('不误伤其它楼层 / 其它 swipe', () => {
+    it('never hits other floors / other swipes', () => {
       const otherFloor = slotKey('c', 6, 0, 3);
       const otherSwipe = slotKey('c', 5, 1, 3);
       beginGen(otherFloor, 'h');
@@ -182,12 +182,12 @@ describe('genState', () => {
       expect(getGenRecord(otherSwipe)).toBeDefined();
     });
 
-    it('keepCount 覆盖全部槽位时什么都不动(出图成功后的常规重水合)', () => {
+    it('does nothing when keepCount covers every slot (the routine re-hydration after a successful image)', () => {
       const a = slotKey('c', 5, 0, 0);
       const b = slotKey('c', 5, 0, 1);
       const { signal: aSignal } = beginGen(a, 'h');
       const { signal: bSignal } = beginGen(b, 'h');
-      // 关键回归:重水合不得 abort 正在生成的兄弟槽位
+      // Key regression: re-hydration must not abort sibling slots that are generating
       pruneGenSlots('c', 5, 0, 2);
       expect(aSignal.aborted).toBe(false);
       expect(bSignal.aborted).toBe(false);

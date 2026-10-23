@@ -1,18 +1,18 @@
 import type { VNode } from 'vue';
 
 /**
- * 楼层卡片挂载记录表（DESIGN-FLOOR-UI.md §6.2）。
+ * Mount registry for floor cards (DESIGN-FLOOR-UI.md §6.2).
  *
- * key = (chatId, mesid, swipeId, seq)：
- * - mesid 定位楼层，seq 定位楼层内第 N 个锚点（DOM 顺序 = tag 序号）。
- * - swipeId 进 key，滑动切换时各 swipe 的记录互不污染。
- * - 重水合时同锚点的槽位直接 patch（hydrate.ts 差分策略）；锚点更换或槽位消失
- *   时必须 render(null, container) 显式卸载旧 vnode，再挂新树。
+ * key = (chatId, mesid, swipeId, seq):
+ * - mesid locates the message (floor); seq locates the Nth anchor in it (DOM order = tag index).
+ * - swipeId is part of the key so each swipe's records stay separate when swiping.
+ * - On re-hydration, slots at the same anchor are patched in place (hydrate.ts diff strategy); when the anchor changes or
+ *   the slot disappears, the old vnode must be unmounted explicitly with render(null, container) before mounting the new tree.
  */
 export interface SlotRecord {
   /**
-   * vnode 的渲染容器：锚点 div 的 shadow root（hydrate.ts 给每个锚点 attachShadow，
-   * 让卡片与 ST 全局样式双向隔离）。render(null, container) 卸载。
+   * Render container of the vnode: the anchor div's shadow root (hydrate.ts calls attachShadow on each anchor
+   * to isolate the card and ST's global styles from each other). Unmount with render(null, container).
    */
   container: ShadowRoot;
   vnode: VNode;
@@ -25,7 +25,7 @@ export class SlotRegistry {
     return `${chatId ?? '-'}|${mesid}|${swipeId ?? '-'}|${seq}`;
   }
 
-  /** 某消息的全部槽位 key（跨 swipeId）。重水合该消息前用它清理旧记录。 */
+  /** All slot keys of a message (across swipeIds). Used to clear old records before re-hydrating that message. */
   keysByMessage(chatId: string | undefined, mesid: number): string[] {
     const prefix = `${chatId ?? '-'}|${mesid}|`;
     return [...this.records.keys()].filter(key => key.startsWith(prefix));
@@ -47,12 +47,12 @@ export class SlotRegistry {
     this.records.delete(key);
   }
 
-  /** 全部记录（卸载时遍历用）。 */
+  /** All records (iterated when unmounting). */
   all(): SlotRecord[] {
     return [...this.records.values()];
   }
 
-  /** 全部 key（卸载时遍历用）。 */
+  /** All keys (iterated when unmounting). */
   keys(): string[] {
     return [...this.records.keys()];
   }

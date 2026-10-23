@@ -12,7 +12,7 @@ import {
 } from '@/backends/chatu8Vibe';
 
 describe('collectChatu8VibeRefs', () => {
-  it('收集预设与组内的 vibe 引用', () => {
+  it('collects vibe references from presets and groups', () => {
     const refs = collectChatu8VibeRefs({
       vibePresets: {
         默认: { vibeDataId: 'cfgimg_a', strength: 0.7 },
@@ -33,7 +33,7 @@ describe('collectChatu8VibeRefs', () => {
     expect(refs[2]).toMatchObject({ source: '默认组', kind: 'group', strength: 0.6 });
   });
 
-  it('同一 vibeDataId 多处出现时按预设优先去重', () => {
+  it('deduplicates by preset first when the same vibeDataId appears in several places', () => {
     const refs = collectChatu8VibeRefs({
       vibePresets: { 我的预设: { vibeDataId: 'cfgimg_x', strength: 0.9 } },
       vibeGroups: { 组A: { vibes: [{ vibeDataId: 'cfgimg_x', strength: 0.3 }] } },
@@ -42,7 +42,7 @@ describe('collectChatu8VibeRefs', () => {
     expect(refs[0]).toMatchObject({ kind: 'preset', source: '我的预设', strength: 0.9 });
   });
 
-  it('容错:非对象/缺字段/非法强度', () => {
+  it('tolerant of non-objects/missing fields/invalid strengths', () => {
     expect(collectChatu8VibeRefs(null)).toEqual([]);
     expect(collectChatu8VibeRefs('junk')).toEqual([]);
     const refs = collectChatu8VibeRefs({
@@ -55,13 +55,13 @@ describe('collectChatu8VibeRefs', () => {
 });
 
 describe('detectChatu8Vibes', () => {
-  it('未安装/无设置时 found=false', () => {
+  it('found=false when not installed/no settings', () => {
     expect(detectChatu8Vibes(undefined).found).toBe(false);
     expect(detectChatu8Vibes(null).found).toBe(false);
     expect(detectChatu8Vibes('junk').found).toBe(false);
   });
 
-  it('统计预设与组内 vibe 数(已去重)', () => {
+  it('counts vibes in presets and groups (deduplicated)', () => {
     const info = detectChatu8Vibes({
       vibePresets: { 默认: { vibeDataId: 'a' }, 风格B: { vibeDataId: 'b' } },
       vibeGroups: { 组1: { vibes: [{ vibeDataId: 'b' }, { vibeDataId: 'c' }] } },
@@ -69,7 +69,7 @@ describe('detectChatu8Vibes', () => {
     expect(info).toEqual({ found: true, total: 3, presets: 2, groups: 1 });
   });
 
-  it('有设置但没 vibe → found=true,total=0', () => {
+  it('settings but no vibes → found=true, total=0', () => {
     const info = detectChatu8Vibes({ someOtherSetting: 1 });
     expect(info).toEqual({ found: true, total: 0, presets: 0, groups: 0 });
   });
@@ -78,7 +78,7 @@ describe('detectChatu8Vibes', () => {
 describe('planPrefixGroups', () => {
   const vibe = (id: string, name: string, group = '') => ({ id, name, group });
 
-  it('把「组名 · 原名」前缀还原成分组', () => {
+  it('restores the "group name · original name" prefix into a group', () => {
     const plans = planPrefixGroups([
       vibe('1', '战斗组 · 剑光'),
       vibe('2', '战斗组 · 火焰'),
@@ -91,19 +91,19 @@ describe('planPrefixGroups', () => {
     ]);
   });
 
-  it('不动已分好组的条目', () => {
+  it('does not touch entries already grouped', () => {
     expect(planPrefixGroups([vibe('1', '战斗组 · 剑光', '我的组')])).toEqual([]);
   });
 
-  it('没有前缀的条目不参与', () => {
+  it('entries without a prefix are left out', () => {
     expect(planPrefixGroups([vibe('1', '剑光'), vibe('2', '一个·没有空格的名字')])).toEqual([]);
   });
 
-  it('前缀或余名为空时跳过,不产出空组名', () => {
+  it('skips when the prefix or remainder is empty, never producing an empty group name', () => {
     expect(planPrefixGroups([vibe('1', ' · 剑光'), vibe('2', '战斗组 · ')])).toEqual([]);
   });
 
-  it('只取第一个分隔符,余下的分隔符留在名字里', () => {
+  it('only the first separator is used; further separators stay in the name', () => {
     expect(planPrefixGroups([vibe('1', '战斗组 · 剑光 · 二段')])).toEqual([
       { id: '1', group: '战斗组', name: '剑光 · 二段' },
     ]);
@@ -111,7 +111,7 @@ describe('planPrefixGroups', () => {
 });
 
 describe('vibeFingerprint', () => {
-  it('同内容同指纹,与 key 顺序无关', () => {
+  it('same content gives the same fingerprint, regardless of key order', () => {
     const a = vibeFingerprint({
       v3: { encoding: 'AAA', infoExtracted: 1 },
       'v4-5full': { encoding: 'BBB', infoExtracted: 1 },
@@ -123,7 +123,7 @@ describe('vibeFingerprint', () => {
     expect(a).toBe(b);
   });
 
-  it('不同编码不同指纹', () => {
+  it('different encodings give different fingerprints', () => {
     const a = vibeFingerprint({ v3: { encoding: 'AAA', infoExtracted: 1 } });
     const b = vibeFingerprint({ v3: { encoding: 'CCC', infoExtracted: 1 } });
     expect(a).not.toBe(b);
@@ -171,7 +171,7 @@ describe('st-chatu8 artist migration', () => {
       quality: 'style:b',
       negative: [naiDefaultUndesired(MODEL), 'bad hands'].join(', '),
     });
-    // 负向为空 → 不烤基线,留空走回落链(基线跟随模型)
+    // Empty negative → no baseline baked in; stays empty and uses the fallback chain (the baseline follows the model)
     expect(byName.get('SharedSDPreset')!.preset!.negative).toBe('');
     expect(byName.get('Default')!.preset!.prompt).toBe('');
     expect(result.activeArtistId).toBe(painter.targetId);
@@ -179,7 +179,7 @@ describe('st-chatu8 artist migration', () => {
   });
 
   it('overwrites same-name entries with different content, keeping their id and the active mapping', () => {
-    // 旧版迁移的条目:正向整体塞在画师串里,负向为空 → 重新导入应原地修复
+    // Entries from the old migration: the whole positive stuffed into the artist string, empty negative → re-importing should fix them in place
     const existing = [
       { id: 'art_old', name: 'Painter', prompt: 'artist:a, style:b', quality: '', negative: '' },
     ];

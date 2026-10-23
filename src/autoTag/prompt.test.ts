@@ -13,8 +13,8 @@ import {
 import type { STContext } from '@/st/context';
 
 /**
- * 提示词集:全部留空(= 回落内置默认),只把本用例关心的那几项覆盖掉。
- * 收在一处是因为 AutoTagPrompts 每加一个键,散落的字面量会同时 typecheck 失败。
+ * Prompt set: everything blank (= fall back to built-in defaults), overriding only the few items this case cares about.
+ * Kept in one place because every key added to AutoTagPrompts would make scattered literals fail typecheck at once.
  */
 function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
   return {
@@ -88,10 +88,10 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes("- Priority of file creation: current appearance specified in the target text > current character status in BaiBai Book > character card/World Info specified > reasonable completion. When the color is clearly written in the character design, it must be converted as it is and cannot be tampered with; hair and eyes are required, hair contains at least hair color and length/hair style, eyes must contain eye color, if any of the items is missing, the file will be discarded."))).toBe(true);
     expect(messages.some(m => m.content.includes('"position":"P2"'))).toBe(true);
     expect(messages.some(m => m.content.includes("- If the setting does not include hair color, hairstyle or eye color, make up a concise, coordinated, long-term reusable color and hairstyle based on the world view, race, identity, personality and other character settings; this is a one-time file creation decision and cannot be re-randomized in the future."))).toBe(true);
-    // 建档不受入选与否影响,也不受位置门控 —— 这两条是修复的核心,措辞必须在协议里
+    // Profile creation is unaffected by selection and not gated by position: these two are the core of the fix, and the wording must be in the protocol
     expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
     expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
-    // 已撤销的 characters 审计:不得回流到协议里
+    // The withdrawn characters audit must not flow back into the protocol
     expect(messages.some(m => m.content.includes("\"characters\""))).toBe(false);
     expect(messages.some(m => m.content.includes('"tag":"@小雪'))).toBe(false);
     const user = messages[messages.length - 1];
@@ -213,8 +213,8 @@ describe('auto tag prompt', () => {
     const thinkingMsg = messages.find(m => m.content.includes("Consideration Checklist before Output"));
     expect(thinkingMsg?.role).toBe('system');
 
-    // 两层结构:A~E 是整楼一次的全局判断,第二层是逐图槽位块。
-    // 结构骨架比逐字文案更值得钉——散装 bullet 正是模型把每图压成一句话的原因。
+    // Two-layer structure: A~E are whole-floor global judgements made once; the second layer is the per-image slot block.
+    // The structural skeleton is more worth pinning than word-for-word copy: loose bullets were exactly why the model squeezed each image into one sentence.
     expect(thinkingMsg?.content).toContain("First floor｜Global judgment (one for the whole floor)");
     expect(thinkingMsg?.content).toContain("Second layer | Picture slot blocks");
     expect(thinkingMsg?.content).toContain("Second layer | Picture slot blocks one by one (Write one block for each P selected by E, and may not be merged or shared across pictures)");
@@ -225,45 +225,45 @@ describe('auto tag prompt', () => {
     expect(thinkingMsg?.content).toContain("Character rows (one row for each character present): <character name>｜expression｜line of sight｜clothing visible in this shot｜temporary status｜personal actions");
     expect(thinkingMsg?.content).toContain("Slot filling requirements (the slot value directly writes the English word you want to eventually put into tag; write \"-\" for the slot that is indeed not applicable, but the seven items of core action, scenery, expression, sight, scene, ambient light, and size must never be \"-\"):");
     expect(thinkingMsg?.content).toContain("Slot filling requirements (the slot value directly writes the English word you want to eventually put into tag; write \"-\" for the slot that is indeed not applicable, but the seven items of core action, scenery, expression, sight, scene, ambient light, and size must never be \"-\"):");
-    // 表情/视线此前全库没有槽位,是「木脸」的根因;两个后端规范也要各带一份。
+    // Expression/gaze previously had no slot anywhere, the root cause of "wooden faces"; both backend specifications must carry one each too.
     expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
     expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
     expect(thinkingMsg?.content).toContain("- tag of each picture covers all non-\"-\" slots of its own piece, without missing expressions, line of sight or ambient light; when nl is required, it describes the same picture as tag.");
-    // 不再发送 assistant 预填充,消息以 user 任务消息收尾。
+    // No assistant prefill is sent any more; the messages end with the user task message.
     expect(thinkingMsg?.content).toContain("First go through <thinking> and </thinking> in the following order, and then output the final JSON after thinking. Nothing shall be output except this one <thinking> block and the final JSON, nor shall a second <thinking> block be opened.");
 
-    // 以下是重写前就必须守住的既有约束,逐条确认没有在重构中丢失。
+    // Below are existing constraints that had to hold before the rewrite, each confirmed not lost in the refactor.
     expect(thinkingMsg?.content).toContain("- The temporary state cannot be restored to the character's default value without clear transition, organization, change of clothes, state release, time jump or scene switch.");
     expect(thinkingMsg?.content).toContain("- Check the permanent changes against the character library: hair dyeing, hair cutting, permanent transformation, etc. are written in changes and marked with the effective P number; temporary status such as wigs, contact lenses, wet hair, light discoloration, etc. are not written. This step cannot be skipped even if images is ​​empty.");
     expect(thinkingMsg?.content).toContain("- Sort by visual clarity, plot importance, action completeness, and difference from other candidates, and abide by the minimum to maximum numbers given in the task agreement: when the lower limit is greater than 0, make up for it from lesser but still visible candidates; after reaching the lower limit, only continue to select pictures that are strong enough and clearly different from each other, and do not use adjacent actions or different shots of the same event to get closer to the upper limit.");
     expect(thinkingMsg?.content).toContain("- Sort by visual clarity, plot importance, action completeness, and difference from other candidates, and abide by the minimum to maximum numbers given in the task agreement: when the lower limit is greater than 0, make up for it from lesser but still visible candidates; after reaching the lower limit, only continue to select pictures that are strong enough and clearly different from each other, and do not use adjacent actions or different shots of the same event to get closer to the upper limit.");
     expect(thinkingMsg?.content).toContain("- A single moment: a picture that can only be captured completely by one shutter. Do not put multiple actions, multiple time points or causal processes that happened one after another into the same piece; the plot facts are strictly based on the text, and do not make up characters, actions or number of people.");
-    // size 判定口径瘦身后只留在后端规范一份(thinking 与协议都不再复述),
-    // 但整套消息里必须仍有且有这一份,否则模型无从判断横竖。
+    // After slimming, the size criteria live only in the backend specification (neither thinking nor the protocol repeats them),
+    // but the whole message set must still contain exactly this one copy, otherwise the model can't judge landscape vs portrait.
     expect(messages.some(m => m.content.includes("Write landscape for group portraits, long-range panoramas, wide scenes, and horizontally unfolding interactions; write portrait for single people, vertical stances, close-ups, and close-up compositions of two people."))).toBe(true);
     expect(thinkingMsg?.content).not.toContain('双人近距离可 portrait');
     expect(thinkingMsg?.content).toContain("- The candidate must be a visible moment with a clear subject, action or visual state and scene. Pure dialogue is retained only when accompanied by expressions, body movements, character relationships, or environmental changes worth drawing; only dialogue without visual changes, pure psychology, and transitions are skipped.");
     expect(thinkingMsg?.content).toContain("- Each person writes a line of conclusion: the hit library entry with the same name, or this time field: \"new\". Only those whose names are actually listed in the 】 block of the 【 character fixed appearance database are considered to have been archived - the detailed settings in the World Info, character card, BaiBai Book or text are only sources of archive creation and do not mean that they are already in the database, and they cannot be claimed to be in the database based on impressions. If Curry does not have a role but is a formal character (with a setting or continuous participation in the plot), the profile will be created for the first time, regardless of whether he is selected for this picture; one-time unknown passers-by will not be created.");
     expect(thinkingMsg?.content).toContain("regardless of whether he is selected for this picture");
     expect(thinkingMsg?.content).toContain("profile creation is valid throughout this building");
-    // 建档的 hair 必须带长度/发型:只写颜色的旧措辞会让模型以 black hair 过关。
+    // Profile hair must include length/style: the old colour-only wording let the model pass with black hair.
     expect(thinkingMsg?.content).toContain("hair must have both hair color");
     expect(thinkingMsg?.content).not.toContain('hair 与 eyes 都不得留空');
-    // 白皙肤色词禁令(ComfyUI 默认肤色已够白,叠 pale skin 会白得失真):
-    // 规范给禁令,思维链第三层给落笔前的检查位;tan/dark skin 是豁免项。
+    // The fair-skin tag ban (ComfyUI's default skin is already fair enough; stacking pale skin makes it unnaturally white):
+    // the specification gives the ban, and the thought chain's third layer gives a check before writing; tan/dark skin are exempt.
     expect(messages.some(m => m.content.includes("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped."))).toBe(true);
     expect(thinkingMsg?.content).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
     expect(thinkingMsg?.content).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
-    // 建档字段的详细写法瘦身后只留在任务协议一份,thinking 不再复述。
+    // After slimming, the detailed wording for profile fields lives only in the task protocol; thinking no longer repeats it.
     expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
-    // 新旧档案的 position 语义、时代判断的发挥边界:瘦身后各自只留一份权威副本
-    // (分别在任务协议与后端规范),thinking 不再复述,但整套消息里必须仍在。
+    // The position semantics of new vs old profiles and the latitude of era judgement: after slimming each keeps only one authoritative copy
+    // (in the task protocol and backend specification respectively); thinking no longer repeats them, but they must still be in the message set.
     expect(messages.some(m => m.content.includes("- The permanently changed position is the position where the new status takes effect: the pictures before this position use the old file, and the position and after use the new file; multiple changes are reported separately in the text."))).toBe(true);
     expect(messages.some(m => m.content.includes("When there is a clear setting, strictly follow it; when there is no clear setting, you must also take the initiative to choose the most reasonable, specific and self-consistent era, civilization or original visual system based on the existing clues and plot temperament. When there is less evidence, the style of the era, clothing styles, materials, accessories, light and tone can be reasonably supplemented, but this is limited to \"how to draw\" and cannot be used to make up \"what is in the picture\"."))).toBe(true);
     expect(thinkingMsg?.content).toContain("- Define a specific, self-consistent era/culture/visual system and use it throughout the building: strictly follow it if there is a clear setting, even if there is little evidence, choose one proactively, and do not fall back on neutral clothing or default to modern cities. Implemented in clothing styles, materials, accessories and evidence-based architectural artifacts.");
     expect(thinkingMsg?.content).toContain("- This set of judgments only determines \"how to draw\" and cannot be used to concretize unknown scene facts.");
-    // 泥地/地形禁令原本 3 份(规范 + 槽位 + 自查),瘦身后规范留完整版、
-    // thinking 只留一句「没依据就别写」。outdoors/forest 的具体口径归规范。
+    // The mud/terrain ban originally had 3 copies (specification + slot + self-check); after slimming the specification keeps the full version,
+    // and thinking keeps only one line, "don't write it without grounds". The specifics of outdoors/forest belong to the specification.
     expect(messages.some(m => m.content.includes("Just write outdoors when the text only confirms \"wild\", write forest when only confirm \"forest\"; only write muddy, ground, dirt, path, puddles, etc. corresponding to tag when the text, context or world settings clearly support the facts such as rain, mud, dirt road, etc."))).toBe(true);
     expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
     expect(thinkingMsg?.content).toContain("- Scene and ambient light: For a scene, only write facts that can be supported by the main text, context or world setting. Terrain, ground material, weather traces and environmental conditions are all considered facts. Don’t write if there is no basis for it. Ambient light is the opposite. The light source, time and tone will not be written in the text and must be determined by you. Without the picture, it will be a mediocre headshot.");
@@ -274,16 +274,16 @@ describe('auto tag prompt', () => {
     expect(thinkingMsg?.content).toContain("main color + key components");
     expect(thinkingMsg?.content).toContain("pantyhose includes color and transparency");
     expect(thinkingMsg?.content).toContain("- Each set of clothing freezes a \"visual fingerprint\" (version/cut + main color + key components, pantyhose includes color and transparency, please see the task agreement for specific requirements). The same copy is reused throughout the building in the same state. Do not write isolated words such as school, uniform, dress, and pantyhose. These models will be redesigned by themselves.");
-    // 槽位侧同样要挡住笼统词,否则 C 段定了 navy school blazer、槽位里仍退回 school uniform。
+    // The slot side must also block generic words, otherwise C settles on navy school blazer while the slot still falls back to school uniform.
     expect(thinkingMsg?.content).toContain("- In the visible costume photo C, the visual fingerprint of the current state of the character is written piece by piece, only the parts visible in the current scene are written; the parts that are invisible outside the camera can be omitted, but omitting does not mean taking them off. They must be restored when they are re-visible later and there are no changes in the middle. General isolated words such as school, uniform, dress, and pantyhose are not allowed to be returned in the slot - the C segment is navy school blazer, so write navy school blazer, writing a general term is equivalent to letting the model redesign the clothes by herself. The same character will change the style in every picture. In the multiplayer screen, each person's clothing is written separately, and they are bound when they enter tag: both of them wear school uniforms, but the men's and women's styles are different. If you write school or uniform naked, the model will put the skirt on the boy.");
     expect(thinkingMsg?.content).toContain("- In the visible costume photo C, the visual fingerprint of the current state of the character is written piece by piece, only the parts visible in the current scene are written; the parts that are invisible outside the camera can be omitted, but omitting does not mean taking them off. They must be restored when they are re-visible later and there are no changes in the middle. General isolated words such as school, uniform, dress, and pantyhose are not allowed to be returned in the slot - the C segment is navy school blazer, so write navy school blazer, writing a general term is equivalent to letting the model redesign the clothes by herself. The same character will change the style in every picture. In the multiplayer screen, each person's clothing is written separately, and they are bound when they enter tag: both of them wear school uniforms, but the men's and women's styles are different. If you write school or uniform naked, the model will put the skirt on the boy.");
-    // 自查项要点名服装,上一版只提「表情视线」,模型自查时就只核对了表情视线。
+    // The self-check must name clothing; the previous version only mentioned "expression and gaze", so the model only checked expression and gaze.
     expect(thinkingMsg?.content).toContain("- In the multiplayer screen, clothing, body shape, objects, expressions, sightlines and personal actions have all been bound to their respective characters, and there are no scattered ownerless characteristics; the clothing of each character present actually appears in tag, and no one's clothing is only written in the slot but not in tag, nor school uniform, pantyhose This type of general isolated word has no owner; each character present has an expression word and sight word bound to himself, and no one has only actions but no expression.");
-    // 配角只写「弯腰换鞋」不写表情词 → tag 里他没有表情。角色行必须逐人写全英文词。
+    // A side character written only as "bending to change shoes" with no expression word → he has no expression in the tag. Character rows must spell out English words for each person.
     expect(thinkingMsg?.content).toContain("- The character line is one line for each character present. The supporting characters must also be written in full. It is not allowed to write a complete line only for the protagonist and use a Chinese action sentence to describe the supporting characters. The expression and gaze of each line must be an independent English danbooru word: writing a Chinese phrase like \"look to the other side, bending down to change shoes\" means that there is no expression word in this line. When tag is written, the character will have no expression and be painted as a wooden face by the model.");
     expect(thinkingMsg?.content).toContain("- The character line is one line for each character present. The supporting characters must also be written in full. It is not allowed to write a complete line only for the protagonist and use a Chinese action sentence to describe the supporting characters. The expression and gaze of each line must be an independent English danbooru word: writing a Chinese phrase like \"look to the other side, bending down to change shoes\" means that there is no expression word in this line. When tag is written, the character will have no expression and be painted as a wooden face by the model.");
     expect(thinkingMsg?.content).toContain("- In the multiplayer screen, clothing, body shape, objects, expressions, sightlines and personal actions have all been bound to their respective characters, and there are no scattered ownerless characteristics; the clothing of each character present actually appears in tag, and no one's clothing is only written in the slot but not in tag, nor school uniform, pantyhose This type of general isolated word has no owner; each character present has an expression word and sight word bound to himself, and no one has only actions but no expression.");
-    // 超限重选必须发生在 E 段,不能等到第三层「让位」——那几块槽位是白写的。
+    // Over-limit reselection must happen in E, not wait for "yielding" in the third layer; those slot blocks would have been written for nothing.
     expect(thinkingMsg?.content).toContain("- The quantity is stuck here: count it before writing the P list. If it exceeds the upper limit, cut it to the upper limit on the spot and then go down. The second level only writes blocks for the final selected P. It is absolutely not allowed to overwrite a few blocks first and then delete them when the third level finds that the limit is exceeded - those blocks are written in vain, and the third level only checks and does not change the decision.");
     expect(thinkingMsg?.content).toContain("- This layer only checks and does not change decisions: if you find a problem, correct it directly when you enter tag. Do not write down revision processes such as \"over limit, need to streamline\", \"give way\" and \"change to\" in your thinking. The number of shots is already fixed in the E segment and should not be changed here.");
     expect(messages.some(m => m.content.includes('navy school blazer, white collared shirt, red ribbon'))).toBe(true);
@@ -315,12 +315,12 @@ describe('auto tag prompt', () => {
 
     expect(messages.some(m => m.content.includes('自定义清单'))).toBe(true);
     expect(messages.some(m => m.content.includes("Consideration Checklist before Output"))).toBe(false);
-    // 预填充功能已移除:消息里不应再出现 assistant 角色。
+    // The prefill feature was removed: the assistant role should no longer appear in the messages.
     expect(messages.some(m => m.role === 'assistant')).toBe(false);
   });
 
-  // 思维链按后端各存一份。改 ComfyUI 那份不能影响 NAI——共用一份正是 V5 被要求填
-  // 「景别/环境光/邻接绑定」这类它的规范从未教过的字段的根因。
+  // The thought chain is stored per backend. Changing the ComfyUI one must not affect NAI; sharing one was exactly the root cause of V5 being asked to fill
+  // fields its specification never taught, like "shot size/ambient light/adjacency binding".
   it('picks the thinking checklist per backend and never crosses them over', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -340,9 +340,9 @@ describe('auto tag prompt', () => {
     try {
       const cases = [
         { backend: 'comfyui', model: oldModel, want: 'COMFY-CHECKLIST' },
-        // 单串分支的代表换成原版 NAI4:4.5 起走 Character Prompts 分支(自然语言是 4.5 引入的)
-        // ⚠ NAI4 已从 NAI_MODELS 撤下(设置页选不到了),但 prompt.ts 的单串分支与
-        // naiSpec/naiThinking 两个键都还在,故这条继续按字符串锁住分支归属。
+        // The single-string branch's representative is now the original NAI4: from 4.5 on it takes the Character Prompts branch (natural language was introduced with 4.5)
+        // ⚠ NAI4 was removed from NAI_MODELS (it can't be chosen on the settings page any more), but prompt.ts's single-string branch and
+        // the naiSpec/naiThinking keys both still exist, so this keeps locking the branch ownership by string.
         { backend: 'nai', model: 'nai-diffusion-4-full', want: 'NAI-CHECKLIST' },
         { backend: 'nai', model: 'nai-diffusion-4-5-full', want: 'NAIV5-CHECKLIST' },
         { backend: 'nai', model: 'nai-diffusion-5-full', want: 'NAIV5-CHECKLIST' },
@@ -368,9 +368,9 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 身份 tag 与 NSFW 的思维链落点:0.1.16 的旧清单本来有(身份 tag 定词+自查 / NAI 专属
-  // NSFW 条款+自查),三层重写时三份全丢——规则只在 spec 里、思考回路没有检查位,
-  // 漏写概率回升。这条钉死三份各自的落点口径,且 NSFW 不带年龄限定。
+  // Where identity tags and NSFW land in the thought chain: the old 0.1.16 checklist had them (identity tag wording + self-check / NAI-only
+  // NSFW clause + self-check), but all three were lost in the three-layer rewrite: the rules were only in the spec, with no check slot in the thinking loop,
+  // so the chance of omission rose again. This pins where each of the three lands, and NSFW carries no age qualifier.
   it('keeps fandom identity and NSFW checkpoints inside each backend thinking', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -384,8 +384,8 @@ describe('auto tag prompt', () => {
     const oldBackend = settings.defaultBackend;
     const oldModel = settings.nai.model;
     try {
-      // ComfyUI:身份 tag 定词 + 括号转义提醒 + negative 条件自查(只有 Comfy 工作流会有
-      // negative 键);Comfy spec 无 NSFW 条款,思维链也不加。
+      // ComfyUI: identity tag wording + bracket-escaping reminder + negative-condition self-check (only Comfy workflows have
+      // a negative key); the Comfy spec has no NSFW clause, and the thought chain doesn't add one.
       settings.defaultBackend = 'comfyui';
       let text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
@@ -396,17 +396,17 @@ describe('auto tag prompt', () => {
       );
       expect(text).toContain("- If the protocol of this image contains the negative key: negative has compared tag and nl of this image word by word. All words that can be found corresponding to the content have been deleted, which does not offset the fact that the text has been established; any uncertainties have been left blank. If the protocol does not contain the negative key, this item will be skipped directly.");
       expect(text).not.toContain("- If this picture is an explicit NSFW scene: the actual visible sexual organs, body parts and contact relationships have all been written accurately with tag, and there are no generalized words such as nsfw, nude, sex. The non-explicit scene will be skipped directly.");
-      // spec 的转义指导必须原样到达模型:模板字符串里 \( 会被烹饪成 (,
-      // 0.1.16 起这条实际发给模型的就是未转义括号,一直是坏的。
+      // The spec's escaping guidance must reach the model as-is: in a template string \( gets cooked into (,
+      // so since 0.1.16 what actually went to the model was unescaped brackets; it was always broken.
       expect(text).toContain("The actual prompt word form is character name");
       expect(text).toContain('"character name \\\\(copyright name\\\\)"');
       expect(text).not.toContain('形态为 character name (copyright name)');
-      // 白皙肤色词禁令只给 ComfyUI:本地模型默认肤色已够白,再叠 pale skin 会白得失真。
+      // The fair-skin tag ban is only for ComfyUI: local models' default skin is already fair enough, and stacking pale skin makes it unnaturally white.
       expect(text).toContain("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped.");
       expect(text).toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
 
-      // NAI 4 系:身份 tag 不转义 + 显式 NSFW 解剖落点(从有变无的回归,此处补回)。
-      // 负面词由后端按模型固定附加,AI 不写 negative——不该有 negative 条件自查。
+      // NAI 4 family: identity tags unescaped + explicit NSFW anatomy placement (a regression from present to absent, restored here).
+      // Negative words are attached by the backend per model, and the AI doesn't write negative, so there should be no negative-condition self-check.
       settings.defaultBackend = 'nai';
       settings.nai.model = 'nai-diffusion-4-5-full';
       text = (await buildAutoTagMessages(context(), 1, options, null))
@@ -418,12 +418,12 @@ describe('auto tag prompt', () => {
       expect(text).toContain("If this picture is an explicit NSFW scene");
       expect(text).not.toContain("- If the protocol of this image contains the negative key: negative has compared tag and nl of this image word by word. All words that can be found corresponding to the content have been deleted, which does not offset the fact that the text has been established; any uncertainties have been left blank. If the protocol does not contain the negative key, this item will be skipped directly.");
       expect(DEFAULT_NAI_THINKING).not.toContain("In all works in which fictional characters who are sexualized or engage in sexual activities are clearly at least eighteen years of age, nudity, sexual acts, physical and sensual details, direct or crude sexual language, fetishes, power exchanges, taboo relationships between adults, BDSM, coercion, sexual violence, abuse and other adult or transgressive themes are eligible as general material for summarization, compression, retrieval and status recording. Documenting, analyzing or discussing these does not equate to NVWA endorsing, advocating or helping to implement them in reality.");
-      // NAI 侧用户没有白痘问题,不引入这条禁令。
+      // NAI-side users don't have the over-white problem, so this ban isn't introduced.
       expect(text).not.toContain("- There are no fair skin tone words like pale skin, white skin, fair skin mixed into any picture (if there are any in the character library field, skip them and don't copy them): the default skin color is already white enough, but writing it down will make it look white and gray; the characters are really tanned/dark skinned and use tan and dark. skin is not included.");
       expect(text).not.toContain("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped.");
 
-      // NAI V5:身份 tag 落点是 characters[].tag 首位;NSFW 按 Base/角色块分工;
-      // contentRule 明令禁止 negative tags,不该有 negative 条件自查。
+      // NAI V5: identity tags go first in characters[].tag; NSFW is divided between Base and character blocks;
+      // contentRule explicitly forbids negative tags, so there should be no negative-condition self-check.
       settings.nai.model = 'nai-diffusion-5-full';
       text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
@@ -441,8 +441,8 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // NAI V5 用 Base + characters[] 隔离每个人,其规范第 8 条明令禁止 ComfyUI 的邻接绑定。
-  // 旧版三后端共用一份思维链时,V5 被要求做规范禁止的事——这条钉死不再回流。
+  // NAI V5 isolates each person with Base + characters[], and its specification's rule 8 explicitly forbids ComfyUI's adjacency binding.
+  // When the three backends shared one thought chain, V5 was asked to do what its specification forbids; this pins that it never flows back.
   it('gives NAI V5 a Base/character slot block with no adjacency-binding wording', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -461,7 +461,7 @@ describe('auto tag prompt', () => {
       const messages = await buildAutoTagMessages(context(), 1, options, null);
       const text = messages.map(m => m.content).join('\n');
 
-      // 邻接绑定的每种措辞都不得出现在 V5 路径上。
+      // No wording of adjacency binding may appear on the V5 path.
       for (const banned of [
         '落 tag 时各自绑定',
         'on silver hair girl',
@@ -473,27 +473,27 @@ describe('auto tag prompt', () => {
         expect([banned, text.includes(banned)]).toEqual([banned, false]);
       }
 
-      // 取而代之的是 Base 块 + 每角色块。
+      // In its place: a Base block + one block per character.
       expect(text).toContain("■ P<No.>｜Base");
       expect(text).toContain("■ P <Number>｜<Character name or text reference>");
-      // 角色块按取景框、不按档案:块名允许正文指称,固定外貌槽给【一次性】留了合法填法。
-      // 旧口径「照抄库中/刚建档的字段」是唯一来源,无名角色在这个槽位上无路可走——
-      // 于是模型宁可放弃画面(见「无名角色入画」问题文档),这条钉死不再回流。
+      // Character blocks follow the frame, not the profiles: block names may use the text's references, and the fixed-appearance slot leaves a valid way to fill in for 【one-time】.
+      // The old rule made "copy the library/just-created profile fields" the only source, leaving unnamed characters no way through this slot,
+      // so the model would rather give up the scene (see the "unnamed characters in the image" issue document); this pins that it never flows back.
       expect(text).toContain("■ P <Number>｜<Character name or text reference> (Write one block for each individual character visible in this picture; for 【 one-time 】 characters, use the original reference word in the text as the block name)");
       expect(text).toContain("Fixed appearance: <【 has been filed, 】【, this file is created, 】 copies the fields in the library/newly created file; 【 is one-time, 】 is one-time completion according to the world view, including at least gender, hair color, hair color, and eye color. 1girl/1boy will all be converted to girl/boy>");
       expect(text).toContain("- **Don't use adjacency binding**: Hanging features after other people's color words (for example, connecting white dress directly after green hair girl) is a single string tag backend approach, V5 does not use it. Each character here has its own independent block. Just write white dress. The ownership is determined by the block it belongs to.");
       expect(text).toContain("division of labor between the Base block and the character block is a hard boundary");
       expect(text).toContain("when they fall into JSON, they enter his own characters[].tag");
-      // 单人画面没有多人互动:核心互动槽写 "-",唯一角色的动作进他角色块的个人动作——
-      // 旧口径让单人接触点写进 Base 槽,与「个人动作只进角色块」的分工规则直接打架。
+      // A single-person image has no multi-person interaction: the core interaction slot gets "-", and the only character's action goes into the personal action in their character block;
+      // the old rule put single-person contact points into the Base slot, directly fighting the division rule "personal actions only go into character blocks".
       expect(text).toContain("Core interaction: <The action that multiple people participate in: whose body part touches what, first describe the contact point in English, and then give English tag; for single-player screen, write \"-\" in this slot, the only character's action is the personal action of his character block, do not enter Base>");
       expect(text).not.toContain('单人画面写该角色与场景/道具的接触点');
-      // 第三层逐槽点名核对:实跑里模型把环境光丢了、自查却声称「覆盖了全部槽位」。
-      // 点名清单必须含多人画面的核心互动——只在单人画面才允许 "-" 跳过。
+      // Third layer checks slot by slot by name: in a real run the model dropped ambient light while its self-check claimed "all slots covered".
+      // The named checklist must include the core interaction for multi-person images; skipping with "-" is only allowed for single-person images.
       expect(text).toContain("has been checked slot by slot");
       expect(text).toContain("ambient light is not allowed to leak");
       expect(text).toContain("core interaction of multi-person pictures");
-      // 服装视觉指纹与协议形态无关,三份思维链都要保住。
+      // The clothing visual fingerprint is independent of the protocol shape; all three thought chains must keep it.
       expect(text).toContain("General isolated words such as school");
     } finally {
       settings.defaultBackend = oldBackend;
@@ -501,10 +501,10 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 建档资格 ≠ 入画资格。实跑里模型把「一次性无名路人不建档」读成「无名者不能入画」,
-  // 于是放弃了全文最强的戏剧瞬间(核心互动的另一方是个无名对手),转而挑了个能把他
-  // 裁出镜头的景别。根因是造名单的谓词写错了:第一层 B 只清点「有名有姓」,那人从未
-  // 上册,下游规则根本看不见他。三处必须同时成立,缺一处他就会在某一环被判死刑。
+  // Eligibility for a profile ≠ eligibility for the image. In a real run the model read "one-off unnamed passers-by get no profile" as "the unnamed can't be in the image",
+  // and so gave up the most dramatic moment in the whole text (the other party of the core interaction was an unnamed opponent), picking instead a shot size
+  // that cropped him out. The root cause was a wrong predicate in building the list: layer one B only counted "the named", so that person never
+  // made the list, and downstream rules couldn't see him at all. All three places must hold together; miss one and he gets sentenced to death at some step.
   it('lets unprofiled characters enter the frame on the NAI V5 path', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -523,46 +523,46 @@ describe('auto tag prompt', () => {
       const messages = await buildAutoTagMessages(context(), 1, options, null);
       const text = messages.map(m => m.content).join('\n');
 
-      // ① 第一层 B 清点「谁在场」而不是「谁有档案」,并逐人标出三类身份。
+      // ① Layer one B counts "who is present", not "who has a profile", and marks each person with one of three identities.
       expect(text).toContain("list **all** characters who are actually present");
       expect(text).toContain("- Read through the text of the target and list **all** characters who are actually present one by one - both named and surnamed (third-year captain, shopkeeper). Do not just look at the people in the final selected picture, and do not omit the characters for whom the World Info, character card or BaiBai Book have been set. What counts is \"who is present\", not \"who has files\".");
       expect(text).toContain("· 【 one-time 】 The text only gives references to one-time characters with no setting and no continuous participation in the plot - no file creation, no writing changes, no entry into the library. This type of ** can be included in the picture as usual **: when selecting the picture, write him a character block that is only valid for this picture according to the back-end specifications. name uses the original referential word in the text, and completes the appearance in one go according to the world view. Never make up a name for him.");
       expect(text).not.toContain("- Read through the text of the target and list the named characters who are actually present. You can't just look at the people in the final selected picture, and you can't miss the characters for whom the World Info, character card or BaiBai Book have given settings.");
 
-      // ② 二选一 → 三选一。只改名单不改自查,那人会以合法身份上册、却在最后一关被
-      // 自己判死刑(「每个在场正式角色必须二选一」他两条都占不上)。
+      // ② Two-way choice → three-way choice. Changing only the list without the self-check, that person would make the list with a valid identity, only to be
+      // sentenced to death at the last check by himself ("every present formal character must take one of two", and he fits neither).
       expect(text).toContain("- Each character present can choose one of three: point out the entry with the same name in the 【 character's fixed appearance library 】, field: \"new\" in changes, or mark 【 as a one-time 】 (do not write if you do not create a file) changes, only add appearance in his own character block when drawing); the detailed settings in the World Info cannot replace the creation of files. Every field:\"new\" profile of hair has both hair color and length/hairstyle, and eyes has eye color. The 【 one-off 】 character was not written into changes - it would have been a mistake. The permanently changed P number is legal, and the temporary status has not been mistakenly written into changes.");
       expect(text).not.toContain("- Each official character present can choose one of the two: point out the entry with the same name in the fixed appearance library 】 of the 【 character, or field: \"new\" in the changes; detailed settings in the World Info cannot replace the creation of a file. Every hair profiled by field:\"new\" has both hair color and length/hairstyle, and eyes has eye color. The permanently changed P number is legal, and the temporary status has not been mistakenly written into changes.");
 
-      // 缺档不能否决核心互动;排除无关在场者仍是合法取景。
+      // A missing profile can't veto the core interaction; excluding unrelated people present is still valid framing.
       expect(text).toContain("- **The qualifications for setting up a profile and the qualifications for drawing are two different things**: Not setting up a profile only means that he will not be included in the character library, but it does not mean that he cannot be included in the drawing; having established a profile does not mean that he must be included in the drawing. First, frame the picture according to the main body and core interaction, and then write the appearance of the person in the shot. Do not decide based on the file status. If the unnamed character is a participant in the core interaction, he or she should be included in the frame as usual. The frame should not be discarded, the moment should be changed, or the character should be cut out just because of the lack of files. His mere presence does not constitute a reason to be included in the frame, and those who are not present can remain outside the frame.");
       expect(text).toContain("- **The qualifications for setting up a profile and the qualifications for drawing are two different things**: Not setting up a profile only means that he will not be included in the character library, but it does not mean that he cannot be included in the drawing; having established a profile does not mean that he must be included in the drawing. First, frame the picture according to the main body and core interaction, and then write the appearance of the person in the shot. Do not decide based on the file status. If the unnamed character is a participant in the core interaction, he or she should be included in the frame as usual. The frame should not be discarded, the moment should be changed, or the character should be cut out just because of the lack of files. His mere presence does not constitute a reason to be included in the frame, and those who are not present can remain outside the frame.");
 
-      // 个体/人群只决定入画后的落位,不决定是否值得入画。
+      // Individual/crowd only decides placement once in the image, not whether they deserve to be in it.
       expect(text).toContain("- The inventory list is not a list of entries: it is listed here to check the presence facts and create files. Who is included in the shot is determined by the E segment based on the subject and core interaction. 【 one-time 】 will not be excluded due to missing profiles, and no character must be included in the shot just because he is present or has been profiled. The main text treats a group of people as a whole (crowd, soldiers, onlookers), just line them up as a \"crowd\"; select the shot and then leave it in Base. It does not occupy the character block. If you are not sure whether it is an individual or a group, treat it as a group.");
       expect(text).toContain('People the story treats as a mass rather than as individuals');
       expect(text).toContain('leave them in Base');
 
-      // 编人名是有毒的:name 会随 <characters> 落进正文,而 cleanHistoryText 保留
-      // bbi_image,下一楼原样读回——一个假人名与真档案无法区分,会被误建档。
+      // Inventing names is toxic: name lands in the text along with <characters>, and cleanHistoryText keeps
+      // bbi_image, so the next floor reads it back as-is; a fake name is indistinguishable from a real profile and would be profiled by mistake.
       expect(text).toContain("· 【 one-time 】 The text only gives references to one-time characters with no setting and no continuous participation in the plot - no file creation, no writing changes, no entry into the library. This type of ** can be included in the picture as usual **: when selecting the picture, write him a character block that is only valid for this picture according to the back-end specifications. name uses the original referential word in the text, and completes the appearance in one go according to the world view. Never make up a name for him.");
       expect(text).toContain('Never invent a personal name for them');
 
-      // Name consistency 原本是普世律,模型把「没有真名」读成「没有合法名」。
-      // 它的全部目的是保护逐字匹配,而一次性角色不参与任何匹配,故必须限定作用域。
+      // Name consistency was originally a universal law, and the model read "has no real name" as "has no valid name".
+      // Its whole purpose is protecting verbatim matching, and one-off characters take part in no matching, so its scope must be limited.
       expect(text).toContain('these rules govern characters who have a library entry');
       expect(text).toContain('participates in no matching at all');
 
-      // 人数按取景框算;缺档不能成为裁掉核心互动参与者的理由。
+      // Headcount is by the frame; a missing profile can't be a reason to crop out a participant of the core interaction.
       expect(text).toContain('number of people visible inside this frame');
       expect(text).toContain('a missing profile is never a reason to reject a moment or crop that participant out');
 
-      // C 段连坐:名单放宽后,不排除【一次性】会让模型给一次性对手维护服装时间线——
-      // 白烧 token,更糟的是强化「他是正经角色」的暗示,反过来诱发建档。
+      // C is implicated too: once the list was loosened, not excluding 【one-time】 would make the model maintain a clothing timeline for a one-off opponent,
+      // burning tokens and, worse, reinforcing the hint that "he is a proper character", in turn inducing a profile.
       expect(text).toContain("- 【 one-time character 】 does not occupy a line in this section: he does not have a clothing ledger that continues across pictures. The clothes can be written once in the character block of the picture where he is selected (when he is included in two pictures on the same floor, they will remain consistent). Maintaining a timeline for him is useless, and will also mislead you into setting up a profile for him as an official character.");
 
-      // 示例本身曾是反面教材:Base 写 2girls 却只给一条 Character Prompt,
-      // 正好演示了「另一个人没有落位」。示例必须演示要求的行为。
+      // The example itself was once a bad example: Base wrote 2girls yet gave only one Character Prompt,
+      // demonstrating exactly "the other person has no placement". The example must demonstrate the required behaviour.
       expect(text).toContain("- Read through the text of the target and list **all** characters who are actually present one by one - both named and surnamed (third-year captain, shopkeeper). Do not just look at the people in the final selected picture, and do not omit the characters for whom the World Info, character card or BaiBai Book have been set. What counts is \"who is present\", not \"who has files\".");
       expect(text).not.toContain('"tag":"2girls, classroom, sunset, medium shot"');
     } finally {
@@ -571,7 +571,7 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 只验证规则装配;实际取景是否突出主要角色仍需用剧情实跑。
+  // This only verifies rule assembly; whether real framing highlights the main characters still needs a real story run.
   it.each(['nai-diffusion-4-5-full', 'nai-diffusion-5-full'] as const)(
     'prioritizes principal characters without requiring every present person in frame (%s)',
     async model => {
@@ -622,7 +622,7 @@ describe('auto tag prompt', () => {
     },
   );
 
-  // 思维链要求填景别/环境光/size,V5 规范里原本没有任何判据——模型只能瞎猜。
+  // The thought chain asks for shot size/ambient light/size, while the V5 specification originally had no criteria for them; the model could only guess.
   it('teaches NAI V5 the visual-completion doctrine its slots depend on', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -644,13 +644,13 @@ describe('auto tag prompt', () => {
       expect(text).toContain('Write exactly one shot distance');
       expect(text).toContain('must contain this image');
       expect(text).toContain('Keep body tags consistent with the shot distance');
-      // 表情词表与另两份对齐:思维链是白名单制(规范没列的一律不许用),
-      // 少列一个词等于禁用一个词。
+      // The expression vocabulary is aligned with the other two: the thought chain is allowlist-based (anything the specification doesn't list is forbidden),
+      // so listing one word fewer equals banning one word.
       expect(text).toContain('smile, grin, laughing, blush');
       expect(text).toContain('crying, tears, angry');
       expect(text).toContain('worried, scared, smug');
       expect(text).toContain('open mouth, clenched teeth');
-      // d46ae82 的地形修复此前从未覆盖 V5 路径。
+      // d46ae82's terrain fix had never covered the V5 path before.
       expect(text).toContain('never add muddy ground, dirt path, wetland, puddles');
       expect(text).toContain('Orientation (the size key)');
       expect(text).toContain('When unsure, write portrait');
@@ -660,9 +660,9 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 原版 NAI4 的 char_captions 恒为空(nai.ts),协议形态与 ComfyUI 一样是单条 tag 串,
-  // 一样需要邻接绑定——但 NAI 规范里此前一条多人规则、一个示例都没有。
-  // (4.5 起走 Character Prompts 分支,归属另一份规范,不适用邻接绑定。)
+  // The original NAI4's char_captions is always empty (nai.ts), so the protocol shape is a single tag string just like ComfyUI,
+  // needing adjacency binding just the same; yet the NAI specification previously had not one multi-person rule or example.
+  // (From 4.5 on it takes the Character Prompts branch, belonging to another specification, where adjacency binding doesn't apply.)
   it('gives NAI 4 the multi-character binding rules and a worked example', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -686,17 +686,17 @@ describe('auto tag prompt', () => {
       expect(text).toContain('petite on silver hair girl');
       expect(text).toContain('black hair girl smiling, silver hair girl looking at another');
       expect(text).toContain('dark trousers on black hair boy');
-      // 示例是规则的靠山:只有条文没有示例时模型照抄不到写法。
+      // Examples are what rules lean on: with only the rule text and no example, the model has no form to copy.
       expect(text).toContain("Multiplayer tag example (see the writing method according to the above rules):");
-      // NAI 不吃 ComfyUI 的权重括号转义,那条不该跟着复制过来。
+      // NAI doesn't take ComfyUI's weight-bracket escaping, so that rule shouldn't be copied over.
       expect(text).not.toContain('ComfyUI 会把未转义圆括号当作权重语法');
-      // 排序统一到「构图紧跟人数」口径:与 Comfy 一致,也与多人规则原文一致;
-      // 旧的「镜头构图放末尾」排序表和示例曾与此自相矛盾。
+      // Ordering is unified to the "composition right after headcount" rule: consistent with Comfy, and with the multi-person rule text;
+      // the old "camera composition at the end" ordering table and example once contradicted this.
       expect(text).toContain("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.");
       expect(text).not.toContain('场景 → 光线氛围 → 镜头构图');
       expect(text).toContain('2girls, medium shot, long hair');
       expect(text).not.toContain('park, sunset, medium shot');
-      // 视线词表笔误:eyes closed 是 closed eyes 的别名,同 tag 两种词序不该并列。
+      // Gaze vocabulary typo: eyes closed is an alias of closed eyes; two word orders of the same tag shouldn't sit side by side.
       expect(text).not.toContain('eyes closed');
     } finally {
       settings.defaultBackend = oldBackend;
@@ -717,11 +717,11 @@ describe('auto tag prompt', () => {
     const library = '【角色固定外貌库(系统维护)】\n小雪: 1girl, long silver hair';
     const messages = await buildAutoTagMessages(context(), 1, options, null, undefined, library);
 
-    // 示例改用实际外貌串;@占位符已撤回(见 charAnchors.ts 文件头)
+    // The example now uses the actual appearance string; @placeholders were withdrawn (see the charAnchors.ts file header)
     expect(messages.some(m => m.content.includes('"tag":"1girl, long silver hair, red eyes, white dress"'))).toBe(true);
     expect(messages.some(m => m.content.includes('@小雪'))).toBe(false);
     expect(messages.some(m => m.content.includes('系统会替换成库中最新 tag'))).toBe(false);
-    // 照抄库中字段 + 一张图只写一遍,是本次回退的两条核心措辞
+    // Copying the library fields + writing them only once per image are the two core wordings of this rollback
     expect(messages.some(m => m.content.includes("tag and nl must copy the field values in the library/newly created file"))).toBe(true);
     expect(messages.some(m => m.content.includes("Copy this appearance and add costumes, actions, scenes, etc. around it tag; only write this appearance once in the same picture."))).toBe(true);
     expect(messages[messages.length - 1].content).toContain(library);
@@ -740,7 +740,7 @@ describe('auto tag prompt', () => {
     };
     const messages = await buildAutoTagMessages(context(), 1, options, null);
 
-    // 档案会在之后每张图被照抄,姿势/场景混进字段会让角色永远保持那个姿势
+    // Profiles get copied into every later image, so pose/scene mixed into fields would keep the character in that pose forever
     expect(messages.some(m => m.content.includes('lying on carpet'))).toBe(true);
     expect(messages.some(m => m.content.includes("long-term unchanged physical characteristics"))).toBe(true);
   });
@@ -792,11 +792,11 @@ describe('auto tag prompt', () => {
       expect(messages.some(message => message.content.includes('Character tag uses girl/boy without a numeric count'))).toBe(true);
       expect(messages.some(message => message.content.includes('every field:"new" change must include a non-empty nl'))).toBe(true);
       expect(messages.some(message => message.content.includes('Expression and gaze are mandatory for every character'))).toBe(true);
-      // Base 的全局性对 tag 与 nl 同样成立:实跑里模型把单角色的制服/体型写进 Base nl,
-      // 与角色 nl 重复——旧文本只把禁令写在 tag 层面。
+      // Base's global nature holds for both tag and nl: in a real run the model wrote a single character's uniform/body type into the Base nl,
+      // duplicating the character nl; the old text only put the ban at the tag level.
       expect(messages.some(message => message.content.includes('this applies to the Base nl as much as to the Base tag'))).toBe(true);
       expect(messages.some(message => message.content.includes('never put one character\'s appearance, outfit, or individual action in the Base nl'))).toBe(true);
-      // 建档 nl 只写固定外貌:临时服装进了永久档案的 nl,会跟着之后每楼走。
+      // Profile nl only covers fixed appearance: temporary clothing in a permanent profile's nl would follow every later floor.
       expect(messages.some(message => message.content.includes('temporary states never enter the profile'))).toBe(true);
     } finally {
       settings.defaultBackend = oldBackend;
@@ -804,7 +804,7 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 表情/视线此前在三个后端规范里都没有位置,思维链槽位填了也会在转 tag 时丢掉。
+  // Expression/gaze previously had no place in any of the three backend specifications, so even if the thought-chain slot was filled it got lost when converting to tags.
   it('reserves an expression/gaze slot in the tag ordering of both tag-based backends', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -826,8 +826,8 @@ describe('auto tag prompt', () => {
         expect(spec?.content).toContain("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.");
         expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
         expect(spec?.content).toContain("- The absence of facial expressions in the text is not a reason not to write them - infer one; when it is judged that the face is expressionless, expressionless must also be written explicitly.");
-        // 首轮实跑漏出 gentle smile / shy expression / neutral curious expression
-        // 这类非 danbooru 词组:槽位填对了,转 tag 时原样直译。规范里要给限定词表。
+        // The first real run leaked gentle smile / shy expression / neutral curious expression,
+        // non-danbooru phrases like these: the slot was filled correctly, then translated literally into tags. The specification must give a restricted vocabulary.
         expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
         expect(spec?.content).toContain("- It is forbidden to literally translate the Chinese description in thinking into tag: gentle smile writes smile, shy expression writes blush, neutral curious expression This phrase model is completely unfamiliar and will only waste token and dilute the rest. tag. The natural language feeling with adjectives is left to nl, and tag only puts standard words.");
         expect(spec?.content).toContain('puffy cheeks');
@@ -838,8 +838,8 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 同一轮实跑里 P11 两人各自的 looking at another 被合并成一个裸 tag,
-  // petite / black pantyhose 也脱离了 on green hair girl 绑定。
+  // In the same real run, P11's two people each with looking at another were merged into one bare tag,
+  // and petite / black pantyhose also came loose from the on green hair girl binding.
   it('binds per-character expression, gaze and body type in multi-character ComfyUI tags', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -859,17 +859,17 @@ describe('auto tag prompt', () => {
       expect(spec?.content).toContain("the other person will become the default wooden face");
       expect(spec?.content).toContain("- Expression and gaze are also **one copy for each person and must be bound** features: write \"black hair girl smiling, silver hair girl looking at another\", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. \"Write shared characteristics only once\" does not apply.");
       expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
-      // 规则没有示例撑腰就是空话:实跑里模型照着示例串抄结构,petite/loli 仍然裸写。
+      // A rule without an example behind it is empty talk: in a real run the model copied the structure from the example string, and petite/loli were still written bare.
       expect(spec?.content).toContain('petite on silver hair girl');
-      // 发色瞳色是绑定锚点,裸列才对——不能被上一条误伤成 black hair on black hair girl。
+      // Hair and eye colours are binding anchors and listing them bare is correct; the previous rule must not wrongly turn them into black hair on black hair girl.
       expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
-      // 瘦身时删掉「不许退回笼统词」当轮就复发:tag 里裸写 school uniform +
-      // black opaque pantyhose,男孩的 white shirt/dark pants 干脆没进 tag。
+      // Deleting "don't fall back to generic words" while slimming relapsed in the very same round: the tag wrote bare school uniform +
+      // black opaque pantyhose, and the boy's white shirt/dark pants never made it into the tag at all.
       expect(spec?.content).toContain("- Clothes of the same type and different styles must be bound together, and cannot be lumped together with a general name: when two people wear school uniforms but the male and female styles are different, write \"dark pleated skirt on green hair girl, black opaque pantyhose on green hair girl, white shirt on black hair boy, dark trousers on black hair boy\", you must not just write one bare school uniform - That would let the model put the skirt on the boy, or simply design a random suit for each of them. In the same way, parts such as pantyhose and blazer that can only be worn by one person must also be brought with the owner.");
       expect(spec?.content).toContain('dark pleated skirt on green hair girl');
       expect(spec?.content).toContain('white shirt on black hair boy');
       expect(spec?.content).toContain("let the model put the skirt on the boy");
-      // 示例串要真的示范绑定写法,否则模型照着旧示例抄裸 tag。
+      // The example string must really demonstrate the binding form, otherwise the model copies bare tags from the old example.
       expect(spec?.content).toContain('black hair girl smile, black hair girl looking at viewer');
       expect(spec?.content).toContain('silver hair girl blush, silver hair girl looking away');
     } finally {
@@ -877,7 +877,7 @@ describe('auto tag prompt', () => {
     }
   });
 
-  // 槽位本身也要挡住中文描述,否则先漏进槽位再漏进 tag。
+  // The slot itself must also block Chinese descriptions, otherwise they leak into the slot first and then into the tag.
   it('makes the per-image slot block demand canonical danbooru expression words', async () => {
     const options: AutoTagSettings = {
       enabled: true,
@@ -893,19 +893,19 @@ describe('auto tag prompt', () => {
     expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
     expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
     expect(thinkingMsg?.content).toContain("- For expressions and gaze, fill in the standard danbooru words given in the back-end specification. If you don't write Chinese feelings or create your own phrases (if you want to write \"gently smile\", just fill in smile); you can only choose from the words listed in the specification. Words not listed in the specification are not allowed to be used. If you are not sure, fill in expressionless / looking at another. Neither item should be left blank, and expressionless must be filled in even if you have no expression on your face. Each person in the multi-player screen will fill in one copy, and they will be bound when they enter tag. They cannot be merged or written naked - the naked expression will only fall on one person, and the other person will become the default wooden face.");
-    // 连着两轮实跑都没照抄 ■ 格式,但七个槽位一项没漏——防漏的目的已达成,
-    // 形状不是目的。故意不钉「■ 单独成行」这类形态断言,只钉槽位齐全。
+    // Two real runs in a row didn't copy the ■ format, yet not one of the seven slots was missed; the goal of preventing omissions was met,
+    // and the shape isn't the goal. So shape assertions like "■ on its own line" are deliberately not pinned, only that the slots are complete.
     expect(thinkingMsg?.content).toContain("Write one piece for each picture, and write the value for each slot below. The writing style is up to you, but none of the eight slots must be missing - missing any one will make the final tag missing a piece.");
-    // 摇摆的可执行判据:抽象的「别反复权衡」模型每次都觉得自己没在权衡。
+    // An actionable criterion for wavering: with an abstract "don't keep weighing it up", the model always feels it isn't weighing anything.
     expect(thinkingMsg?.content).toContain("Only write the conclusion throughout the whole process, not the deduction process: thinking is a draft for you to clarify the facts, not the process of answering questions. Each judgment is determined once - the same field is only allowed to have one value in the entire <thinking>. Do not ask yourself \"A? Or B?\", do not propose candidates and then reject them one by one, do not overturn the determined fields and re-select, and do not pre-write the final tag/nl string. If there is insufficient evidence, make a decision directly based on the broad outlines of this list and the back-end specifications (size is not allowed to be written as portrait, and if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
-    // 不写推演过程的约束保留,但不设字数硬上限——上限会逼着模型为多图多人场景压缩建档判断。
+    // The constraint against writing out the reasoning is kept, but with no hard word limit: a limit would force the model to compress profile decisions for multi-image, multi-person scenes.
     expect(thinkingMsg?.content).not.toContain("【 Complete the draft in one pass·The iron rule 】 Only write one conclusion and ≤2 sentences in each step; both the judgment and the editing will decide on the first tenable answer, leaving the \"selection\" to the quality self-inspection. 【 prohibits 】 from listing multiple alternative shots (without writing \"A better idea is.../or.../from another angle...\" etc.), 【 prohibits 】 from overturning and starting over, and 【 prohibits 】 from rereading the plot and weighing it repeatedly. The whole paragraph of thinking is about ≤800 words. After writing, output </arc_think> immediately without further writing.");
     expect(thinkingMsg?.content).toContain("- Specifically prohibit these three ways of writing: self-questions with question marks (\"landscape?\" \"Use blush?\"), parallel candidates (\"expressionless or slight smile\"), and overthrowing after writing (\"Use A...but B is better, change A to B\"). Write the conclusion directly after comparing in your mind, and keep the comparison process in your mind. If there is insufficient evidence, just make the decision according to the bottom line (size, if you are not sure, write portrait, if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
     expect(thinkingMsg?.content).toContain("- Specifically prohibit these three ways of writing: self-questions with question marks (\"landscape?\" \"Use blush?\"), parallel candidates (\"expressionless or slight smile\"), and overthrowing after writing (\"Use A...but B is better, change A to B\"). Write the conclusion directly after comparing in your mind, and keep the comparison process in your mind. If there is insufficient evidence, just make the decision according to the bottom line (size, if you are not sure, write portrait, if the details of the clothing are unknown, just choose a common and self-consistent one), and then move on.");
-    // 第三层曾自称「落成 tag」,与「不要预写 tag 串」直接打架,实跑里 tag 被写了四遍。
+    // The third layer once described itself as "turning into tags", directly fighting "don't pre-write tag strings"; in a real run the tags were written four times.
     expect(thinkingMsg?.content).toContain("Self-check before writing");
-    // 上一版只禁「完整 tag/nl 串」,模型钻空子改成在 thinking 里预写整个 JSON 对象
-    // (末尾一句 "JSON:" 加一份完整答案),白烧约 800 token。措辞要覆盖 JSON 本身。
+    // The previous version only banned "full tag/nl strings", and the model found the loophole of pre-writing the whole JSON object in thinking
+    // (a final line "JSON:" plus a complete answer), burning about 800 tokens. The wording must cover the JSON itself.
     expect(thinkingMsg?.content).toContain("At this level, just check the following items one by one and write a conclusion for each point. No drafts of the final answer are allowed in <thinking> - no complete tag string, no complete nl sentence, no JSON object or a title like \"JSON:\". The answer only appears once after </thinking>. Writing it first in thinking is equivalent to paying for the entire output twice. After checking, directly close </thinking> and output JSON:");
     expect(thinkingMsg?.content).toContain("At this level, just check the following items one by one and write a conclusion for each point. No drafts of the final answer are allowed in <thinking> - no complete tag string, no complete nl sentence, no JSON object or a title like \"JSON:\". The answer only appears once after </thinking>. Writing it first in thinking is equivalent to paying for the entire output twice. After checking, directly close </thinking> and output JSON:");
     expect(thinkingMsg?.content).not.toContain('第三层｜落成 tag 并自查');
@@ -923,7 +923,7 @@ describe('auto tag prompt', () => {
       prompts: prompts(),
     };
     const oldBackend = settings.defaultBackend;
-    // 工作流改由「当前预设」承载(见 settings.ts 工作流库);默认值恒有一条,直接改它
+    // The workflow is now carried by "the current preset" (see the workflow library in settings.ts); the default always has one, so change it directly
     const preset = activeComfyPreset();
     const oldWorkflow = preset.workflow;
     try {
@@ -941,10 +941,10 @@ describe('auto tag prompt', () => {
       expect(messages.some(message => message.content.includes("do not use the @role placeholder"))).toBe(true);
       expect(messages.some(message => message.content.includes('工作流里已有的通用质量负面词'))).toBe(false);
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
-      // 实跑里模型给下雨的正文配了 "negative":"rain, umbrella",反而抵消了 tag 的 wet asphalt。
+      // In a real run the model gave rainy text "negative":"rain, umbrella", cancelling out the tag's wet asphalt.
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
-      // 复发一次:nl 自己写了 drizzle,negative 仍填 rain。禁令必须覆盖「否定自己刚写的内容」。
+      // It relapsed once: nl itself wrote drizzle, and negative still had rain. The ban must cover "negating what you just wrote".
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
       expect(messages.some(message => message.content.includes("\n negative is special for this picture. danbooru Negative short words tag: Only exclude content that conflicts with the main text or this composition is particularly easy to be mistakenly generated. It can be empty; it is prohibited to output general quality, picture quality, aesthetic or technical negative words, including but not limited to worst quality, low quality, blurry, lowres, bad anatomy, bad hands, jpeg artifacts; Do not write what you wish to appear and do not use the @role placeholder. \n negative must not contain facts that have been clearly established in the main text, nor can you deny anything you have just written into this picture tag/nl: if the main text says it is raining, or if your own nl writes drizzle, you must never write rain in negative; if you write that the character wears glasses, you are not allowed to write glasses – That’s erasing what should be in the picture. After writing negative, look back word by word at tag and nl in this picture, and delete any words whose corresponding content can be found in them. Leave it blank when in doubt. An empty negative is always safer than an negative that offsets the text."))).toBe(true);
@@ -954,7 +954,7 @@ describe('auto tag prompt', () => {
     }
   });
 
-  it('简易模式的动态负面词门槛由模板决定:checkpoint/anima 请求,flux 不请求', async () => {
+  it('simple mode dynamic-negative threshold decided by the template: checkpoint/anima request it, flux does not', async () => {
     const options: AutoTagSettings = {
       enabled: true,
       contextMessages: 2,
@@ -986,37 +986,37 @@ describe('auto tag prompt', () => {
   });
 });
 
-describe('自然语言条件段 expandNlSections', () => {
-  it('{{#nl}} 段只在开启时保留,{{^nl}} 段只在关闭时保留', () => {
+describe('natural-language conditional sections expandNlSections', () => {
+  it('{{#nl}} sections kept only when on, {{^nl}} sections only when off', () => {
     const text = 'A{{#nl}}-on{{/nl}}{{^nl}}-off{{/nl}}B';
     expect(expandNlSections(text, true)).toBe('A-onB');
     expect(expandNlSections(text, false)).toBe('A-offB');
   });
 
-  it('段内可以跨行;没有条件段的文本原样返回(整段替换的 {{nl}} 宏不归它管)', () => {
+  it('sections may span lines; text without conditional sections is returned as-is (the whole-replacement {{nl}} macro is not its business)', () => {
     const text = 'x{{#nl}}\n第一行\n第二行\n{{/nl}}y';
     expect(expandNlSections(text, true)).toBe('x\n第一行\n第二行\ny');
     expect(expandNlSections(text, false)).toBe('xy');
     expect(expandNlSections('plain {{nl}} text', false)).toBe('plain {{nl}} text');
   });
 
-  it('配不上对的标记原样留着,不吞掉后文', () => {
-    // 写错了在请求历史里看得见;静默吞掉的话,漏闭合会把后面整份规范一起删光
+  it('unmatched markers stay as-is without swallowing the following text', () => {
+    // A mistake is visible in request history; if silently swallowed, a missing close would delete the whole specification after it
     expect(expandNlSections('a{{#nl}}b', false)).toBe('a{{#nl}}b');
     expect(expandNlSections('a{{/nl}}b', true)).toBe('a{{/nl}}b');
   });
 
-  // 内置文本里的标记一旦写错(漏闭合、错拼),整段会连标记带内容原样漏给模型
-  it.each([true, false])('内置 NAI 规范与思维链展开后不留任何标记(nl=%s)', nlOn => {
+  // If a marker in the built-in text were written wrong (missing close, misspelt), the whole section would leak to the model, markers and all
+  it.each([true, false])('built-in NAI specification and thought chain leave no markers after expansion (nl=%s)', nlOn => {
     for (const text of [DEFAULT_NAI_V5_SPEC, DEFAULT_NAI_V5_THINKING]) {
       expect(expandNlSections(text, nlOn)).not.toMatch(/\{\{[#^/]nl\}\}/);
     }
   });
 });
 
-// NAI 4.5 的提示词 token 上限比 V5 紧,自然语言是最占预算的部分 —— 这是开关的由来。
-// 口径与 ComfyUI 那个开关相同:只管 AI 写不写,已写进正文的 nl 照常发送。
-describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
+// NAI 4.5's prompt token limit is tighter than V5's, and natural language takes the most budget; that is where the toggle came from.
+// Same rule as the ComfyUI toggle: it only controls whether the AI writes it; nl already written into the text is sent as usual.
+describe('NAI "Generate Natural Language" toggle and channel frame lock', () => {
   function options(overrides: Partial<AutoTagPrompts> = {}): AutoTagSettings {
     return {
       enabled: true,
@@ -1029,7 +1029,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     };
   }
 
-  /** 每条用例都会拨后端与开关:进来时快照,出去时原样放回(settings 是模块级单例)。 */
+  /** Every case flips backends and toggles: snapshot on entry, restore as-is on exit (settings is a module-level singleton). */
   function snapshot() {
     const preset = activeComfyPreset();
     const saved = {
@@ -1064,7 +1064,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
   }
 
   it.each(['nai-diffusion-4-5-full', 'nai-diffusion-5-full'] as const)(
-    '关掉后 %s 的协议、规范、思维链整套切成纯 tag;拨回开启即恢复',
+    'when off, the %s protocol, specification and thought chain all switch to pure tags; switching back on restores them',
     async model => {
       const state = snapshot();
       try {
@@ -1076,22 +1076,22 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
         const spec = pick(messages, NAI_SPEC_MARK);
         const thinking = pick(messages, THINKING_MARK);
 
-        // 示例 JSON 里一个 nl 键都不留:模型照抄示例的倾向比照读规则强得多
+        // Not a single nl key is left in the example JSON: the model copies examples far more readily than it follows rules
         expect(contract).not.toContain('"nl"');
         expect(contract).toContain('"characters":[{"name":"小雪"');
         expect(contract).toContain('This output is tag-only');
         expect(contract).toContain('name and tag are both required');
-        // 建档也不再要 nl —— runner 验收同一口径(profile.nl),否则会为不存在的要求白耗重试
+        // Profiles no longer need nl either; runner acceptance follows the same rule (profile.nl), otherwise retries would be wasted on a non-existent requirement
         expect(contract).not.toContain('every field:"new" change must include a non-empty nl');
 
-        // 规范第 6 条整条换成 tag-only 版本(编号不动),示例与条目形状同步去掉 nl
+        // Specification rule 6 is swapped wholesale for the tag-only version (numbering unchanged); the example and entry shape drop nl in step
         expect(spec).toContain('This output is tag-only: write no nl key anywhere');
         expect(spec).toContain('{"name":"...","tag":"..."}');
         expect(spec).not.toContain('"nl":');
         expect(spec).not.toContain('Save adjectival nuance for nl');
         expect(thinking).toContain("only tag is written");
         expect(thinking).not.toContain("do not write the complete nl sentence");
-        // 多角色提示词本身不受开关影响:关的只是 nl,characters[] 照样要
+        // Multi-character prompts themselves are unaffected by the toggle: only nl is turned off; characters[] is still required
         expect(thinking).toContain('characters[]');
 
         settings.nai.naturalLanguage = true;
@@ -1110,7 +1110,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     },
   );
 
-  it('自定义规范与思维链同样按开关展开条件段(两个后端各认各的开关)', async () => {
+  it('custom specifications and thought chains likewise expand conditional sections by the toggle (each backend reads its own toggle)', async () => {
     const state = snapshot();
     const custom = options({
       naiV5Spec: 'NAI-SPEC{{#nl}} with-nl{{/nl}}{{^nl}} tag-only{{/nl}}',
@@ -1124,7 +1124,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.defaultBackend = 'nai';
       settings.nai.model = 'nai-diffusion-4-5-full';
       settings.nai.naturalLanguage = false;
-      // ComfyUI 那份开着也不该影响 NAI
+      // The ComfyUI one being on shouldn't affect NAI
       state.preset.naturalLanguage = true;
       let text = await run();
       expect(text).toContain('NAI-SPEC tag-only');
@@ -1152,8 +1152,8 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 
-  // 只锁出图不改协议的话,模型照样按横竖判据取景:锁竖时为群像构思宽画面,出图却是竖的
-  it('NAI 锁横屏:协议改口为每张都填 landscape,示例同步,不再给选向兜底', async () => {
+  // If only the output were locked without changing the protocol, the model would still frame by the orientation criteria: under a portrait lock it would plan a wide group shot while the output is portrait
+  it('NAI landscape lock: the protocol switches to filling landscape for every image, the example follows, no orientation fallback offered', async () => {
     const state = snapshot();
     try {
       settings.defaultBackend = 'nai';
@@ -1169,7 +1169,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 
-  it('ComfyUI 锁看当前工作流那份;NAI 的锁不串过来', async () => {
+  it('the ComfyUI lock reads the current workflow; the NAI lock does not leak over', async () => {
     const state = snapshot();
     try {
       settings.defaultBackend = 'comfyui';
@@ -1188,7 +1188,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 
-  it('autoTagProfile:按当前后端与其开关算一次,写协议与 runner 验收共用这一份', () => {
+  it('autoTagProfile: computed once from the current backend and its toggles, shared by protocol writing and runner acceptance', () => {
     const state = snapshot();
     try {
       settings.defaultBackend = 'nai';
@@ -1201,12 +1201,12 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.nai.orientationLock = 'portrait';
       expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait' });
 
-      // 单串分支(NAI4)的协议本来就不写 nl,开关对它不起作用
+      // The single-string branch (NAI4) protocol never writes nl anyway, so the toggle has no effect on it
       settings.nai.model = 'nai-diffusion-4-full';
       settings.nai.naturalLanguage = true;
       expect(autoTagProfile()).toMatchObject({ naiCharPrompts: false, nl: false });
 
-      // ComfyUI:自然语言与画幅锁都取当前工作流
+      // ComfyUI: natural language and the frame lock both come from the current workflow
       settings.defaultBackend = 'comfyui';
       state.preset.naturalLanguage = true;
       state.preset.orientationLock = 'landscape';

@@ -1,81 +1,81 @@
 /*
- * 主题令牌(design tokens)— 柏宝绘 · 青瓷 × 纸墨
- * 灵感:古籍的暖纸、深墨,与一抹青瓷(celadon-jade)点缀。
- * 配色全部以 OKLCH 设计、感知均匀;所有文字对比度经 WCAG 2.1 校验:
- *   正文 ≥ 4.5:1(AA),弱化文字与非文本 UI ≥ 3:1。
- * 所有颜色/字体/尺寸都从这里取,组件不写死颜色。
- * 切换主题 = 改根节点 [data-theme];未来自定义主题只需新增一套同名变量。
+ * Theme tokens (design tokens): BaiBai Image · celadon × paper and ink
+ * Inspiration: the warm paper and deep ink of old books, with a touch of celadon jade.
+ * All colours are designed in OKLCH for perceptual uniformity; every text contrast is checked against WCAG 2.1:
+ *   body text ≥ 4.5:1 (AA), muted text and non-text UI ≥ 3:1.
+ * Every colour/font/size comes from here; components never hard-code colours.
+ * Switching themes = changing the root node's [data-theme]; a future custom theme only needs another set of the same variables.
  *
- * 配色:黑金优雅 —— 深海军蓝(h≈264)× 琥珀金(h≈70),源自经典黑金方案。
- * 金很亮,强调按钮上一律压「深 navy 字」(昼间用白字、金压暗),切勿白字配亮金。
+ * Palette: elegant black and gold, deep navy (h≈264) × amber gold (h≈70), derived from the classic black-and-gold scheme.
+ * The gold is very bright, so accent buttons always carry "deep navy text" (the day theme uses white text on darkened gold); never put white text on bright gold.
  */
 
 .bbi-root {
-  /* —— 字体:现代无衬线栈,优先国产现代字体,回退系统 —— */
+  /* —— Fonts: a modern sans-serif stack, preferring modern CJK fonts, falling back to system fonts —— */
   --bbi-font-sans: 'MiSans', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei',
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
   --bbi-font-mono: 'SF Mono', 'JetBrains Mono', 'DejaVu Sans Mono', Menlo, Consolas, monospace;
 
-  /* —— 圆角:更大、更柔 —— */
+  /* —— Corner radii: larger and softer —— */
   --bbi-radius-win: 16px;
   --bbi-radius: 10px;
   --bbi-radius-sm: 8px;
   --bbi-radius-pill: 999px;
 
-  /* —— 间距节奏 —— */
+  /* —— Spacing rhythm —— */
   --bbi-gap: 16px;
   --bbi-page-pad: clamp(20px, 4vw, 40px);
 
-  /* —— 尺寸 —— */
+  /* —— Sizes —— */
   --bbi-win-max-w: 880px;
   --bbi-win-max-h: 82vh;
 
-  /* —— 动效 —— */
+  /* —— Motion —— */
   --bbi-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --bbi-dur: 0.28s;
 }
 
-/* ========== 昼 · 象牙白 ==========
-   底色是暖中性象牙白;墨色取深海军蓝(与夜呼应),强调是压暗的金。
-   对比度(白底为基准):ink 16.0、ink-soft 7.1、ink-muted 3.6、accent 4.1。 */
+/* ========== Day · ivory ==========
+   The background is a warm neutral ivory; ink is deep navy (echoing night); the accent is darkened gold.
+   Contrast (against white): ink 16.0, ink-soft 7.1, ink-muted 3.6, accent 4.1. */
 .bbi-root[data-theme='day'] {
   --bbi-bg: oklch(0.97 0.004 90);
-  /* #f6f5f2 象牙白 */
+  /* #f6f5f2 ivory */
   --bbi-surface: oklch(1 0 0);
-  /* #ffffff 抬起面/卡片 */
+  /* #ffffff raised surface/card */
   --bbi-surface-2: oklch(0.945 0.006 90);
-  /* #eeede8 次级面/输入框 */
+  /* #eeede8 secondary surface/input */
   --bbi-ink: oklch(0.252 0.056 264);
-  /* #14213d 海军蓝墨 · 主文字 */
+  /* #14213d navy ink · main text */
   --bbi-ink-soft: oklch(0.46 0.04 264);
-  /* #4d586f 次级文字 */
+  /* #4d586f secondary text */
   --bbi-ink-muted: oklch(0.62 0.03 264);
-  /* #7d8699 弱化/占位 */
+  /* #7d8699 muted/placeholder */
   --bbi-accent: oklch(0.57 0.13 62);
-  /* #ac6304 深金 · 强调(白字 AA) */
+  /* #ac6304 deep gold · accent (white text AA) */
   --bbi-accent-soft: oklch(0.57 0.13 62 / 0.12);
   --bbi-accent-ink: oklch(1 0 0);
-  /* #ffffff 强调上的文字 */
+  /* #ffffff text on accent */
   --bbi-line: oklch(0.91 0.005 90);
-  /* #e2e1de 细线 */
+  /* #e2e1de hairline */
   --bbi-line-strong: oklch(0.87 0.006 90);
   /* #d6d4d0 */
   --bbi-danger: oklch(0.52 0.18 25);
-  /* #ba2b2e 删除/警示(AA) */
+  /* #ba2b2e delete/warning (AA) */
   --bbi-danger-soft: oklch(0.52 0.18 25 / 0.1);
   --bbi-warning: oklch(0.55 0.1 75);
-  /* #936823 悬念/待办(AA) */
+  /* #936823 suspense/to-do (AA) */
   --bbi-warning-soft: oklch(0.55 0.1 75 / 0.12);
   --bbi-overlay: oklch(0.252 0.056 264 / 0.34);
-  /* 遮罩 */
+  /* Overlay */
   --bbi-shadow: 0 18px 48px -20px oklch(0.252 0.056 264 / 0.22),
     0 4px 12px -6px oklch(0.252 0.056 264 / 0.1);
 }
 
-/* ========== 夜 · 海军黑 ==========
-   底色是深海军蓝(比纯黑更有层次、更高级),强调是明亮琥珀金,
-   金按钮上压深 navy 字。黑金优雅的标准用法,提气而不刺眼。
-   对比度(主底为基准):ink 15.3、ink-soft 8.2、ink-muted 4.4、accent 9.3。 */
+/* ========== Night · navy black ==========
+   The background is deep navy (more depth and refinement than pure black); the accent is bright amber gold,
+   with deep navy text on gold buttons. The standard use of black and gold: uplifting without glare.
+   Contrast (against the main background): ink 15.3, ink-soft 8.2, ink-muted 4.4, accent 9.3. */
 .bbi-root[data-theme='night'] {
   --bbi-bg: #37353E;
   --bbi-surface: #44444E;
@@ -100,46 +100,46 @@
   --bbi-shadow: 0 20px 56px -22px #000000A6, 0 4px 14px -8px #00000080;
 }
 
-/* ========== 粉彩 ==========
-   独立主题,不分昼夜。薰衣草粉纸底 + 玫瑰强调,梦幻而不失可读性。
-   梦幻的薰衣草/天蓝/婴儿粉太浅,只用于底/线/染色;文字与强调用够深的梅紫/玫瑰,
-   保证 WCAG AA。对比度(主底为基准):ink 10.5、ink-soft 5.3、ink-muted 3.2、accent 4.3。 */
+/* ========== Pastel ==========
+   A standalone theme with no day/night variants. Lavender-pink paper background + rose accent: dreamy yet readable.
+   The dreamy lavender/sky blue/baby pink are too light and only used for backgrounds/lines/tints; text and accents use plum/rose dark enough
+   to meet WCAG AA. Contrast (against the main background): ink 10.5, ink-soft 5.3, ink-muted 3.2, accent 4.3. */
 .bbi-root[data-theme='pastel'] {
   --bbi-bg: oklch(0.975 0.012 330);
-  /* #fcf4fb 薰衣草粉纸 */
+  /* #fcf4fb lavender-pink paper */
   --bbi-surface: oklch(1 0 0);
-  /* #ffffff 抬起面/卡片 */
+  /* #ffffff raised surface/card */
   --bbi-surface-2: oklch(0.955 0.022 335);
-  /* #faebf6 次级面/输入框 */
+  /* #faebf6 secondary surface/input */
   --bbi-ink: oklch(0.36 0.09 330);
-  /* #572953 深梅紫 · 主文字 */
+  /* #572953 deep plum · main text */
   --bbi-ink-soft: oklch(0.52 0.08 330);
-  /* #83587f 次级文字 */
+  /* #83587f secondary text */
   --bbi-ink-muted: oklch(0.64 0.07 330);
-  /* #a57da1 弱化/占位 */
+  /* #a57da1 muted/placeholder */
   --bbi-accent: #ffafcc;
-  /* #c4486d 玫瑰 · 强调(双用:底/文字均 AA) */
+  /* #c4486d rose · accent (dual use: AA both as background and as text) */
   --bbi-accent-soft: oklch(0.58 0.16 5 / 0.12);
   --bbi-accent-ink: oklch(1 0 0);
-  /* #ffffff 强调上的文字 */
+  /* #ffffff text on accent */
   --bbi-line: oklch(0.91 0.025 330);
-  /* #ebdce9 细线 */
+  /* #ebdce9 hairline */
   --bbi-line-strong: oklch(0.86 0.035 335);
   /* #e0c9da */
   --bbi-danger: oklch(0.55 0.19 15);
-  /* #c72c4c 删除/警示(AA) */
+  /* #c72c4c delete/warning (AA) */
   --bbi-danger-soft: oklch(0.55 0.19 15 / 0.1);
   --bbi-warning: oklch(0.62 0.12 70);
-  /* #b47825 悬念/待办(AA) */
+  /* #b47825 suspense/to-do (AA) */
   --bbi-warning-soft: oklch(0.62 0.12 70 / 0.12);
   --bbi-overlay: oklch(0.36 0.09 330 / 0.32);
-  /* 遮罩 */
+  /* Overlay */
   --bbi-shadow: 0 18px 48px -20px oklch(0.45 0.15 350 / 0.3),
     0 4px 12px -6px oklch(0.45 0.15 350 / 0.16);
 }
 
-/* 粉彩强调色是浅粉(#ffafcc),原生 accent-color 复选框会按浅底自动把勾翻成黑色。
-   仅在本主题下把复选框改为自绘:浅粉底 + 强制白色对勾。作用域限定 pastel,不影响其他主题。 */
+/* The pastel accent is light pink (#ffafcc), and native accent-color checkboxes automatically flip the tick to black on a light background.
+   Only in this theme are checkboxes custom-drawn: light pink background + forced white tick. Scoped to pastel, so other themes are unaffected. */
 .bbi-root[data-theme='pastel'] .bbi-checkbox {
   appearance: none;
   -webkit-appearance: none;
@@ -151,14 +151,14 @@
 .bbi-root[data-theme='pastel'] .bbi-checkbox:checked {
   border-color: var(--bbi-accent);
   background-color: var(--bbi-accent);
-  /* 白色对勾,内联 SVG,与底色无关,不再受浏览器自动反色影响 */
+  /* White tick as inline SVG, independent of the background colour and no longer subject to the browser's automatic colour inversion */
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12.5 10 17.5 19 7'/></svg>");
   background-repeat: no-repeat;
   background-position: center;
   background-size: 14px;
 }
 
-/* ========== 绿色 ========== */
+/* ========== Green ========== */
 .bbi-root[data-theme='green'] {
   --bbi-bg: #F0F6F8;
   /* Pale, misty lake blue */
@@ -189,26 +189,26 @@
   --bbi-shadow: 0 20px 56px -22px #32646033, 0 4px 14px -8px #3264601A;
 }
 
-/* ========== 跟随 ST ==========
-   不定义自己的配色,而是从 SillyTavern 宿主主题的 --SmartTheme* 变量派生。
-   之所以可行:自定义属性是可继承属性,能穿透 shadow 边界;且 :host{all:initial}
-   的 `all` 简写不含自定义属性,故这些 ST 变量照常继承进来(见 base.css)。
-   ST 只给了少量基色,缺的 token 用 color-mix 从基色派生;每个 var() 都带回退值,
-   万一宿主没定义(理论上不会)也不至于塌成透明。
-   注:danger/warning ST 无语义色 → 用在明/暗底都可读的中性值;overlay 用中性深色遮罩,
-   不跟随 body 色,避免暗色主题下遮罩反而变浅。 */
+/* ========== Follow ST ==========
+   Defines no palette of its own; derived from the SillyTavern host theme's --SmartTheme* variables.
+   Why this works: custom properties are inheritable and cross the shadow boundary; and the `all` shorthand in :host{all:initial}
+   doesn't include custom properties, so these ST variables are inherited as usual (see base.css).
+   ST provides only a few base colours; missing tokens are derived from them with color-mix; every var() has a fallback,
+   so if the host doesn't define one (it shouldn't happen) nothing collapses to transparent.
+   Note: ST has no semantic danger/warning colours → neutral values readable on both light and dark backgrounds are used; the overlay is a neutral dark mask,
+   not following the body colour, so the overlay doesn't become lighter in dark themes. */
 .bbi-root[data-theme='st'] {
   --bbi-bg: var(--SmartThemeBlurTintColor, #f6f5f2);
   --bbi-surface: var(--SmartThemeChatTintColor, #ffffff);
-  /* 次级面:面色掺一点主文字色,拉开与 surface 的层次(输入框/次级块) */
+  /* Secondary surface: the surface colour mixed with a little main text colour, separating it from surface (inputs/secondary blocks) */
   --bbi-surface-2: color-mix(in srgb, var(--SmartThemeChatTintColor, #fff) 92%, var(--SmartThemeBodyColor, #000));
   --bbi-ink: var(--SmartThemeBodyColor, #14213d);
-  /* 次级/弱化文字:主文字向底色退让。EmColor 常年过淡,故用 body↔bg 混合更可控 */
+  /* Secondary/muted text: main text receding toward the background. EmColor is often too faint, so a body↔bg mix is more controllable */
   --bbi-ink-soft: color-mix(in srgb, var(--SmartThemeBodyColor, #14213d) 72%, var(--SmartThemeBlurTintColor, #f6f5f2));
   --bbi-ink-muted: color-mix(in srgb, var(--SmartThemeBodyColor, #14213d) 52%, var(--SmartThemeBlurTintColor, #f6f5f2));
   --bbi-accent: var(--SmartThemeQuoteColor, #718cc1);
   --bbi-accent-soft: color-mix(in srgb, var(--SmartThemeQuoteColor, #718cc1) 14%, transparent);
-  /* 强调上的文字:借界面底色反差(适配多数 ST 配色:深强调 × 浅底) */
+  /* Text on accent: borrows the UI background for contrast (suits most ST palettes: dark accent × light background) */
   --bbi-accent-ink: var(--SmartThemeBlurTintColor, #ffffff);
   --bbi-line: var(--SmartThemeBorderColor, #cfbcbc);
   --bbi-line-strong: color-mix(in srgb, var(--SmartThemeBorderColor, #cfbcbc) 70%, var(--SmartThemeBodyColor, #000));
@@ -219,7 +219,7 @@
   --bbi-warning-soft: #d9a44126;
   /* 15% opacity */
   --bbi-overlay: #00000073;
-  /* 45% 中性遮罩,不随 body 色反转 */
+  /* 45% neutral overlay, not inverting with the body colour */
   --bbi-shadow: 0 18px 48px -20px var(--SmartThemeShadowColor, #00000038),
     0 4px 12px -6px var(--SmartThemeShadowColor, #0000001a);
 }

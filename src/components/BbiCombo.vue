@@ -4,26 +4,26 @@ import { modalHost } from '@/state/ui';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 /**
- * 可输入可下拉的组合框(combobox,交互与副 API 的模型框一致):
- * 输入框既是当前值也是过滤词,聚焦弹出候选菜单;候选为空时退化为普通输入框。
+ * A combo box you can type in and pick from (combobox, same interaction as the secondary API's model box):
+ * the input is both the current value and the filter; focusing pops up the candidate menu; with no candidates it degrades to a plain input.
  *
- * 为什么菜单 Teleport 到 modalHost 而不是就地绝对定位(副 API 那个是就地):
- * 本组件用在 Collapsible(overflow:hidden)里,就地定位会被裁剪(柏宝书踩过同款坑),
- * 故与 BbiSelect 同方案 —— 视口级 fixed,由输入框 getBoundingClientRect 推算,
- * 下方空间不足时向上翻。
+ * Why the menu teleports to modalHost instead of being absolutely positioned in place (the secondary API one is in place):
+ * this component is used inside Collapsible (overflow:hidden), where in-place positioning gets clipped (BaiBai Book hit the same pitfall),
+ * so it uses the same approach as BbiSelect: viewport-level fixed, computed from the input's getBoundingClientRect,
+ * flipping upward when there isn't enough space below.
  *
- * 交互:聚焦/输入展开;↑↓ 移动高亮,Enter 选中,Esc 只关菜单(不触发窗口级 Esc);
- * 点外部(输入框失焦)/滚动/缩放关闭。菜单内 mousedown 一律 preventDefault,
- * 让点击选项/滚动条不抢输入框焦点,选项靠 click 选中。
+ * Interaction: focus/typing opens; ↑↓ move the highlight, Enter selects, Esc only closes the menu (doesn't trigger the window-level Esc);
+ * clicking outside (input blur)/scrolling/resizing closes. Every mousedown inside the menu calls preventDefault,
+ * so clicking options/the scrollbar doesn't steal the input's focus; options are selected by click.
  */
 const props = withDefaults(
   defineProps<{
     modelValue: string;
-    /** 候选列表;空数组 = 普通输入框(不弹菜单、不画三角) */
+    /** Candidate list; empty array = plain input (no menu, no arrow) */
     options: string[];
     placeholder?: string;
     ariaLabel?: string;
-    /** 过滤结果展示上限,避免超长列表卡顿 */
+    /** Cap on displayed filter results, avoiding lag with very long lists */
     maxShown?: number;
   }>(),
   { placeholder: '', ariaLabel: undefined, maxShown: 200 },
@@ -31,14 +31,14 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>();
 
 const open = ref(false);
-/** 聚焦后用户输入的过滤词;聚焦/关闭时清空(清空=显示全部候选) */
+/** Filter text typed after focusing; cleared on focus/close (cleared = show all candidates) */
 const query = ref('');
 const trigger = ref<HTMLInputElement | null>(null);
 const menu = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
 const activeIndex = ref(0);
 
-// 过滤:子串、大小写不敏感;query 为空显示全部
+// Filter: substring, case-insensitive; empty query shows everything
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
   const out = q ? props.options.filter(o => o.toLowerCase().includes(q)) : props.options;
@@ -53,7 +53,7 @@ function openMenu() {
   const el = trigger.value;
   if (!el || open.value || !props.options.length) return;
   const rect = el.getBoundingClientRect();
-  // 估算菜单高度决定朝向:下方不够且上方更宽裕就向上翻
+  // Estimate the menu height to decide direction: if below is insufficient and above has more room, flip upward
   const estimated = Math.min(MENU_MAX_HEIGHT, props.options.length * 30 + 10);
   const below = window.innerHeight - rect.bottom - MENU_GAP - VIEWPORT_MARGIN;
   const upward = below < estimated && rect.top - VIEWPORT_MARGIN > below;
@@ -69,7 +69,7 @@ function openMenu() {
   activeIndex.value = Math.max(0, filtered.value.indexOf(props.modelValue));
   open.value = true;
   document.addEventListener('keydown', onDocKeydown, true);
-  // 菜单是视口级 fixed,不随内容滚动;滚动/缩放时直接关掉,比重算位置干净
+  // The menu is viewport-level fixed and doesn't scroll with content; closing it on scroll/resize is cleaner than recomputing its position
   document.addEventListener('scroll', closeOnViewportChange, true);
   window.addEventListener('resize', closeOnViewportChange);
 }
@@ -103,7 +103,7 @@ function onInput(event: Event) {
 function pick(option: string) {
   emit('update:modelValue', option);
   closeMenu();
-  // 焦点留在输入框(菜单 mousedown 被 prevent,从未失焦),方便继续敲下一个字段
+  // Focus stays in the input box (the menu's mousedown is prevented, so it never loses focus), handy for typing the next field
 }
 
 function scrollActiveIntoView() {
@@ -116,7 +116,7 @@ function onDocKeydown(event: KeyboardEvent) {
   if (!open.value) return;
   const count = filtered.value.length;
   if (event.key === 'Escape') {
-    // 捕获阶段拦截,只关菜单,别触发窗口级 Esc(关整个面板)
+    // Intercept in the capture phase, only closing the menu, without triggering the window-level Esc (which closes the whole panel)
     event.preventDefault();
     event.stopPropagation();
     closeMenu();
@@ -140,7 +140,7 @@ function onDocKeydown(event: KeyboardEvent) {
   }
 }
 
-/** 收起态按 ↓ 直接展开(原生 combobox 习惯) */
+/** In the collapsed state ↓ opens it directly (native combobox habit) */
 function onTriggerKeydown(event: KeyboardEvent) {
   if (!open.value && event.key === 'ArrowDown') {
     event.preventDefault();
@@ -148,7 +148,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
   }
 }
 
-/** 菜单内 mousedown 全拦:点选项/拖滚动条都不抢输入框焦点,选项走 click 选中 */
+/** Intercept every mousedown in the menu: clicking options/dragging the scrollbar never steals the input's focus; options are selected via click */
 function keepFocus() {}
 
 onBeforeUnmount(() => closeMenu());
@@ -170,7 +170,7 @@ onBeforeUnmount(() => closeMenu());
       @blur="closeMenu"
       @keydown="onTriggerKeydown"
     />
-    <!-- 下拉三角(装饰):仅在有候选时显示;pointer-events:none → 点击穿透照常聚焦展开 -->
+    <!-- Dropdown arrow (decorative): only shown when there are candidates; pointer-events:none → clicks pass through to focus and open as usual -->
     <Icon
       v-if="options.length"
       name="chevron"
@@ -213,7 +213,7 @@ onBeforeUnmount(() => closeMenu());
 }
 .bbi-combo-input {
   width: 100%;
-  padding-right: 26px; /* 给右侧三角让位 */
+  padding-right: 26px; /* Make room for the arrow on the right */
 }
 .bbi-combo-caret {
   position: absolute;
@@ -228,10 +228,10 @@ onBeforeUnmount(() => closeMenu());
   transform: translateY(-50%) rotate(180deg);
 }
 
-/* 菜单 Teleport 到 modalHost(scoped 样式在同 shadow root 内照常生效) */
+/* The menu teleports to modalHost (scoped styles still apply within the same shadow root) */
 .bbi-combo-menu {
   position: fixed;
-  z-index: 10001; /* 窗口(10000)之上,与 BbiSelect 菜单同级 */
+  z-index: 10001; /* Above the window (10000), same level as the BbiSelect menu */
   margin: 0;
   padding: 4px;
   list-style: none;

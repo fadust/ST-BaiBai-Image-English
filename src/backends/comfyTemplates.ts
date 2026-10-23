@@ -1,26 +1,26 @@
 /**
- * ComfyUI 简易模式:选模型/LoRA + 填基础参数,插件把预设组装成 API 工作流。
+ * ComfyUI simple mode: pick models/LoRA + fill basic parameters, and the plugin assembles the preset into an API workflow.
  *
- * 与自定义模式(粘贴 API JSON + %占位符%)互斥:预设二选一,出图时在
- * comfyui.ts 的 generateComfyImage 里分叉,汇合点是「拿到可提交的 JSON」,
- * 之后的排队/轮询/取消完全共用。
+ * Mutually exclusive with custom mode (pasted API JSON + %placeholders%): a preset is one or the other, and generation forks in
+ * generateComfyImage in comfyui.ts. The meeting point is "have a submittable JSON";
+ * queueing/polling/cancelling after that is fully shared.
  *
- * 模板按模型架构分族,不做「一个工作流打天下」——不同架构的加载节点、
- * latent 类型、负面词支持都不一样,硬揉在一起只会处处是特例。
- * 范围刻意收敛:checkpoint 系(SD1.5/SDXL/Pony/Illustrious)、Flux、Anima(Qwen 链路)。
- * Chroma/视频系等不见实际使用的一律不做,新架构 = 在 COMFY_TEMPLATES 加一条数据 + 一个组装分支。
+ * Templates are grouped by model architecture rather than "one workflow for everything": loader nodes,
+ * latent types and negative-prompt support all differ between architectures, and forcing them together would mean special cases everywhere.
+ * Scope is deliberately narrow: checkpoint family (SD1.5/SDXL/Pony/Illustrious), Flux, Anima (Qwen chain).
+ * Chroma, video families and others not seen in real use are not supported; a new architecture = one data entry in COMFY_TEMPLATES + one assembly branch.
  *
- * 本模块刻意不 import settings/comfyui:settings.ts 要拿这里的类型与默认值工厂,
- * comfyui.ts 要拿组装器,反向依赖会成环。错误用带中文信息的普通 Error,
- * 由 comfyui.ts 包成 ComfyUIError。
+ * This module deliberately does not import settings/comfyui: settings.ts needs the types and default factories here,
+ * and comfyui.ts needs the assembler, so a reverse dependency would create a cycle. Errors are plain Errors with user-facing messages,
+ * wrapped into ComfyUIError by comfyui.ts.
  */
 
 import type { GenerationParams } from '@/generationMeta';
 
-/** 节点引用:[节点 id, 输出槽位]。 */
+/** Node reference: [node id, output slot]. */
 type NodeRef = [string, number];
 
-// 用 type 而非 interface:接口没有隐式索引签名,赋不进 comfyui.ts 的 ComfyWorkflow(Record<string, JsonObject>)
+// type rather than interface: interfaces have no implicit index signature and can't be assigned to ComfyWorkflow (Record<string, JsonObject>) in comfyui.ts
 export type SimpleWorkflowNode = {
   class_type: string;
   inputs: Record<string, unknown>;
@@ -33,58 +33,58 @@ export type ComfyPresetMode = 'custom' | 'simple';
 export type ComfySimpleTemplateId = 'checkpoint' | 'flux' | 'anima';
 
 export interface ComfyLoraEntry {
-  /** LoRA 文件名(相对 models/loras)。 */
+  /** LoRA file name (relative to models/loras). */
   name: string;
-  /** 强度;checkpoint 模板同时作用于 model 与 clip,Flux/Anima 只作用于 model。 */
+  /** Strength; the checkpoint template applies it to both model and clip, Flux/Anima to model only. */
   strength: number;
 }
 
 /**
- * 一套简易模式参数。全部字段都有默认值(normalize 保证),
- * 出图组装时只做「选没选模型/VAE/CLIP」这种存在性校验。
+ * One set of simple-mode parameters. Every field has a default (guaranteed by normalize),
+ * so assembly only checks existence, such as whether a model/VAE/CLIP was selected.
  */
 export interface ComfySimpleConfig {
   template: ComfySimpleTemplateId;
-  /** checkpoint 模板 = ckpt 文件名;flux/anima = diffusion_models 文件名。 */
+  /** checkpoint template = ckpt file name; flux/anima = diffusion_models file name. */
   model: string;
-  /** flux/anima 选了 GGUF 格式的模型 → 用 UnetLoaderGGUF 加载。 */
+  /** flux/anima with a GGUF model selected → loaded with UnetLoaderGGUF. */
   gguf: boolean;
-  /** 外置 VAE 文件名;checkpoint 模板留空 = 用模型内置 VAE,flux/anima 必填。 */
+  /** External VAE file name; empty for the checkpoint template = use the model's built-in VAE; required for flux/anima. */
   vae: string;
-  /** flux: t5xxl;anima: qwen_2.5_vl;checkpoint 不用。 */
+  /** flux: t5xxl; anima: qwen_2.5_vl; unused by checkpoint. */
   clip1: string;
-  /** flux: clip_l;其余模板不用。 */
+  /** flux: clip_l; unused by other templates. */
   clip2: string;
   loras: ComfyLoraEntry[];
   steps: number;
   cfg: number;
   sampler: string;
   scheduler: string;
-  /** flux 专用:FluxGuidance 强度;1 = 跳过该节点(直连编码输出)。 */
+  /** flux only: FluxGuidance strength; 1 = skip the node (wire the encoder output directly). */
   guidance: number;
-  /** anima 专用:ModelSamplingAuraFlow 的 shift。 */
+  /** anima only: shift for ModelSamplingAuraFlow. */
   shift: number;
-  /** 固定正面,拼在 AI 生成内容之前。 */
+  /** Fixed positive, placed before the AI-generated content. */
   positive: string;
-  /** 固定负面,AI 动态负面追加在后。 */
+  /** Fixed negative; the AI's dynamic negative is appended after it. */
   negative: string;
 }
 
 export interface ComfyTemplateMeta {
   id: ComfySimpleTemplateId;
   label: string;
-  /** 模型字段来自哪个文件列表。 */
+  /** Which file list the model field draws from. */
   modelKind: 'checkpoint' | 'unet';
   modelLabel: string;
   vaeRequired: boolean;
   vaeLabel: string;
-  /** VAE 输入框 placeholder(留空语义/推荐文件名)。 */
+  /** Placeholder for the VAE input (meaning of blank/recommended file name). */
   vaePlaceholder: string;
-  /** 需要用户选择的 CLIP 文件;checkpoint 内置故为空。 */
+  /** CLIP files the user must choose; empty for checkpoint since it is built in. */
   clips: { key: 'clip1' | 'clip2'; label: string }[];
-  /** 是否有真实负面输入(Flux 负面恒空,故也不请求 AI 动态负面词)。 */
+  /** Whether a real negative input exists (Flux negative is always empty, so no dynamic negative is requested from the AI). */
   supportsNegative: boolean;
-  /** 简易模式画幅默认尺寸(写入新预设的横竖尺寸)。 */
+  /** Default frame sizes for simple mode (written into a new preset's portrait/landscape sizes). */
   portraitSize: string;
   landscapeSize: string;
   defaults: {
@@ -158,7 +158,7 @@ export function templateSupportsNegative(id: ComfySimpleTemplateId): boolean {
   return COMFY_TEMPLATES[id].supportsNegative;
 }
 
-/** 新预设的简易模式默认值:采样参数取模板推荐,其余留空待选。 */
+/** Simple-mode defaults for a new preset: sampling parameters from the template's recommendations, the rest left blank to choose. */
 export function simpleDefaults(template: ComfySimpleTemplateId = 'checkpoint'): ComfySimpleConfig {
   const meta = COMFY_TEMPLATES[template];
   return {
@@ -189,7 +189,7 @@ function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** 逐字段清洗;template 非法回 checkpoint。loras 里名字为空的行保留(UI 正在编辑的空行),组装时忽略。 */
+/** Cleans field by field; an invalid template falls back to checkpoint. LoRA rows with an empty name are kept (blank rows being edited in the UI) and ignored at assembly. */
 export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
   const o = (raw ?? {}) as Partial<ComfySimpleConfig>;
   const template = isComfyTemplateId(o.template) ? o.template : 'checkpoint';
@@ -219,8 +219,8 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
 }
 
 /**
- * 出图前校验;返回 null = 可出图,否则是给用户看的中文原因。
- * 面板的状态药丸与组装器共用同一口径,避免「面板说有效、出图才报错」。
+ * Pre-generation validation; null = ready to generate, otherwise a user-facing reason.
+ * The panel's status pill and the assembler share the same rules, avoiding "the panel says valid but generation errors".
  */
 export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   const meta = COMFY_TEMPLATES[simple.template] ?? COMFY_TEMPLATES.checkpoint;
@@ -232,52 +232,52 @@ export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   return null;
 }
 
-/** 组装入参:与占位符体系同源,只是不走宏替换。 */
+/** Assembly input: same source as the placeholder system, just without macro substitution. */
 export interface SimpleGenValues {
-  /** AI 生成的正向 tag。 */
+  /** Positive tags generated by the AI. */
   prompt: string;
-  /** AI 生成的自然语言(预设开启「生成自然语言」时才有);简易模式下优先于 tag。 */
+  /** Natural language generated by the AI (only when the preset has "Generate Natural Language" on); in simple mode it takes precedence over tags. */
   nl?: string;
-  /** AI 生成的动态负面 tag。 */
+  /** Dynamic negative tags generated by the AI. */
   negative?: string;
   seed: number;
   width: number;
   height: number;
 }
 
-/** 逗号拼接非空片段。 */
+/** Joins non-empty fragments with commas. */
 function joinParts(...parts: (string | undefined)[]): string {
   return parts.map(part => (part ?? '').trim()).filter(Boolean).join(', ');
 }
 
 /**
- * 正向 = 固定正面 + 生成内容;生成内容有 nl 优先用 nl(Flux/Anima 吃自然语言),
- * 没有才退回短 tag。开关在预设上,用户自己决定模板与开关的搭配。
+ * Positive = fixed positive + generated content; the generated content prefers nl when present (Flux/Anima take natural language),
+ * falling back to short tags otherwise. The toggle lives on the preset, so users decide how templates and toggles combine.
  */
 export function composePositive(simple: ComfySimpleConfig, values: SimpleGenValues): string {
   return joinParts(simple.positive, (values.nl ?? '').trim() || values.prompt);
 }
 
-/** 负面 = 固定负面 + AI 动态负面追加。 */
+/** Negative = fixed negative + the AI's dynamic negative appended. */
 export function composeNegative(simple: ComfySimpleConfig, values: SimpleGenValues): string {
   return joinParts(simple.negative, values.negative);
 }
 
 /**
- * 简易模式的采样参数快照(供随图记录)。只收展示需要的标量;
- * 固定正/负面的实际全文由 composePositive/Negative 直接进 meta。
+ * Sampling-parameter snapshot for simple mode (recorded with the image). Only the scalars needed for display;
+ * the full text of the fixed positive/negative goes into meta directly via composePositive/Negative.
  */
 export function comfySimpleParams(simple: ComfySimpleConfig): GenerationParams {
   const loras = simple.loras
     .filter(lora => lora.name.trim())
     .map(lora => `${lora.name.trim()}×${lora.strength}`)
-    .join('、');
+    .join(', ');
   return {
     mode: 'simple',
     template: simple.template,
     baseModel: simple.model,
     vae: simple.vae,
-    clips: [simple.clip1, simple.clip2].filter(Boolean).join('、'),
+    clips: [simple.clip1, simple.clip2].filter(Boolean).join(', '),
     loras,
     sampler: simple.sampler,
     scheduler: simple.scheduler,
@@ -289,9 +289,9 @@ export function comfySimpleParams(simple: ComfySimpleConfig): GenerationParams {
 }
 
 /**
- * LoRA 链:从底模(与 clip)出发逐个串联,返回链尾引用。
- * checkpoint 用 LoraLoader(model+clip 双头);Flux/Anima 的 LoRA 只挂在 UNet 上(LoraLoaderModelOnly)。
- * 名字为空的行是 UI 里没填完的,忽略。
+ * LoRA chain: starts from the base model (and clip) and chains each one, returning a reference to the chain's end.
+ * checkpoint uses LoraLoader (model+clip, two heads); Flux/Anima LoRAs only attach to the UNet (LoraLoaderModelOnly).
+ * Rows with an empty name are unfinished in the UI and ignored.
  */
 function applyLoras(
   nodes: SimpleWorkflow,
@@ -398,7 +398,7 @@ function buildFluxWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues): 
     class_type: 'CLIPTextEncode',
     inputs: { text: composePositive(simple, values), clip: ['2', 0] },
   };
-  // Flux 是蒸馏模型:负面恒空,cfg 恒 1,guidance 走 FluxGuidance
+  // Flux is a distilled model: negative always empty, cfg always 1, guidance via FluxGuidance
   nodes['5'] = { class_type: 'CLIPTextEncode', inputs: { text: '', clip: ['2', 0] } };
   let positive: NodeRef = ['4', 0];
   if (simple.guidance !== 1) {
@@ -477,9 +477,9 @@ function buildAnimaWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues):
 }
 
 /**
- * 把简易模式预设组装成可提交的 API 工作流(纯函数)。
- * 先跑与面板同口径的 validateSimpleConfig;尺寸异常也在这里报
- * (自定义模式是「工作流没用 %width% 就不查尺寸」,简易模式画布节点是必建的,没有豁免)。
+ * Assembles a simple-mode preset into a submittable API workflow (pure function).
+ * Runs validateSimpleConfig first, with the same rules as the panel; size problems are also reported here
+ * (custom mode means "no size check if the workflow doesn't use %width%"; in simple mode the canvas node is always built, so there is no exemption).
  */
 export function buildSimpleWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues): SimpleWorkflow {
   const invalid = validateSimpleConfig(simple);

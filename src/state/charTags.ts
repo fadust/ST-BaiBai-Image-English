@@ -2,15 +2,15 @@ import { getContext, type STMessage } from '@/st/context';
 import { reactive } from 'vue';
 
 /**
- * 角色固定外貌库。
+ * Character fixed-appearance library.
  *
- * 真源分三层:
- * - 全局库(跨聊天):extensionSettings,由 globalCharTags.ts 管理,仅用户手动维护,
- *   AI 的 changes 对锁定名一律无效;经 setGlobalCharTagSource 注入,本模块不反向依赖它。
- * - 手动条目/旧版快照:chatMetadata[META_KEY],不随楼层删除。
- * - 自动建档与变化:目标消息 extra[BBI_CHAR_EXTRA_KEY],随消息/swipe 一起保存和删除。
+ * Three layers of truth:
+ * - global library (across chats): extensionSettings, managed by globalCharTags.ts, maintained only by the user by hand;
+ *   AI changes never apply to locked names; injected via setGlobalCharTagSource, so this module doesn't depend back on it.
+ * - manual entries/legacy snapshots: chatMetadata[META_KEY], not removed with floors.
+ * - automatic profiles and changes: extra[BBI_CHAR_EXTRA_KEY] of the target message, saved and deleted together with the message/swipe.
  *
- * charTagLib 只是响应式派生缓存:合并基线(本聊天优先,全局补同名空缺) + 按楼层物理顺序重放自动变化。
+ * charTagLib is only a reactive derived cache: merged baseline (this chat first, global fills missing names) + replay of automatic changes in physical floor order.
  */
 
 export type CharTagField = 'fandom' | 'sex' | 'hair' | 'eyes' | 'skin' | 'body' | 'extra' | 'outfit';
@@ -45,7 +45,7 @@ export interface CharTagChangeRecord {
   from: string;
   to: string;
   reason: string;
-  /** 自动变化在重放时按当前物理楼号生成;手动编辑/回滚为 -1。 */
+  /** Automatic changes get the current physical floor number on replay; manual edits/rollbacks use -1. */
   floor: number;
   at: number;
 }
@@ -99,13 +99,13 @@ interface CharTagStore {
 }
 
 export const charTagLib = reactive<{ entries: CharTagEntry[] }>({ entries: [] });
-/** 本聊天基线(手动层)里的名字,响应式——UI 用它判断「本聊天覆盖全局」。随 recompute 同步。 */
+/** Names in this chat's baseline (manual layer), reactive; the UI uses it to tell "this chat overrides global". Synced on recompute. */
 export const charTagBaseNames = reactive<Set<string>>(new Set());
 let baseEntries: CharTagEntry[] = [];
 
 /**
- * 全局角色库(跨聊天)的条目来源,由 globalCharTags.ts 启动时注入。
- * 走注入而不是 import:全局模块要用这里的 normalize/CRUD,直接互转会成模块环。
+ * Entry source for the global character library (across chats), injected by globalCharTags.ts at startup.
+ * Injected rather than imported: the global module needs normalize/CRUD from here, and importing both ways would create a module cycle.
  */
 let globalCharTagSource: () => CharTagEntry[] = () => [];
 
@@ -114,7 +114,7 @@ export function setGlobalCharTagSource(provider: () => CharTagEntry[]): void {
 }
 
 /**
- * 派生种子 = 本聊天基线 + 全局库补同名空缺(本聊天同名条目优先,即「本聊天覆盖全局」)。
+ * Derivation seed = this chat's baseline + global library filling missing names (same-name entries in this chat win, i.e. "this chat overrides global").
  */
 export function mergeCharTagSeed(
   chatBaseEntries: CharTagEntry[],
@@ -126,9 +126,9 @@ export function mergeCharTagSeed(
 }
 
 /**
- * 锁定名集:全局库里有、且本聊天基线没有同名条目的角色。
- * AI 的 changes 对锁定名一律无效——全局条目只由用户手动维护,tag 有问题用户自己改。
- * 本聊天手动建同名条目即移出锁定(用户明确要的「本聊天覆盖」,AI 可照常变更它)。
+ * Locked name set: characters present in the global library with no same-name entry in this chat's baseline.
+ * AI changes never apply to locked names: global entries are maintained only by the user, who fixes any tag problems themselves.
+ * Creating a same-name entry manually in this chat unlocks it (the "this chat overrides" the user explicitly asked for; the AI may change it as usual).
  */
 export function computeLockedCharTagNames(
   chatBaseEntries: CharTagEntry[],
@@ -145,7 +145,7 @@ function mergedSeedEntries(): CharTagEntry[] {
   return mergeCharTagSeed(baseEntries, globalCharTagSource());
 }
 
-/** 当前生效的锁定名集(全局 ⊖ 本聊天基线)。 */
+/** Currently effective locked name set (global ⊖ this chat's baseline). */
 export function lockedCharTagNames(): ReadonlySet<string> {
   return computeLockedCharTagNames(baseEntries, globalCharTagSource());
 }
@@ -342,7 +342,7 @@ export function applyCharTagOps(
 ): CharTagEntry[] {
   const out = entries.map(cloneEntry);
   for (const op of ops) {
-    // 锁定角色(全局库)不接受 AI changes:无论 new 还是 set 一律丢弃
+    // Locked characters (global library) don't accept AI changes: both new and set are discarded
     if (locked?.has(op.name)) continue;
     if (op.kind === 'new') {
       if (out.some(entry => entry.name === op.name)) continue;
@@ -424,7 +424,7 @@ export function recomputeCharTags(): void {
 
 export function hydrateCharTags(): void {
   const raw = getContext()?.chatMetadata?.[META_KEY];
-  // v2 的整库快照无法可靠反推来源楼层,迁移时作为基线保留,避免丢用户现有数据。
+  // v2 whole-library snapshots can't reliably be traced back to source floors; they are kept as the baseline during migration so users' existing data isn't lost.
   baseEntries = normalizeCharTagStore(raw);
   recomputeCharTags();
 }
@@ -463,8 +463,8 @@ function stripOpsFromExtra(extra: Record<string, unknown> | undefined, names: Se
 }
 
 /**
- * 手动编辑/删除意味着用户接管当前结果:把该角色过去的自动楼层操作压进手动基线,
- * 并清掉已有消息里的同名操作。之后的新楼层仍可继续由 AI 变更。
+ * A manual edit/deletion means the user takes over the current result: the character's past automatic floor operations are folded into the manual baseline,
+ * and same-name operations in existing messages are cleared. Later new floors can still be changed by the AI.
  */
 function detachFromExistingFloors(...rawNames: Array<string | undefined>): void {
   const names = new Set(rawNames.map(name => name?.trim()).filter((name): name is string => !!name));

@@ -1,31 +1,31 @@
 import { reactive } from 'vue';
 
 /**
- * 「AI 重写提示词」的请求运行态(模块级 store)。
+ * Runtime state of "AI rewrite prompt" requests (module-level store).
  *
- * 与 genState 同样的理由必须放组件外:卡片生命周期由水合决定,任一兄弟槽位出图都会
- * 触发整楼重水合、把卡片连同组件内 ref 一起销毁;重写请求还在途,重建后的卡片要能
- * 认领回「AI 重写提示词…」并给出取消入口。
+ * Must live outside the component for the same reason as genState: card lifetimes are decided by hydration, and any sibling slot's image
+ * re-hydrates the whole floor, destroying cards together with their component refs. With a rewrite still in flight, the rebuilt card must be able to
+ * reclaim "AI rewriting prompt…" and offer a cancel button.
  *
- * 【为什么还要存住 promise】
- * 入口在提示词编辑弹窗里(floor/promptEditor.ts),而**关掉弹窗不能中断重写**——
- * 请求属于这个 store,不属于弹窗。用户中途关窗、稍后重开时,弹窗要能 await 回同一个
- * 在途请求、等它收尾后把新提示词读回输入框(「续上」),而不是只看到一个转圈。
- * 故这里存的是 {票据, promise} 而非单纯的布尔。
+ * [Why the promise is stored too]
+ * The entry point is in the prompt editor dialog (floor/promptEditor.ts), and **closing the dialog must not interrupt the rewrite**:
+ * the request belongs to this store, not to the dialog. If the user closes the dialog midway and reopens it later, the dialog must be able to await the same
+ * in-flight request and, once it finishes, read the new prompt back into the input ("resume"), instead of only seeing a spinner.
+ * So what is stored here is {ticket, promise}, not a plain boolean.
  *
- * 与 genState 分开存放,不合并:genState 管的是出图请求(queued/generating/error + hash
- * 对账),这里管的是 LLM 提示词请求。两者各有并发/取消语义(取消出图不该误杀重写,
- * 反之亦然),混在一起只会让状态机互相污染。key 与 genState / registry / autoGenerate
- * 保持同构:chatId|messageId|swipeId|seq。
+ * Kept apart from genState, not merged: genState handles image requests (queued/generating/error + hash
+ * reconciliation); this handles LLM prompt requests. Each has its own concurrency/cancel semantics (cancelling an image must not kill a rewrite,
+ * and vice versa); mixing them would only let the state machines contaminate each other. The key keeps the same shape as genState / registry / autoGenerate:
+ * chatId|messageId|swipeId|seq.
  *
- * 「取消」不在这里做:中止靠 autoTag/runner.ts 的 cancelFloorTags(每楼一把请求锁),
- * 本 store 只负责展示态与收尾认领。
+ * "Cancel" is not done here: aborting relies on cancelFloorTags in autoTag/runner.ts (one request lock per floor);
+ * this store only handles display state and claiming the finish.
  */
 
 interface TagPlanRecord {
-  /** 票据:用于识别「迟到的收尾」——旧任务收尾时不得清掉同 key 的新任务。 */
+  /** Ticket: identifies a "late finish"; an old task finishing must not clear a new task with the same key. */
   token: number;
-  /** 在途请求。重开的弹窗 await 它即可接上本次重写的收尾。 */
+  /** In-flight request. A reopened dialog awaits it to pick up this rewrite's finish. */
   promise: Promise<void>;
 }
 
@@ -38,14 +38,14 @@ export function isTagPlanning(key: string): boolean {
 }
 
 /**
- * 跑一次重写并全程登记运行态。同 key 重复开始以新票据为准(旧任务的收尾不得清掉新任务)。
+ * Runs one rewrite and registers runtime state throughout. A repeated start on the same key goes by the new ticket (an old task's finish must not clear the new one).
  *
- * 返回的 promise 与登记的是同一个:调用方可以 await,也可以直接丢掉不管——
- * 请求的生命周期归本 store,不归调用方(关掉弹窗不中断重写靠的就是这一点)。
+ * The returned promise is the same one registered: callers may await it or simply drop it;
+ * the request's lifetime belongs to this store, not the caller (that is what lets closing the dialog not interrupt the rewrite).
  */
 export function runTagPlan(key: string, run: () => Promise<void>): Promise<void> {
   const token = nextToken++;
-  // run() 先跑起来再登记:.finally 的回调是微任务,一定晚于下面这行同步的 set
+  // Start run() first, then register: the .finally callback is a microtask, always later than the synchronous set on the line below
   const promise = run().finally(() => {
     if (planning.get(key)?.token === token) planning.delete(key);
   });
@@ -53,12 +53,12 @@ export function runTagPlan(key: string, run: () => Promise<void>): Promise<void>
   return promise;
 }
 
-/** 取回在途重写的 promise(无在途则 null)。供重开的弹窗「续上」。 */
+/** Returns the in-flight rewrite's promise (null if none), so a reopened dialog can "resume". */
 export function awaitTagPlan(key: string): Promise<void> | null {
   return planning.get(key)?.promise ?? null;
 }
 
-/** 清空全部(切聊天 / 删楼后的全量重建;在途请求由 runner 的 cancelAll 中止)。 */
+/** Clears everything (full rebuild after switching chats / deleting floors; in-flight requests are aborted by the runner's cancelAll). */
 export function clearAllTagPlans(): void {
   planning.clear();
 }

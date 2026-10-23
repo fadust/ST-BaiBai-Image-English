@@ -1,35 +1,35 @@
 /**
- * 把模型给出的插入位置从「请求开始时的正文」平移到「写回时的正文」。
+ * Moves the model's insertion positions from "the story text when the request started" to "the story text at write-back".
  *
- * 为什么需要:副 API 分析要几秒到几十秒,期间别的插件常改正文(翻译、润色、追加状态栏、
- * 重写八股句)。旧实现在写回前整段比对正文,一处不同就放弃——哪怕改的是与画面毫无关系
- * 的部分,tag 也一并不注入。现在改成以「清洗后的叙事行」为锚重新定位:改动无关部分则
- * 位置分毫不动,真被改写的句子也照样落回它在新正文里的对应位置,不再丢 tag。
+ * Why: the secondary API analysis takes seconds to tens of seconds, and other plugins often change the text meanwhile (translation, polishing, appended status bars,
+ * rewriting stock phrases). The old implementation compared the whole text before writing back and gave up on any difference, even when the change
+ * had nothing to do with the image, so the tags were not injected at all. Now it re-locates using "cleaned narrative lines" as anchors: changes to unrelated parts
+ * leave positions untouched, and a sentence that really was rewritten still lands at its matching position in the new text, so tags are no longer lost.
  *
- * 对齐口径:两份 segment 列表(prepareTargetText 的产物,天然只含清洗后活下来的叙事行)
- * 先按文本相等求最长公共子序列作骨架,骨架之间的空隙按序号比例配对——空隙里旧 1 条新 1 条
- * 正好是「那句话被改写了」,精确命中而非近似;整句消失的行回落到前一个已配对锚点。
+ * Alignment: the two segment lists (output of prepareTargetText, naturally containing only the narrative lines that survived cleanup)
+ * first get a longest-common-subsequence skeleton by text equality; the gaps between skeleton points are paired by index proportion. A gap with one old and one new line
+ * is exactly "that sentence was rewritten", an exact hit rather than an approximation; a line that vanished entirely falls back to the previous paired anchor.
  *
- * 落点只能是当前正文的 segment,不能是裸行号:这样 tag 绝不会掉进别的插件刚追加的
- * 状态栏块内部——那些块在清洗阶段就已不构成 segment。
+ * Landing points can only be segments of the current text, never raw line numbers: that way a tag can never drop inside a
+ * status-bar block another plugin just appended, since such blocks are not segments after cleanup.
  */
 
 import { prepareTargetText, type TargetSegment } from '@/autoTag/clean';
 import type { ImageInsertion } from '@/autoTag/protocol';
 
-/** 超过此规模不跑 O(n*m) DP。正常楼层的叙事行数远小于此,超了只按比例映射。 */
+/** Above this size the O(n*m) DP is skipped. Normal floors have far fewer narrative lines; beyond it, mapping is proportional only. */
 const LCS_CELL_LIMIT = 250_000;
 
 /**
- * 文本相等的最长公共子序列,返回递增的 (旧序号, 新序号) 配对。
- * 规模超限时返回空骨架,交给调用方整体按比例映射(退化但不出错)。
+ * Longest common subsequence by text equality; returns increasing (old index, new index) pairs.
+ * When the size limit is exceeded it returns an empty skeleton and the caller maps everything proportionally (degraded but never wrong).
  */
 function lcsPairs(oldTexts: string[], newTexts: string[]): Array<[number, number]> {
   const n = oldTexts.length;
   const m = newTexts.length;
   if (!n || !m || n * m > LCS_CELL_LIMIT) return [];
 
-  // dp[i][j] = oldTexts[i..] 与 newTexts[j..] 的 LCS 长度(扁平化成一维,行宽 m+1)
+  // dp[i][j] = LCS length of oldTexts[i..] and newTexts[j..] (flattened to 1D, row width m+1)
   const width = m + 1;
   const dp = new Int32Array((n + 1) * width);
   for (let i = n - 1; i >= 0; i -= 1) {
@@ -59,8 +59,8 @@ function lcsPairs(oldTexts: string[], newTexts: string[]): Array<[number, number
 }
 
 /**
- * 旧 segment 序号 → 新 segment 序号的映射;配不上的位置留 -1。
- * 骨架(文本原样存在的行)先钉住,再在骨架切出的空隙里按序号比例配对。
+ * Map from old segment index → new segment index; unmatched positions stay -1.
+ * The skeleton (lines whose text exists unchanged) is pinned first, then the gaps it leaves are paired by index proportion.
  */
 function alignSegments(oldTexts: string[], newTexts: string[]): number[] {
   const mapped = new Array<number>(oldTexts.length).fill(-1);
@@ -87,7 +87,7 @@ function alignSegments(oldTexts: string[], newTexts: string[]): number[] {
   return mapped;
 }
 
-/** 从 index 起向前找最近的已配对位置,前面没有再往后找。全都没有返回 -1。 */
+/** From index, searches backwards for the nearest paired position, then forwards if none. Returns -1 if there are none at all. */
 function nearestMapped(mapped: number[], index: number): number {
   for (let i = index; i >= 0; i -= 1) {
     if (mapped[i] >= 0) return mapped[i];
@@ -99,11 +99,11 @@ function nearestMapped(mapped: number[], index: number): number {
 }
 
 export interface RebaseReport {
-  /** 锚点句原样存在:位置等价于没动。 */
+  /** Anchor sentence exists unchanged: the position is effectively unmoved. */
   anchored: number;
-  /** 锚点句被改写:按对齐结果落到它在新正文里的对应句。 */
+  /** Anchor sentence was rewritten: lands on its matching sentence in the new text per the alignment. */
   remapped: number;
-  /** 锚点句整句消失:顺延到前一个锚点(宁可位置偏一点,也不丢 tag)。 */
+  /** Anchor sentence vanished entirely: carried to the previous anchor (better slightly off than losing the tag). */
   drifted: number;
 }
 
@@ -113,14 +113,14 @@ export interface RebaseResult {
 }
 
 /**
- * 按当前正文重算每张图的插入行。
+ * Recomputes each image's insertion line against the current text.
  *
- * plannedSegments 是模型当时看到的那份 segment 列表(runner 里 preparedTarget.segments),
- * currentText 是即将写回的正文基底。返回的 images 已按新行号升序(同行保持原相对顺序),
- * 可直接交给 injectImageTags。
+ * plannedSegments is the segment list the model saw at the time (preparedTarget.segments in the runner);
+ * currentText is the text base about to be written back. The returned images are sorted by new line number ascending (same line keeps the original relative order)
+ * and can be passed straight to injectImageTags.
  *
- * 返回 null 只在真正无从下手时:当前正文清洗后一条叙事行都不剩——此时任何落点都是瞎猜。
- * 句子被改写、被删、被整段追加内容都不算无从下手,一律给出落点。
+ * Returns null only when there is truly nothing to work with: the current text has no narrative line left after cleanup, so any landing point would be a guess.
+ * Rewritten sentences, deleted sentences and whole appended passages are not that case; they always get a landing point.
  */
 export function rebaseImagePositions(
   currentText: string,
@@ -143,7 +143,7 @@ export function rebaseImagePositions(
   const out: ImageInsertion[] = [];
   for (const image of images) {
     const oldIndex = oldByLine.get(image.sourceLine);
-    // sourceLine 本就来自 plannedSegments,对不上说明调用方传错了列表
+    // sourceLine comes from plannedSegments in the first place; a mismatch means the caller passed the wrong list
     if (oldIndex === undefined) return null;
     const direct = mapped[oldIndex];
     const target = direct >= 0 ? direct : nearestMapped(mapped, oldIndex);
@@ -155,7 +155,7 @@ export function rebaseImagePositions(
     out.push({ ...image, sourceLine: newSegments[target].sourceLine });
   }
 
-  // 升序保证叙事顺序单调;sort 稳定,落到同一行的图片保持模型给出的原相对顺序
+  // Ascending order keeps narrative order monotonic; sort is stable, so images landing on the same line keep the model's original relative order
   out.sort((left, right) => left.sourceLine - right.sourceLine);
   return { images: out, report };
 }

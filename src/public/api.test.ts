@@ -132,7 +132,7 @@ describe('getBackendStatus', () => {
     ready();
 
     const status = getBackendStatus();
-    // 白名单口径:内部结构日后加字段也不会静默泄漏出去
+    // Allowlist rule: fields added to the internal structure later can never leak out silently
     expect(Object.keys(status).sort()).toEqual([
       'apiVersion', 'backend', 'configured', 'model', 'pluginVersion', 'reason', 'supportsCharacters',
     ]);
@@ -234,7 +234,7 @@ describe('generate', () => {
 
     const saved = await generate({ prompt: '1girl' });
     expect(saved.path).toBe('/user/images/x.png');
-    // 侧写存的是 tag 原文(含 <bbi_image> 壳),图库要拿它反解析出各字段
+    // The sidecar stores the raw tag (including the <bbi_image> wrapper); the gallery parses the fields back from it
     const [name, tag, seed] = vi.mocked(saveExternalImage).mock.calls[0];
     expect(name).toBe('小雪');
     expect(tag).toBe('<bbi_image>1girl<size>portrait</size></bbi_image>');
@@ -252,7 +252,7 @@ describe('generate', () => {
   it('records the size the image was actually drawn at, not the requested one (channel lock)', async () => {
     ready();
     vi.mocked(saveExternalImage).mockClear();
-    // 渠道锁横图:请求要竖,generateImage 回报实际按横出
+    // Channel locked to landscape: the request asks for portrait, and generateImage reports it actually rendered landscape
     vi.mocked(generateImage).mockResolvedValue({
       result: fakeResult(), seed: 4242, size: 'landscape', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
     });

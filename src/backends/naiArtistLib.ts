@@ -1,14 +1,14 @@
 import type { NaiArtistPreset } from '@/state/settings';
 
 /**
- * 画师串库的管理态纯逻辑(搜索匹配 / 删除接位规划)。
- * 与交互解耦,便于单测;NaiArtistManager.vue 只做交互与落盘。
+ * Pure logic for managing the artist-string library (search matching / planning the replacement after deletion).
+ * Decoupled from interaction for unit testing; NaiArtistManager.vue only handles interaction and saving.
  */
 
 /**
- * 搜索匹配:名称 + 画师串内容,大小写不敏感的子串匹配;空词恒真(= 不过滤)。
- * 绑定的正/负面词不参与——用户记画风靠的是名字和那串 artist tag,
- * 匹配面铺得越广,「明明搜到了」与「这怎么也命中」的意外都越多。
+ * Search matching: name + artist-string content, case-insensitive substring match; an empty query always matches (= no filter).
+ * Bound positive/negative tags are excluded: users remember a style by its name and its artist tags,
+ * and the wider the match surface, the more surprises like "why does this match too" against "I clearly searched for it".
  */
 export function matchArtist(
   preset: Pick<NaiArtistPreset, 'name' | 'prompt'>,
@@ -20,21 +20,21 @@ export function matchArtist(
 }
 
 export interface ArtistRemovalPlan {
-  /** 删除后的库(保持原顺序)。 */
+  /** Library after deletion (original order kept). */
   remaining: NaiArtistPreset[];
-  /** 实际被删的条目(调用方据此清理预览图文件)。 */
+  /** Entries actually deleted (the caller cleans up their preview image files). */
   removed: NaiArtistPreset[];
   /**
-   * 删除后的 activeArtistId:当前项没被动 → 不动;
-   * 当前项被删 → 接位到原位置那一条(已是末尾则退一格),删空 → ''(= 不使用)。
-   * 与 NaiPanel 单条删除的接位口径一致,刻意**不**回落 [0](静默换画风查不出原因)。
+   * activeArtistId after deletion: current entry untouched → unchanged;
+   * current entry deleted → the entry now at its position takes over (or the previous one if it was last); library empty → '' (= none).
+   * Same takeover rule as single deletion in NaiPanel; deliberately does **not** fall back to [0] (a silent style switch is impossible to trace).
    */
   nextActiveId: string;
 }
 
 /**
- * 规划一次删除(单条与批量共用)。removedIds 之外的条目不碰;
- * activeId 不在删除集里就原样保留(内置 bi_* 永不在删除集——管理器不给内置条勾选框)。
+ * Plans one deletion (shared by single and bulk). Entries outside removedIds are untouched;
+ * activeId is kept as-is if it is not in the deletion set (built-in bi_* entries are never in it; the manager gives them no checkbox).
  */
 export function planArtistRemoval(
   list: readonly NaiArtistPreset[],

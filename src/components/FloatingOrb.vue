@@ -4,32 +4,32 @@ import { openPanel, ui } from '@/state/ui';
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 
 /**
- * 悬浮球 —— 柏宝绘伸进宿主页面的「书签坠」。
+ * Floating orb: BaiBai Image's "bookmark charm" reaching into the host page.
  *
- * 形态:竖向缎带 + 底部燕尾缺口(clip-path),呼应品牌的 bookmark 图标;自定义图片也被
- * 切成同一书签轮廓,任意图都收进统一形状(这是与「又一个圆 fab」拉开差距的签名手法)。
+ * Shape: a vertical ribbon with a swallowtail notch at the bottom (clip-path), echoing the brand's bookmark icon; custom images are
+ * clipped to the same bookmark outline, so any image fits the unified shape (the signature touch that sets it apart from "yet another round fab").
  *
- * 行为(按用户要求):自由拖动 —— 拖到屏幕中间就停在中间;拖到接近左/右边缘才吸附贴边。
- * 贴边时半隐于边缘(只露一窄条),hover/聚焦/触摸才整条滑出;停在中间则常显。
+ * Behaviour (as users asked): free dragging; dropped mid-screen it stays mid-screen; only near the left/right edge does it snap to the edge.
+ * When snapped it half-hides at the edge (only a narrow strip shows) and slides fully out on hover/focus/touch; mid-screen it is always shown.
  *
- * 位置存本机 localStorage(纯视觉态、各设备屏幕尺寸不同,同步反而会跑到屏幕外)。
- * 开关与自定义图标(ui.orbImage,服务器路径)跨设备同步,由设置承载。
+ * Position is stored in local localStorage (purely visual, and screen sizes differ per device; syncing would push it off screen).
+ * The toggle and custom icon (ui.orbImage, a server path) sync across devices via settings.
  */
 
-// 尺寸随形状 + 用户基准尺寸(ui.orbSize):书签按 0.78 宽高比(竖长方),圆/方等边正方。
-// 拖动/吸附计算与内联尺寸都读它。
+// Size follows shape + the user's base size (ui.orbSize): the bookmark uses a 0.78 width-to-height ratio (tall rectangle); circle/square are equal-sided.
+// Drag/snap calculations and inline sizes all read it.
 const orbW = computed(() => (ui.orbShape === 'bookmark' ? Math.round(ui.orbSize * 0.78) : ui.orbSize));
 const orbH = computed(() => ui.orbSize);
-const SNAP_ZONE = 56; // 松手时距左/右边缘 ≤ 此值即吸附贴边
-const CLICK_SLOP = 6; // 位移 < 此值视为点击而非拖动
+const SNAP_ZONE = 56; // On release, within this distance of the left/right edge it snaps to the edge
+const CLICK_SLOP = 6; // Movement below this counts as a click, not a drag
 const POS_KEY = 'bbi.orb.pos.v1';
 
 type Dock = 'left' | 'right' | 'none';
 interface OrbPos {
   dock: Dock;
-  /** 贴边时无意义;free 时为左上角 x(px) */
+  /** Meaningless when snapped; in free mode it is the top-left x (px) */
   x: number;
-  /** 左上角 y(px),三种状态都用 */
+  /** Top-left y (px), used in all three states */
   y: number;
 }
 
@@ -45,19 +45,19 @@ function loadPos(): OrbPos {
   } catch {
     /* ignore */
   }
-  // 默认:右侧贴边、纵向居中偏下
+  // Default: snapped to the right edge, vertically a little below centre
   return { dock: 'right', x: 0, y: Math.round(window.innerHeight * 0.6) };
 }
 
 const pos = reactive<OrbPos>(loadPos());
 const dragging = ref(false);
-const awake = ref(false); // hover/聚焦/拖动 → 贴边态整条滑出
+const awake = ref(false); // hover/focus/drag → a snapped orb slides fully out
 let activePointer: number | null = null;
 let startX = 0;
 let startY = 0;
-let moved = 0; // 累计位移,用于点击/拖动判定
+let moved = 0; // Accumulated movement, for telling a click from a drag
 
-// 进入视口后把坐标夹进可视范围(换了更小的屏幕/旋转后不至于跑出去)
+// After entering the viewport, clamp the coordinates into the visible area (so it doesn't end up off screen after switching to a smaller screen/rotating)
 function clampToViewport(): void {
   const maxY = Math.max(0, window.innerHeight - orbH.value);
   pos.y = Math.min(Math.max(0, pos.y), maxY);
@@ -75,20 +75,20 @@ function savePos(): void {
   }
 }
 
-// —— 定位样式:贴边用 left/right 锚定 + translateX 控制隐/现;free 用绝对 x/y ——
+// —— Positioning styles: snapped uses left/right anchoring + translateX for hide/show; free uses absolute x/y ——
 const orbStyle = computed(() => {
   const base: Record<string, string> = {
     top: `${pos.y}px`,
     width: `${orbW.value}px`,
     height: `${orbH.value}px`,
-    // 静止不透明度走 CSS 变量,唤起/拖动态由类覆盖回全显
+    // Resting opacity goes through a CSS variable; the summoned/dragging states override it back to fully visible via classes
     '--orb-rest-opacity': String(Math.min(100, Math.max(20, ui.orbOpacity)) / 100),
-    // 图标字号随基准尺寸缩放(原 48 球 ≈ 22px),保持图标与球体比例协调
+    // Icon font size scales with the base size (the original 48 orb ≈ 22px), keeping the icon in proportion to the orb
     '--orb-icon-size': `${Math.round(ui.orbSize * 0.46)}px`,
   };
   if (pos.dock === 'left') {
     base.left = '0px';
-    // 静止半隐(露 ~40%);拖动/唤起时整条滑出
+    // Half-hidden at rest (~40% showing); slides fully out when dragged/summoned
     base.transform = dragging.value || awake.value ? 'translateX(0)' : 'translateX(-58%)';
   } else if (pos.dock === 'right') {
     base.right = '0px';
@@ -102,14 +102,14 @@ const orbStyle = computed(() => {
 
 const orbImage = computed(() => ui.orbImage.trim());
 
-// —— 拖动 ——
+// —— Dragging ——
 function onDown(e: PointerEvent) {
   activePointer = e.pointerId;
   dragging.value = true;
   moved = 0;
   startX = e.clientX;
   startY = e.clientY;
-  // 记录手指相对左上角的抓取点,拖动时保持
+  // Record the grab point of the finger relative to the top-left corner, kept while dragging
   grabDX = e.clientX - currentLeft();
   grabDY = e.clientY - pos.y;
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -118,7 +118,7 @@ function onDown(e: PointerEvent) {
 let grabDX = 0;
 let grabDY = 0;
 
-/** 当前左上角的实际 x(贴边态由 right/translate 折算成绝对像素,供拖动起步用) */
+/** Actual x of the current top-left corner (in the edge-docked state converted from right/translate to absolute pixels, used to start a drag) */
 function currentLeft(): number {
   if (pos.dock === 'right') return window.innerWidth - orbW.value;
   if (pos.dock === 'left') return 0;
@@ -128,7 +128,7 @@ function currentLeft(): number {
 function onMove(e: PointerEvent) {
   if (!dragging.value || e.pointerId !== activePointer) return;
   moved = Math.max(moved, Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY));
-  // 拖动中一律切 free 跟手(整条可见)
+  // While dragging always switch to free and follow the finger (fully visible)
   pos.dock = 'none';
   pos.x = e.clientX - grabDX;
   pos.y = e.clientY - grabDY;
@@ -141,12 +141,12 @@ function onUp(e: PointerEvent) {
   activePointer = null;
 
   if (moved < CLICK_SLOP) {
-    // 视为点击 → 打开柏宝绘(贴边态保持)
+    // Treated as a click → open BaiBai Image (the edge-docked state is kept)
     openPanel();
     return;
   }
 
-  // 松手吸附判定:靠近左/右边缘才贴边,否则停在原地(中间)
+  // Snap check on release: dock only near the left/right edge, otherwise stay where it is (in the middle)
   const left = pos.x;
   const right = window.innerWidth - (pos.x + orbW.value);
   if (left <= SNAP_ZONE) pos.dock = 'left';
@@ -156,7 +156,7 @@ function onUp(e: PointerEvent) {
   savePos();
 }
 
-// —— 键盘可达 ——
+// —— Keyboard access ——
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
@@ -210,7 +210,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   cursor: grab;
   touch-action: none;
   user-select: none;
-  /* drop-shadow 对 clip-path(书签)与 border-radius(圆/方)都跟随轮廓,统一用它 */
+  /* drop-shadow follows the outline of both clip-path (bookmark) and border-radius (circle/square), so it is used for all */
   filter: drop-shadow(0 6px 14px oklch(0 0 0 / 0.28));
   opacity: var(--orb-rest-opacity, 0.62);
   transition:
@@ -218,12 +218,12 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
     opacity var(--bbi-dur) var(--bbi-ease);
 }
 
-/* —— 形状 —— */
-/* 书签:缎带轮廓 + 底部燕尾缺口。clip-path 天然裁切自定义图。 */
+/* —— Shapes —— */
+/* Bookmark: ribbon outline + swallowtail notch at the bottom. clip-path naturally clips custom images. */
 .bbi-orb.shape-bookmark {
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
 }
-/* 圆 / 方:border-radius + overflow 裁切自定义图 */
+/* Circle / square: border-radius + overflow clip custom images */
 .bbi-orb.shape-circle {
   border-radius: 999px;
   overflow: hidden;
@@ -233,7 +233,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   overflow: hidden;
 }
 
-/* 唤起(hover/聚焦/拖动)或停在中间(free) → 全显 */
+/* Invoked (hover/focus/drag) or resting mid-screen (free) → fully shown */
 .bbi-orb:hover,
 .bbi-orb:focus-visible,
 .bbi-orb.is-dragging {
@@ -251,7 +251,7 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
   font-size: var(--orb-icon-size, 22px);
   pointer-events: none;
 }
-/* 书签:图标上移,避开底部燕尾缺口(圆/方无缺口,居中即可) */
+/* Bookmark: icon moved up to avoid the swallowtail notch at the bottom (circle/square have no notch; centred is fine) */
 .bbi-orb.shape-bookmark .bbi-orb-icon {
   margin-bottom: 6px;
 }

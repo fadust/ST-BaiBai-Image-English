@@ -7,50 +7,50 @@ import { copyText } from '@/st/clipboard';
 import { modalHost } from '@/state/ui';
 
 /**
- * 图片灯箱(楼层卡片点击放大)。
+ * Image lightbox (floor card click to enlarge).
  *
- * 为什么自建而不用 ST 原生:ST 的灯箱入口 `.mes_img` 只是个 class,真正的
- * expandMessageMedia 读的是 `chat[mesid].extra.media[data-index]` 数据模型,且该函数
- * 模块私有、未导出到 context——光加 class 会直接 bail。走官方 extra.media 那条路能白嫖
- * 灯箱,但图片会被挂到 `.mes_media_wrapper`(.mes_text 的兄弟节点),脱离 tag 的行内位置,
- * 与「图出现在 tag 所在段落」的核心设计冲突,还得再维护一份与 extra.bbiImage 平行的存储。
+ * Why our own instead of ST's native one: ST's lightbox entry `.mes_img` is just a class; the real
+ * expandMessageMedia reads the `chat[mesid].extra.media[data-index]` data model, and that function is
+ * module-private and not exported to context, so just adding the class bails out. Taking the official extra.media route would give us
+ * the lightbox for free, but the image would be attached to `.mes_media_wrapper` (a sibling of .mes_text), leaving the tag's inline position,
+ * which conflicts with the core design "the image appears in the tag's paragraph", and would need another store parallel to extra.bbiImage.
  *
- * 【长按保存】移动端能长按保存图片,靠三条约束共同保证,改动时务必保留:
- * 1. 只监听 click,绝不在图片上 preventDefault touchstart/touchend——长按唤出系统菜单时
- *    浏览器不会补发 click,两者天然不冲突;一旦自己拦 touch,长按保存立刻失效。
- * 2. 图片不加 user-select:none / -webkit-touch-callout:none / draggable=false。
- * 3. 显式 touch-action:auto 抵消 ST 的 `body{touch-action:none}`
- *    (css/mobile-styles.css:251,移动端 ≤1000px 全局)——它会干扰部分引擎的长按判定。
- * 【二段放大与平移】点击图片在「适应屏幕 ↔ 原始尺寸」间切换(放大 = 1:1 检查
- * 脸/手等细节,决定留还是重绘)。放大后的平移分两条路:
- * - 桌面:鼠标拖拽(pointer 事件只认 pointerType==='mouse',5px 阈值区分点击与拖动);
- * - 移动:stage 的原生溢出滚动,**不监听任何 touch 事件**(见上面三条约束)。
- * stage 居中用图片 margin:auto 而非 justify-content:center——后者会把放大后
- * 左/上两侧的溢出挤出滚动可达区(移动端「只能上下滚」的元凶)。
+ * [Long-press to save] Long-press saving on mobile is guaranteed by three constraints together; keep them when making changes:
+ * 1. Only click is listened for; never preventDefault touchstart/touchend on the image. When a long press brings up the system menu
+ *    the browser doesn't follow up with a click, so the two never conflict; intercepting touch ourselves breaks long-press saving immediately.
+ * 2. The image gets no user-select:none / -webkit-touch-callout:none / draggable=false.
+ * 3. An explicit touch-action:auto counteracts ST's `body{touch-action:none}`
+ *    (css/mobile-styles.css:251, global on mobile ≤1000px), which interferes with some engines' long-press detection.
+ * [Two-step zoom and panning] Clicking the image toggles between "fit to screen ↔ original size" (zoomed = 1:1 to inspect
+ * details such as faces/hands and decide whether to keep or redraw). Panning when zoomed has two paths:
+ * - desktop: mouse drag (pointer events only for pointerType==='mouse'; a 5px threshold tells click from drag);
+ * - mobile: the stage's native overflow scrolling, **with no touch event listeners** (see the three constraints above).
+ * The stage centres with margin:auto on the image, not justify-content:center: the latter pushes the zoomed image's
+ * left/top overflow out of the scrollable area (the culprit behind "can only scroll up and down" on mobile).
  */
 
 const props = defineProps<{
   src: string;
-  /** 提示词原文(复制用);空则不显示复制按钮。 */
+  /** Raw prompt text (for copying); no copy button if empty. */
   prompt?: string;
-  /** 下载文件名。 */
+  /** Download file name. */
   filename?: string;
-  /** 有值才显示删除按钮。 */
+  /** The delete button only shows when this has a value. */
   deletable?: boolean;
 }>();
 
 const emit = defineEmits<{ close: []; delete: [] }>();
 
-/** 适应屏幕 ↔ 原始尺寸。 */
+/** Fit to screen ↔ original size. */
 const zoomed = ref(false);
 
-/** 滚动容器(放大后平移用)。 */
+/** Scroll container (for panning when zoomed). */
 const stage = ref<HTMLElement | null>(null);
 
-/** 拖动平移后的那次 click 要吞掉,否则一拖完图片就缩回去了。 */
+/** The click right after a drag-pan must be swallowed, or the image would shrink back as soon as the drag ends. */
 let suppressClick = false;
 
-/** 点击切换缩放;放大时把点击点滚到视口中央(点哪看哪)。 */
+/** Click toggles zoom; when zooming in, scrolls the clicked point to the viewport centre (look where you click). */
 async function onImageClick(event: MouseEvent): Promise<void> {
   if (suppressClick) {
     suppressClick = false;
@@ -74,9 +74,9 @@ async function onImageClick(event: MouseEvent): Promise<void> {
 }
 
 /**
- * 鼠标拖拽平移(仅放大态、仅鼠标)。
- * 触屏不碰:触摸平移交给 stage 的原生溢出滚动(img 上的 touch-action:auto 就是
- * 为它和长按保存留的),自己拦触摸会违反顶部的长按保存三约束。
+ * Mouse drag panning (zoomed state only, mouse only).
+ * Touch is left alone: touch panning is handled by the stage's native overflow scrolling (touch-action:auto on the img is
+ * reserved for that and for long-press saving); intercepting touch ourselves would violate the three long-press constraints at the top.
  */
 let pan: { x: number; y: number; left: number; top: number; moved: boolean } | null = null;
 
@@ -93,7 +93,7 @@ function onPointerMove(event: PointerEvent): void {
   if (!pan || !el) return;
   const dx = event.clientX - pan.x;
   const dy = event.clientY - pan.y;
-  if (!pan.moved && Math.hypot(dx, dy) < 5) return; // 阈值内算点击,保留点击缩放
+  if (!pan.moved && Math.hypot(dx, dy) < 5) return; // Within the threshold it's a click; keep click-to-zoom
   pan.moved = true;
   el.scrollLeft = pan.left - dx;
   el.scrollTop = pan.top - dy;
@@ -104,7 +104,7 @@ function onPointerUp(): void {
   pan = null;
 }
 
-/** 放大态平移时拦掉图片原生拖拽残影;非放大态保持原生行为,一概不动。 */
+/** When panning while zoomed, block the image's native drag ghost; outside zoom keep native behaviour untouched. */
 function onDragStart(event: DragEvent): void {
   if (zoomed.value) event.preventDefault();
 }
@@ -117,7 +117,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
-  // 捕获阶段:抢在 ST 的全局快捷键之前拿到 Esc
+  // Capture phase: grab Esc before ST's global shortcuts
   document.addEventListener('keydown', onKeydown, true);
 });
 onBeforeUnmount(() => {
@@ -136,11 +136,11 @@ const promptText = computed(() => (props.prompt ?? '').trim());
 </script>
 
 <template>
-  <!-- Teleport 到 modalHost(.bbi-root 直接子级):灯箱需要 --bbi-* 主题变量,
-       而 lightbox.ts 的容器挂在 shadow root 顶层、在 .bbi-root 之外拿不到变量。
-       与 ConfirmDialog 同款手法。 -->
+  <!-- Teleports to modalHost (direct child of .bbi-root): the lightbox needs the --bbi-* theme variables,
+       while lightbox.ts's container hangs at the top of the shadow root, outside .bbi-root, where the variables are unavailable.
+       Same technique as ConfirmDialog. -->
   <Teleport :to="modalHost" :disabled="!modalHost">
-    <!-- 遮罩自身承接关闭点击;图片与操作栏 stop 掉,避免误关 -->
+    <!-- The mask itself handles close clicks; the image and toolbar stop propagation to avoid closing by mistake -->
     <div class="bbi-lightbox" @click="emit('close')">
       <div class="bbi-lightbox__bar" @click.stop>
         <button class="bbi-lb-btn" type="button" title="save image" @click="save">
@@ -169,7 +169,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
         </button>
       </div>
 
-      <!-- 图片容器:zoomed 时滚动(触屏)/ 鼠标拖拽查看原图 -->
+      <!-- Image container: scrolls when zoomed (touch) / mouse drag to view the original -->
       <div
         ref="stage"
         class="bbi-lightbox__stage"
@@ -203,7 +203,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
   bottom: 0;
   left: 0;
   width: 100%;
-  /* 与 base.css 的遮罩同款:部分移动端 WebView 不认 inset/百分比链,显式给视口高 */
+  /* Same as the mask in base.css: some mobile WebViews don't handle inset/percentage chains, so the viewport height is given explicitly */
   height: 100vh;
   height: 100dvh;
   z-index: 10050;
@@ -249,9 +249,9 @@ const promptText = computed(() => (props.prompt ?? '').trim());
   color: #fff;
 }
 
-/* 居中不用 justify-content/align-items:center:放大后图片比容器宽时,flex 居中
-   会把左/上两侧的溢出挤出滚动可达区(移动端「只能上下滚」的元凶)。
-   改用图片自身 margin:auto——小时居中,大时自动边距归零、起点对齐,四向皆可滚。 */
+/* Centring doesn't use justify-content/align-items:center: when the zoomed image is wider than the container, flex centring
+   pushes the left/top overflow out of the scrollable area (the culprit behind "can only scroll up and down" on mobile).
+   The image's own margin:auto is used instead: centred when small; when large the auto margins collapse to zero and it aligns at the start, scrollable in all four directions. */
 .bbi-lightbox__stage {
   flex: 1 1 auto;
   min-height: 0;
@@ -267,12 +267,12 @@ const promptText = computed(() => (props.prompt ?? '').trim());
   object-fit: contain;
   border-radius: var(--bbi-radius-sm);
   cursor: zoom-in;
-  /* 抵消 ST 的 body{touch-action:none}(css/mobile-styles.css:251):
-     它会干扰部分引擎的长按保存判定,也会挡住放大后的触屏原生滚动。见 <script> 顶部注释。 */
+  /* Counteracts ST's body{touch-action:none} (css/mobile-styles.css:251):
+     it interferes with some engines' long-press save detection and also blocks native touch scrolling when zoomed. See the comment at the top of <script>. */
   touch-action: auto;
 }
 
-/* 原始尺寸:超出部分由 __stage 滚动(触屏)/ 鼠标拖拽查看 */
+/* Original size: the overflow is viewed by __stage scrolling (touch) / mouse drag */
 .bbi-lightbox__img[data-zoomed='1'] {
   max-width: none;
   max-height: none;
@@ -283,8 +283,8 @@ const promptText = computed(() => (props.prompt ?? '').trim());
   cursor: grabbing;
 }
 
-/* 放大态找回细滚动条(base.css 在 .bbi-root 内全局隐藏了滚动条),
-   给个「现在看到哪了」的位置感 */
+/* Bring back a thin scrollbar when zoomed (base.css hides scrollbars globally inside .bbi-root),
+   giving a sense of "where am I now" */
 .bbi-lightbox__stage[data-zoomed='1'] {
   scrollbar-width: thin;
   scrollbar-color: oklch(1 0 0 / 0.3) transparent;
@@ -314,7 +314,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  /* 提示词要可选中复制,故此处不禁用选择 */
+  /* The prompt must be selectable for copying, so selection isn't disabled here */
   user-select: text;
 }
 </style>

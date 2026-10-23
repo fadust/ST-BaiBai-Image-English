@@ -62,8 +62,8 @@ describe('auto generate flags', () => {
 
 describe('shouldAutoGenerate', () => {
   it('lets auto fire on stale — the tag changed and no image matches it yet', () => {
-    // 曾经这里只放 pending,楼层「重新生成 tag」在已出过图的楼层上因此静默失效:
-    // 新 tag 写进正文了,卡片却停在旧图不动。stale 的语义正是「该出新图了」。
+    // This once only allowed pending, so a floor's "Regenerate tags" silently failed on floors that already had images:
+    // the new tag was written into the text, but the card stayed on the old image. stale means exactly "time for a new image".
     expect(shouldAutoGenerate('auto', 'stale')).toBe(true);
   });
 

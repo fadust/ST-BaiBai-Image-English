@@ -49,7 +49,7 @@ describe('parseWorkflowTemplate', () => {
       expect.unreachable('should throw');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      expect(message).toContain('The placeholder must be written in the form of a string');
+      expect(message).toContain('placeholders must be written as strings');
       expect(message).toContain('"%seed%"');
     }
   });
@@ -84,7 +84,7 @@ describe('renderWorkflowTemplate with %seed%', () => {
     const n7 = workflow['7'] as { inputs: { noise_seed: unknown; note: unknown } };
     expect(n3.inputs.seed).toBe(12345);
     expect(n7.inputs.noise_seed).toBe(12345);
-    // 嵌在字符串里的 %seed% 也被替换成同一个值
+    // A %seed% embedded in a string is replaced with the same value too
     expect(n7.inputs.note).toBe('seed=12345 here');
   });
 
@@ -153,7 +153,7 @@ describe('renderWorkflowTemplate with %width% / %height%', () => {
   });
 
   it('ignores a missing size entirely when the workflow hardcodes its own dimensions', () => {
-    // 存量工作流(尺寸写死)必须零影响——画幅是 opt-in 特性
+    // Existing workflows (with hardcoded sizes) must be completely unaffected; the frame size is an opt-in feature
     const legacy = JSON.stringify({
       '3': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },
       '5': { class_type: 'EmptyLatentImage', inputs: { width: 512, height: 512 } },
@@ -166,10 +166,10 @@ describe('renderWorkflowTemplate with %width% / %height%', () => {
 });
 
 /**
- * 取消路径:必须按任务在队列里的位置分流。
- * 旧实现无脑 POST /interrupt——并发出图时取消排在后面的任务会打断**正在跑的别的任务**。
+ * Cancel path: must branch by the task's position in the queue.
+ * The old implementation blindly POSTed /interrupt; with concurrent generation, cancelling a task further back would interrupt **another task that was running**.
  */
-describe('generateComfyImage 取消', () => {
+describe('generateComfyImage cancel', () => {
   const CONN = {
     url: 'http://127.0.0.1:8188',
     workflow: TEMPLATE,
@@ -184,7 +184,7 @@ describe('generateComfyImage 取消', () => {
     vi.unstubAllGlobals();
   });
 
-  /** 记录取消阶段打到哪些端点、带什么 body。 */
+  /** Records which endpoints the cancel phase hit and with what body. */
   function stubFetch(queueBody: unknown) {
     const calls: Array<{ url: string; body: unknown }> = [];
     const json = (data: unknown) => ({ ok: true, json: async () => data, text: async () => '' });
@@ -196,7 +196,7 @@ describe('generateComfyImage 取消', () => {
         calls.push({ url, body });
         if (url.endsWith('/prompt')) return json({ prompt_id: 'pid-1' });
         if (url.includes('/queue')) return json(queueBody);
-        // history 永远返回空:任务「未完成」,轮询会一直等,直到 abort
+        // history always returns empty: the task is "unfinished", and polling keeps waiting until abort
         if (url.includes('/history/')) return json({});
         return json({});
       }),
@@ -205,14 +205,14 @@ describe('generateComfyImage 取消', () => {
   }
 
   /**
-   * 等到轮询真正开始(出现 /history 请求)再取消。
-   * 不能只等 /prompt:那时 queueDirect 可能还没返回,取消监听尚未注册。
+   * Wait until polling really starts (a /history request appears) before cancelling.
+   * Waiting only for /prompt isn't enough: queueDirect may not have returned yet, and the cancel listener isn't registered.
    */
   async function waitForPolling(calls: Array<{ url: string }>): Promise<void> {
     await vi.waitFor(() => expect(calls.some(c => c.url.includes('/history/'))).toBe(true));
   }
 
-  it('任务仍在排队 → 用 /queue delete 摘除,不 interrupt', async () => {
+  it('task still queued → removed with /queue delete, no interrupt', async () => {
     const calls = stubFetch({
       queue_running: [[0, 'other-running-task']],
       queue_pending: [[1, 'pid-1']],
@@ -227,11 +227,11 @@ describe('generateComfyImage 取消', () => {
       const cancelCall = calls.find(c => c.url.includes('/queue') && c.body);
       expect(cancelCall?.body).toEqual({ delete: ['pid-1'] });
     });
-    // 关键:没有打断正在跑的那个任务
+    // Key: the task that was running wasn't interrupted
     expect(calls.some(c => c.url.includes('/interrupt'))).toBe(false);
   });
 
-  it('任务正在执行 → interrupt 且带自己的 prompt_id', async () => {
+  it('task running → interrupt with its own prompt_id', async () => {
     const calls = stubFetch({ queue_running: [[0, 'pid-1']], queue_pending: [] });
     const controller = new AbortController();
     const promise = generateComfyImage(CONN, { prompt: '1girl' }, controller.signal);
@@ -241,14 +241,14 @@ describe('generateComfyImage 取消', () => {
 
     await vi.waitFor(() => {
       const interrupt = calls.find(c => c.url.includes('/interrupt'));
-      // 带 prompt_id:新版 ComfyUI 据此校验,旧版无视 body 但我们已确认在跑的就是自己
+      // With prompt_id: newer ComfyUI validates against it; older versions ignore the body, but we already confirmed the running one is ours
       expect(interrupt?.body).toEqual({ prompt_id: 'pid-1' });
     });
-    // 排队中的任务才用 delete,这里不该发
+    // Only queued tasks use delete; it shouldn't be sent here
     expect(calls.some(c => c.url.includes('/queue') && c.body)).toBe(false);
   });
 
-  it('onQueue 上报排队位置(正在跑的也算在前面)', async () => {
+  it('onQueue reports the queue position (the running one counts as ahead too)', async () => {
     stubFetch({
       queue_running: [[0, 'other']],
       queue_pending: [
@@ -261,14 +261,14 @@ describe('generateComfyImage 取消', () => {
     const promise = generateComfyImage(CONN, { prompt: '1girl' }, controller.signal, {
       onQueue: ahead => reported.push(ahead),
     });
-    // 前面 1 个 pending(ahead-1)+ 1 个 running = 2
+    // 1 pending ahead (ahead-1) + 1 running = 2
     await vi.waitFor(() => expect(reported).toContain(2));
     controller.abort();
     await expect(promise).rejects.toThrow();
   });
 
-  it('队列位置查不到时两条都发(否则「在跑但查不到」会漏中断、白烧 GPU)', async () => {
-    // 队列返回不可解析的形状 → fetchQueuePosition 得到 null(位置未知)
+  it('when the queue position cannot be found, both are sent (otherwise running but not found would miss the interrupt and waste GPU)', async () => {
+    // The queue returns an unparseable shape → fetchQueuePosition gets null (position unknown)
     const calls = stubFetch({ nonsense: true });
     const controller = new AbortController();
     const promise = generateComfyImage(CONN, { prompt: '1girl' }, controller.signal);
@@ -286,10 +286,10 @@ describe('generateComfyImage 取消', () => {
 });
 
 /**
- * 简易模式:预设不带 JSON,由 comfyTemplates 按模板组装。
- * 与 custom 模式在「拿到可提交 JSON」处汇合,故这里只验提交体是组装结果。
+ * Simple mode: the preset carries no JSON; comfyTemplates assembles it from the template.
+ * It meets custom mode at "have a submittable JSON", so here only the submitted body is checked to be the assembled result.
  */
-describe('generateComfyImage 简易模式', () => {
+describe('generateComfyImage simple mode', () => {
   const SIMPLE_CONN = {
     url: 'http://127.0.0.1:8188',
     workflow: '',
@@ -333,7 +333,7 @@ describe('generateComfyImage 简易模式', () => {
     return calls;
   }
 
-  it('提交的是组装出的工作流(固定词+生成词拼接,尺寸取自预设)', async () => {
+  it('submits the assembled workflow (fixed + generated words joined, size taken from the preset)', async () => {
     const calls = stubSuccessFetch();
     const result = await generateComfyImage(SIMPLE_CONN, {
       prompt: '1girl',
@@ -354,7 +354,7 @@ describe('generateComfyImage 简易模式', () => {
     result.revoke();
   });
 
-  it('配置不齐(未选模型)时走 ComfyUIError,不发请求', async () => {
+  it('incomplete config (no model selected) goes to ComfyUIError without sending a request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const conn = {

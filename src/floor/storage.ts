@@ -8,50 +8,50 @@ import { deleteUserImage, uploadUserImage } from '@/st/images';
 import { settings } from '@/state/settings';
 
 /**
- * 楼层卡片结果存储层（DESIGN-FLOOR-UI.md §7）。
+ * Storage layer for floor card results (DESIGN-FLOOR-UI.md §7).
  *
- * 两层分离：
- * - 新图片二进制 → ST 文件系统（user/images/柏宝绘_<角色名>/），extra 只存指针 path。
- *   旧 user/files 图片保留原位，不迁移、不删除。
- * - 元数据 → message.extra.bbiImage = { [swipeId]: { [promptHash]: BbiImageEntry[] } }
- *   按 swipeId 分桶（滑动互不污染）；promptHash 键下是历史列表（时间正序，
- *   最新在末尾，卡片翻页浏览）；水合时用当前 tag 原文重算 hash 做 stale 检测。
+ * Two separate layers:
+ * - new image binaries → the ST file system (user/images/柏宝绘_<character name>/); extra only stores the pointer path.
+ *   Old user/files images stay where they are: not migrated, not deleted.
+ * - metadata → message.extra.bbiImage = { [swipeId]: { [promptHash]: BbiImageEntry[] } }
+ *   bucketed by swipeId (swipes don't contaminate each other); under each promptHash key is a history list (chronological,
+ *   newest last, browsed by paging in the card); on hydration the hash is recomputed from the current tag text for stale detection.
  *
- * 文件夹名由 ST 上传接口清洗，目录内保留原有文件命名：
+ * Folder names are sanitised by ST's upload endpoint; files inside keep their original naming:
  *   bbi_<characterNameHash>_<swipeId>_<promptHash>-<generationId>.<ext>
  *
- * 另有第三层「侧写」（sidecar，见 sidecarFileName）：与图片同名的 .json，落在 user/files。
- * 只为图库服务——图库跨全部聊天按目录列图，而提示词只存在某一个聊天的 extra 里，
- * 扫全库 JSONL 反查不可行（实测单个角色目录就有 GB 级、且 /api/chats/get 无分页）。
+ * There is also a third layer, the sidecar (see sidecarFileName): a .json with the same name as the image, stored in user/files.
+ * It only serves the gallery: the gallery lists images by folder across all chats, while prompts only live in one chat's extra,
+ * and scanning all JSONL files to look them up is infeasible (measured: a single character folder reached GB scale, and /api/chats/get has no pagination).
  */
 
 export interface BbiImageEntry {
-  /** 本次生成唯一 id。 */
+  /** Unique id for this generation. */
   generationId: string;
-  /** ST 静态路径 /user/images/... 或旧 /user/files/...（<img src> 直接引用）。 */
+  /** ST static path /user/images/... or legacy /user/files/... (referenced directly by <img src>). */
   path: string;
-  /** 生成时使用的完整 tag 原文（含 <bbi_image> 壳），与 promptHash 输入一致。 */
+  /** Full raw tag text used for generation (including the <bbi_image> wrapper), identical to the promptHash input. */
   prompt: string;
-  /** 本次生成种子；第四步种子策略落地前固定 null。 */
+  /** Seed for this generation; fixed at null until the step-4 seed strategy lands. */
   seed: number | null;
   status: 'ready' | 'error';
   createdAt: number;
-  /** 生成时所在槽位序号（楼层内第 N 个 tag）。多 tag 楼层按位置隔离结果；
-   *  旧数据缺失时按 entrySeq() 回退为 0。 */
+  /** Slot index at generation time (the Nth tag on the floor). Multi-tag floors isolate results by position;
+   *  falls back to 0 via entrySeq() for old data that lacks it. */
   slotSeq?: number;
-  /** 出图元信息（画师串/vibe/采样参数）。图库当前聊天的快速通道读它，避免逐张抓侧写；
-   *  旧数据没有此键。 */
+  /** Generation metadata (artist string/vibes/sampling parameters). The gallery's fast path for the current chat reads it instead of fetching each sidecar;
+   *  old data lacks this key. */
   meta?: GenerationMeta;
 }
 
-/** [swipeId][promptHash] = 历史 entry 列表。 */
+/** [swipeId][promptHash] = list of history entries. */
 export type BbiImageStore = Record<string, Record<string, BbiImageEntry[]>>;
 
 export const BBI_IMAGE_EXTRA_KEY = 'bbiImage';
 
-/* —— hash 与命名 —— */
+/* —— Hashing and naming —— */
 
-/** cyrb53 派生：同步、确定、对聊天级提示词足够分散；输出 14 位 hex。 */
+/** Derived from cyrb53: synchronous, deterministic, well distributed for chat-level prompts; outputs 14 hex digits. */
 export function promptHash(text: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
@@ -69,7 +69,7 @@ export function generationId(): string {
   return `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** 平铺文件名：角色卡名称哈希化，避免中文名称被替换成连续下划线。 */
+/** Flat file name: the character card name is hashed so CJK names aren't replaced by runs of underscores. */
 export function imageFileName(
   characterName: string,
   swipeId: number,
@@ -81,46 +81,46 @@ export function imageFileName(
   return `bbi_${characterHash}_${swipeId}_${hash}-${genId}.${ext}`;
 }
 
-/* —— 侧写元数据（sidecar） —— */
+/* —— Sidecar metadata —— */
 
-/** 侧写 json 的内容。v 是版本号：日后想加 backend/model 时靠它分辨老文件。 */
+/** Content of the sidecar json. v is the version number, used later to tell old files apart if backend/model are added. */
 export interface BbiImageSidecar {
   v: 1 | 2;
-  /** 可读角色名（图片文件名里那个是哈希，还原不回来）。 */
+  /** Readable character name (the one in the image file name is a hash and can't be recovered). */
   character: string;
-  /** 生成时使用的完整 tag 原文（含 <bbi_image> 壳），与 entry.prompt 同源。 */
+  /** Full raw tag text used for generation (including the <bbi_image> wrapper), from the same source as entry.prompt. */
   prompt: string;
   seed: number | null;
   createdAt: number;
-  /** v2 起：画师串/vibe/采样参数等不在 tag 文本里的信息。老文件没有此键。 */
+  /** Since v2: information not in the tag text, such as artist string/vibes/sampling parameters. Old files lack this key. */
   meta?: GenerationMeta;
 }
 
 /**
- * 由图片文件名推出侧写文件名（换掉扩展名而已）。**读写两侧唯一口径**。
+ * Derives the sidecar file name from the image file name (just swapping the extension). **The single rule for both reading and writing**.
  *
- * 之所以能这么算、不用维护索引：/api/files/upload 是 `path.join(dir, body.name)` 原样落盘
- * （files.js，只校验不清洗），故上传时给什么名字、事后就能凭同一个纯函数算回来。
- * 而图片名 bbi_<hash>_<swipe>_<promptHash>-<genId> 恰好全在
- * validateAssetFileName 的白名单 /^[a-zA-Z0-9_\-.]+$/ 内，天然合规。
+ * Why it can be computed without maintaining an index: /api/files/upload saves with `path.join(dir, body.name)` as-is
+ * (files.js, validating without sanitising), so whatever name is given on upload can be computed back later with the same pure function.
+ * And the image name bbi_<hash>_<swipe>_<promptHash>-<genId> falls entirely within
+ * validateAssetFileName's allowlist /^[a-zA-Z0-9_\-.]+$/, compliant by construction.
  *
- * 侧写只能放 user/files:/api/images/upload 的 format 必须是媒体扩展名，json 不在其列，
- * 塞不进图片自己的目录。
+ * Sidecars can only go in user/files: /api/images/upload requires format to be a media extension, json isn't one,
+ * so they can't go into the image's own folder.
  */
 export function sidecarFileName(imageFile: string): string {
   const base = imageFile.replace(/\.[^./]*$/, '');
   return `${base}.json`;
 }
 
-/** 由图片路径（/user/images/…）推出侧写的可访问路径；不是本插件的图片则返回空串。 */
+/** Derives the sidecar's accessible path from the image path (/user/images/…); returns an empty string for images not from this plugin. */
 export function sidecarPathFor(imagePath: string): string {
   const file = imagePath.split('/').pop() ?? '';
-  // 只认自家命名的图:外来文件算出来的名字必然 404，白刷一轮请求
+  // Only our own naming counts: a name computed from a foreign file is certain to 404, wasting a round of requests
   if (!/^bbi_[a-zA-Z0-9_]+-[a-zA-Z0-9]+\.[a-z0-9]+$/i.test(file)) return '';
   return `/user/files/${sidecarFileName(file)}`;
 }
 
-/* —— extra 读写（纯函数） —— */
+/* —— extra read/write (pure functions) —— */
 
 export function readStore(message: STMessage): BbiImageStore | null {
   const extra = message.extra;
@@ -130,13 +130,13 @@ export function readStore(message: STMessage): BbiImageStore | null {
   return extra[BBI_IMAGE_EXTRA_KEY] as BbiImageStore;
 }
 
-/** hash 匹配的最新一条结果（卡片 ready）。 */
-/** 旧数据（无 slotSeq 字段）回退为槽位 0。 */
+/** The latest result matching the hash (card ready). */
+/** Old data (without the slotSeq field) falls back to slot 0. */
 function entrySeq(entry: BbiImageEntry): number {
   return entry.slotSeq ?? 0;
 }
 
-/** 同槽位的全部历史（时间正序，最新在末尾）。卡片翻页用。 */
+/** All history for the same slot (chronological, newest last). Used for card paging. */
 export function historyEntries(
   store: BbiImageStore | null,
   swipeId: number,
@@ -148,7 +148,7 @@ export function historyEntries(
   return list.filter(entry => entrySeq(entry) === seq);
 }
 
-/** hash 匹配且位于同一槽位的最新一条结果（卡片 ready）。 */
+/** The latest result matching the hash in the same slot (card ready). */
 export function latestEntry(
   store: BbiImageStore | null,
   swipeId: number,
@@ -163,8 +163,8 @@ export function latestEntry(
   return null;
 }
 
-/** 当前 hash 无该槽位结果时，其它提示词（stale）在同一槽位的最新一条（卡片 stale）。
- *  只取同槽位：相邻 tag 的结果不会被误当成这个 tag 的历史。 */
+/** When the current hash has no result for this slot, the latest result of another prompt (stale) in the same slot (card stale).
+ *  Only the same slot: results of neighbouring tags are never mistaken for this tag's history. */
 export function latestStaleEntry(
   store: BbiImageStore | null,
   swipeId: number,
@@ -180,13 +180,13 @@ export function latestStaleEntry(
       if (entrySeq(list[i]) !== seq) continue;
       const candidate = list[i];
       if (!latest || candidate.createdAt > latest.createdAt) latest = candidate;
-      break; // 该桶内最新的一条即可
+      break; // The newest one in this bucket is enough
     }
   }
   return latest;
 }
 
-/** 不可变式追加一条历史（返回新 store，原 store 不动）。 */
+/** Appends one history entry immutably (returns a new store; the original is untouched). */
 export function appendEntry(
   store: BbiImageStore,
   swipeId: number,
@@ -200,11 +200,11 @@ export function appendEntry(
   return next;
 }
 
-/* —— CAS 写回 —— */
+/* —— CAS write-back —— */
 
 /**
- * 读-改-写循环：mutate 基于当前 store 返回新 store，写回前校验引用未被
- * 并发写入替换，冲突则基于最新 store 重试（DESIGN-FLOOR-UI.md §7.2）。
+ * Read-modify-write loop: mutate returns a new store from the current one; before writing back it checks the reference wasn't
+ * replaced by a concurrent write, and on conflict retries from the latest store (DESIGN-FLOOR-UI.md §7.2).
  */
 export async function mutateStore(
   ctx: STContext,
@@ -217,12 +217,12 @@ export async function mutateStore(
     if (!message.extra) message.extra = {};
     let store = message.extra[BBI_IMAGE_EXTRA_KEY] as BbiImageStore | undefined;
     if (!store) {
-      // 首次建立：同步写回空对象确立引用（无 await，无竞态窗口）
+      // First creation: write back an empty object synchronously to establish the reference (no await, no race window)
       message.extra[BBI_IMAGE_EXTRA_KEY] = {};
       store = message.extra[BBI_IMAGE_EXTRA_KEY] as BbiImageStore;
     }
     const next = mutate(store);
-    if (message.extra[BBI_IMAGE_EXTRA_KEY] !== store) continue; // 并发写入，重试
+    if (message.extra[BBI_IMAGE_EXTRA_KEY] !== store) continue; // Concurrent write; retry
     message.extra[BBI_IMAGE_EXTRA_KEY] = next;
     await ctx.saveChat();
     return true;
@@ -231,15 +231,15 @@ export async function mutateStore(
   return false;
 }
 
-/* —— 保存流程 —— */
+/* —— Save flow —— */
 
 async function resultToBase64(result: ComfyImageResult): Promise<string> {
   if (result.url.startsWith('data:')) {
-    // server 代理模式：data URL 去前缀直接用
+    // Server proxy mode: strip the data URL prefix and use it directly
     const comma = result.url.indexOf(',');
     return result.url.slice(comma + 1);
   }
-  // browser 直连模式：blob URL → blob → base64（分块拼接防栈溢出）
+  // Direct browser mode: blob URL → blob → base64 (chunked concatenation prevents stack overflow)
   const response = await fetch(result.url);
   if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
   const blob = await response.blob();
@@ -253,9 +253,9 @@ async function resultToBase64(result: ComfyImageResult): Promise<string> {
   return btoa(binary);
 }
 
-/* —— 可选 JPG 转存(settings.storage.saveAsJpeg) —— */
+/* —— Optional JPG conversion (settings.storage.saveAsJpeg) —— */
 
-/** 转码质量：视觉无损档。不并设滑条——极少数不满意直接关开关即可，免多一项配置。 */
+/** Conversion quality: the visually lossless setting. No slider: the rare user who is unhappy can simply turn the toggle off, saving a setting. */
 const JPEG_QUALITY = 0.9;
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -276,14 +276,14 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * 把原图重编码为 JPG(固定质量 0.9,自底向上重绘消除 alpha)。
- * PNG → canvas → JPEG：丢掉内嵌生成参数(NAI tEXt / ComfyUI 工作流块)，换来
- * 约为原体积 10–20% 的文件——这是有意为之的取舍，开关默认关。
- * 注：canvas 解码即屏敔一切元数据，无需额外「抹除」步骤。
+ * Re-encodes the original image as JPG (fixed quality 0.9, redrawn from scratch to remove alpha).
+ * PNG → canvas → JPEG: drops the embedded generation parameters (NAI tEXt / ComfyUI workflow chunk) in exchange for
+ * a file about 10–20% of the original size; a deliberate trade-off, with the toggle off by default.
+ * Note: canvas decoding already strips all metadata, so no extra "scrubbing" step is needed.
  */
 async function reencodeAsJpeg(source: Blob): Promise<Blob> {
-  // createImageBitmap 比 <img> 快且不进 DOM；但部分环境(如 iOS Safari 旧版)对
-  // EXIF 取向敏感度不同，这里显式 imageOrientation: 'none' 保持像素原样
+  // createImageBitmap is faster than <img> and stays out of the DOM; but some environments (e.g. old iOS Safari)
+  // handle EXIF orientation differently, so imageOrientation: 'none' is set explicitly to keep pixels as they are
   const bitmap = await createImageBitmap(source);
   try {
     const canvas = document.createElement('canvas');
@@ -291,7 +291,7 @@ async function reencodeAsJpeg(source: Blob): Promise<Blob> {
     canvas.height = bitmap.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas 2D context not available');
-    // JPG 无 alpha 通道：先铺白底再绘图，否则透明区域被压成黑色
+    // JPG has no alpha channel: paint a white background before drawing, otherwise transparent areas become black
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0);
@@ -308,8 +308,8 @@ async function reencodeAsJpeg(source: Blob): Promise<Blob> {
 }
 
 /**
- * 按设置准备待落盘的图片：开关开启时重编码为 JPG，关闭时原样返回。
- * 转码链路任何一步失败都回退原格式——宁可多占磁盘也不能把图开坏或丢失。
+ * Prepares the image to save per settings: re-encoded as JPG when the toggle is on, returned as-is when off.
+ * Any failure in the conversion chain falls back to the original format: better to use more disk than to break or lose the image.
  */
 export async function prepareImageForStorage(result: ComfyImageResult): Promise<{
   base64: string;
@@ -317,11 +317,11 @@ export async function prepareImageForStorage(result: ComfyImageResult): Promise<
 }> {
   if (settings.storage.saveAsJpeg) {
     try {
-      // data URL/blob URL 都能被 fetch 成 Blob
+      // Both data URLs and blob URLs can be fetched into a Blob
       const response = await fetch(result.url);
       if (!response.ok) throw new Error(`Failed to read image (${response.status})`);
       const original = await response.blob();
-      // 本就是 JPG(webp 等不可再压)时直接跳过重编码，避免二次有损
+      // Already JPG (webp and the like can't be compressed further): skip re-encoding to avoid a second lossy pass
       if (result.format !== 'jpg' && result.format !== 'jpeg') {
         const jpeg = await reencodeAsJpeg(original);
         return { base64: await blobToBase64(jpeg), format: 'jpg' };
@@ -335,16 +335,16 @@ export async function prepareImageForStorage(result: ComfyImageResult): Promise<
 }
 
 /**
- * 图片二进制 + 侧写 json 落盘。**存图的唯一物理路径**,楼层与公开接口共用。
+ * Saves the image binary + sidecar json. **The single physical path for storing images**, shared by floors and the public API.
  *
- * 不碰聊天记录:楼层侧随后自己写 extra 指针,公开接口侧压根没有指针要写
- * (第三方自己决定图显示在哪,图不进任何楼层正文)。
+ * Doesn't touch chat history: the floor side writes its own extra pointer afterwards, and the public API side has no pointer to write at all
+ * (third parties decide where images show; images enter no floor text).
  *
- * 文件名与目录必须走这里,不能各自另起一套:
- * - 目录 `柏宝绘_<角色名>` 是图库的**唯一**分组依据(index.vue 只列 FOLDER_PREFIX 开头的目录),
- *   名字换个前缀,图存下去了但图库里看不见;
- * - 文件名 `bbi_…-<genId>.<ext>` 要能被 sidecarPathFor 的正则认出来,否则它返回空串、
- *   图库压根不去请求侧写 —— 症状是图在、提示词空白、**且没有任何报错**。
+ * File names and folders must go through here, never a separate scheme:
+ * - the folder `柏宝绘_<character name>` is the gallery's **only** grouping basis (index.vue only lists folders starting with FOLDER_PREFIX);
+ *   with a different prefix, the image is saved but invisible in the gallery;
+ * - the file name `bbi_…-<genId>.<ext>` must be recognisable by sidecarPathFor's regex, otherwise it returns an empty string
+ *   and the gallery never requests the sidecar; the symptom is the image is there, the prompt is blank, **and there is no error at all**.
  */
 async function uploadImageWithSidecar(
   characterName: string,
@@ -356,15 +356,15 @@ async function uploadImageWithSidecar(
   meta?: GenerationMeta,
 ): Promise<{ path: string; genId: string; createdAt: number; imageFile: string }> {
   const genId = generationId();
-  // 先按设置决定落盘格式(开关开启时重编码为 JPG),文件名后缀跟随实际格式
+  // Decide the save format per settings first (re-encoded as JPG when the toggle is on); the file extension follows the actual format
   const { base64, format } = await prepareImageForStorage(result);
   const imageFile = imageFileName(characterName, swipeId, hash, genId, format);
   const path = await uploadUserImage(`柏宝绘_${characterName}`, imageFile, base64, format);
   const createdAt = Date.now();
 
-  // 侧写:图库跨聊天浏览时,提示词只能从这里拿。
-  // **失败只警告不抛** —— 图已经存好了,绝不能因为一个附属 json 让整次存图失败;
-  // 用户宁可少看一段提示词,也不能丢图。
+  // Sidecar: when the gallery browses across chats, prompts can only come from here.
+  // **Failure only warns, never throws**: the image is already saved, and one auxiliary json must never fail the whole save;
+  // users would rather miss a prompt than lose the image.
   const sidecar: BbiImageSidecar = {
     v: 2,
     character: characterName,
@@ -383,15 +383,15 @@ async function uploadImageWithSidecar(
 }
 
 /**
- * 存一张**不属于任何楼层**的图(公开接口 STBaiBaiImage.generate 的 save 路径)。
+ * Saves an image that **belongs to no floor** (the save path of the public API STBaiBaiImage.generate).
  *
- * 与 saveImageResult 的分工:那个存完还要写 extra 指针、触发重水合,让楼层卡片显示它;
- * 这个只把文件放进图库就收工 —— 第三方插件自己决定图显示在哪(这正是公开接口的意义),
- * 柏宝绘不替它往聊天记录里塞任何东西。
+ * Division with saveImageResult: that one, after saving, also writes the extra pointer and triggers re-hydration so the floor card shows it;
+ * this one is done once the file is in the gallery: the third-party plugin decides where the image shows (exactly the point of the public API),
+ * and BaiBai Image puts nothing into chat history on its behalf.
  *
- * swipeId 固定 0:文件名里那一格本是「同一楼的第几个 swipe」,外部图没有楼层坐标,
- * 取 0 只为让文件名保持同一格式(图库与 sidecarPathFor 都靠格式认图)。
- * 唯一性由 genId 保证,不靠这一格。
+ * swipeId is fixed at 0: that cell in the file name is "which swipe of the same floor", and external images have no floor coordinates;
+ * 0 only keeps the file name in the same format (the gallery and sidecarPathFor both recognise images by format).
+ * Uniqueness is guaranteed by genId, not this cell.
  */
 export async function saveExternalImage(
   characterName: string,
@@ -406,9 +406,9 @@ export async function saveExternalImage(
 }
 
 /**
- * 完整保存流程（DESIGN-FLOOR-UI.md §7.6）：
- * 图片二进制落盘 → extra 写指针（先文件后指针，避免孤儿指针）；
- * 指针写失败则文件留作孤儿，由后续清理兜底。
+ * Full save flow (DESIGN-FLOOR-UI.md §7.6):
+ * save the image binary → write the pointer in extra (file first, then pointer, avoiding orphan pointers);
+ * if writing the pointer fails, the file is left as an orphan for later cleanup.
  */
 export async function saveImageResult(
   messageId: number,
@@ -440,7 +440,7 @@ export async function saveImageResult(
     generationId: genId,
     path,
     prompt: tag,
-    // 本次生成实际使用的种子（调用方生成后传入；-1 不在支持范围）
+    // The seed actually used for this generation (passed in by the caller after generating; -1 isn't supported)
     seed,
     status: 'ready',
     createdAt,
@@ -457,22 +457,22 @@ export async function saveImageResult(
 }
 
 /**
- * 删除一张图的**文件本体**(连同它的侧写 json),不碰任何聊天记录。供图库批量删除使用。
+ * Deletes an image's **file itself** (together with its sidecar json), without touching any chat history. Used by gallery bulk deletion.
  *
- * 与 deleteImageResult 的分工:那个是「从楼层删一条结果」,先摘 extra 指针再删文件;
- * 这个是「从图库删一个文件」,**没有指针可摘**——图库按目录列图,而指针散在各个聊天的
- * extra 里,两者之间没有反向索引,扫全库反查不可行(实测 chats 目录 7 GB / 1243 个 jsonl,
- * 且 /api/chats/get 无分页)。故这里必然留下破指针,由楼层卡片侧运行时降级兜底
- * (floor/missingImages.ts + Card.vue 的 @error)。
+ * Division with deleteImageResult: that is "delete a result from a floor", removing the extra pointer before deleting the file;
+ * this is "delete a file from the gallery", with **no pointer to remove**: the gallery lists by folder while pointers are scattered across chats'
+ * extra, with no reverse index between them, and scanning everything is infeasible (measured: chats folder 7 GB / 1243 jsonl files,
+ * and /api/chats/get has no pagination). So broken pointers are inevitably left behind, handled by runtime degradation on the floor card side
+ * (floor/missingImages.ts + Card.vue's @error).
  *
- * 侧写删失败只警告:老图本来就没有侧写,404 属预期常态(deleteUploadedFile 对 404 返回
- * false 不抛);真失败了也只是多个几 KB 的孤儿 json,不值得让整次删除报错。
+ * A failed sidecar deletion only warns: old images never had sidecars, so 404 is the expected norm (deleteUploadedFile returns
+ * false on 404 without throwing); a real failure just leaves an orphan json of a few KB, not worth failing the whole deletion.
  *
- * 入口先 `normalizeImagePath`:调用方手上两种写法都有——图库的 src 是逐段
- * encodeURIComponent 过的,extra/目录列表里的是原文。而 ST 的 /api/images/delete 与
- * /api/files/delete 都是把 body.path 直接 path.join 到根目录、**不做 URL 解码**,
- * 编码路径传过去只会 404,还会被 deleteUserImage 当成「本就不存在」静默吞掉——
- * 症状就是图没删掉、侧写却真删了。
+ * Entry goes through `normalizeImagePath` first: callers hold both forms; the gallery's src is encodeURIComponent'd
+ * segment by segment, while extra/folder listings hold the raw text. ST's /api/images/delete and
+ * /api/files/delete both path.join body.path onto the root directly **without URL decoding**,
+ * so an encoded path would only 404 and be silently swallowed by deleteUserImage as "didn't exist";
+ * the symptom is the image isn't deleted while the sidecar really is.
  */
 export async function deleteImageFileOnly(path: string): Promise<void> {
   const target = normalizeImagePath(path);
@@ -487,10 +487,10 @@ export async function deleteImageFileOnly(path: string): Promise<void> {
 }
 
 /**
- * 删除一条结果：先 extra 删指针并落盘，成功后再删文件（顺序相反会留下
- * 指向已删文件的破指针；文件删除失败则留作孤儿由清理兜底）。
- * 仅删除 user/images 下的文件（连同它的侧写 json），
- * 旧 user/files 图片只移除记录，保留原文件。
+ * Deletes one result: first removes the pointer from extra and saves, then deletes the file once that succeeds (the reverse order would leave
+ * broken pointers to deleted files; if the file deletion fails it is left as an orphan for cleanup).
+ * Only deletes files under user/images (together with their sidecar json);
+ * old user/files images only have their record removed, keeping the original file.
  */
 export async function deleteImageResult(
   messageId: number,
@@ -525,7 +525,7 @@ export async function deleteImageResult(
     } catch (error) {
       console.warn('[BaiBai Image] Failed to delete picture files (left as orphans)', error);
     }
-    // 侧写跟着走。deleteUploadedFile 对 404 返回 false 不抛（老图本就没有侧写，属正常）
+    // The sidecar goes along. deleteUploadedFile returns false on 404 without throwing (old images never had sidecars; that's normal)
     const sidecar = sidecarPathFor(pathToDelete);
     if (sidecar) {
       try {

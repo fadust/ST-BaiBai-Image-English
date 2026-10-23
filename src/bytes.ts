@@ -1,20 +1,20 @@
 /**
- * 字节数 → 人读体积。图库的分组体积与总计共用这一个口径。
+ * Byte count → human-readable size. The gallery's per-group sizes and grand total share this one rule.
  *
- * 用 1024 进制、单位写 KB/MB(而非 KiB/MiB):与资源管理器/Finder 的显示习惯一致,
- * 用户拿图库数字和系统里看到的对比时不会差一截。
+ * Uses base 1024 with KB/MB units (not KiB/MiB), matching Explorer/Finder,
+ * so the gallery figures line up when users compare them with what the OS shows.
  */
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
 /**
- * 格式化为 `624 KB` / `1.5 MB` / `11 MB` 这样的短串。
+ * Formats a short string such as `624 KB` / `1.5 MB` / `11 MB`.
  *
- * 小数位按量级给:不足 10 的留一位(1.5 MB 比 2 MB 有信息量),10 以上抹掉
- * (11.2 MB 的那个 .2 在角标里只是噪声)。字节本身不给小数。
+ * Decimals depend on magnitude: below 10 keeps one decimal (1.5 MB says more than 2 MB); 10 and above drops it
+ * (the .2 in 11.2 MB is just noise in a badge). Plain bytes get no decimals.
  *
- * 非有限值/负数返回空串,让调用方自己决定显示什么——这里凭空编个 `0 B`
- * 会把「还没算出来」伪装成「算出来是空的」。
+ * Non-finite or negative values return an empty string, leaving the caller to decide what to show. Inventing `0 B` here
+ * would disguise "not computed yet" as "computed as empty".
  */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '';

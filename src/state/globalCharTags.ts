@@ -11,18 +11,18 @@ import {
 } from '@/state/charTags';
 
 /**
- * 全局角色固定外貌库 —— 跨所有聊天生效的「只读模板」。
+ * Global character fixed-appearance library: a "read-only template" that applies across all chats.
  *
- * 定位:玩家角色等「哪个聊天都用同一张脸」的角色,建档一次、处处生效。
- * 硬约束:**AI 永远不能写它**(charTags.applyCharTagOps 按锁定名丢弃 changes),
- * 只有用户手动增删改、或把本聊天角色「提升为全局」会写。tag 有问题用户自己改。
+ * Purpose: characters such as the player character who "have the same face in every chat" get a profile once and it applies everywhere.
+ * Hard constraint: **the AI can never write it** (charTags.applyCharTagOps discards changes by locked name);
+ * only manual add/edit/delete by the user, or "promote to global" from a chat character, writes it. Users fix tag problems themselves.
  *
- * 存储:extensionSettings[GLOBAL_KEY](→ 服务器 settings.json,跨设备同步),
- * 带 revision + 广播事件,协议与 settings.ts 的共享渠道/排除名单同构。
- * 条目结构复用 CharTagEntry,但**不记 history**(跨聊天没有楼层概念,也没有可回滚的 AI 变更)。
+ * Storage: extensionSettings[GLOBAL_KEY] (→ the server's settings.json, synced across devices),
+ * with revision + broadcast events, the same protocol as the shared channels/exclusion lists in settings.ts.
+ * Entries reuse CharTagEntry but **keep no history** (there are no floors across chats, and no AI changes to roll back).
  *
- * 依赖方向:本模块 → charTags(normalize/CRUD/重算);charTags → 本模块只经
- * setGlobalCharTagSource 注入的只读 getter,不成模块环。
+ * Dependency direction: this module → charTags (normalize/CRUD/recompute); charTags → this module only through
+ * the read-only getter injected via setGlobalCharTagSource, so there is no module cycle.
  */
 
 const GLOBAL_KEY = 'baibai_image_char_global';
@@ -44,7 +44,7 @@ function fingerprintOf(entries: CharTagEntry[]): string {
   return JSON.stringify(entries);
 }
 
-/** 全局条目一律不带 history(没有可回滚的自动变更,手动编辑也不留痕,保持简单)。 */
+/** Global entries never carry history (no automatic changes to roll back, manual edits leave no trace; kept simple). */
 function normalizeGlobalEntries(raw: unknown): CharTagEntry[] {
   return normalizeCharTagStore(raw).map(entry => ({ ...entry, history: [] }));
 }
@@ -90,7 +90,7 @@ function applyStore(store: GlobalCharTagStore): void {
   if (next === fingerprint) return;
   globalCharTagLib.entries = store.entries;
   fingerprint = next;
-  // 派生库(合并种子 + 锁定名)随全局库变化即时刷新
+  // The derived library (merged seed + locked names) refreshes immediately when the global library changes
   recomputeCharTags();
 }
 
@@ -106,8 +106,8 @@ function bindListener(): void {
 }
 
 /**
- * 启动初始化:注入条目来源(必须在 bindCharTagSync 之前,首次重算就要带上全局库),
- * 再从 extensionSettings 领养已有数据并挂上广播监听。
+ * Startup initialisation: inject the entry source (must come before bindCharTagSync, since the first recomputation already includes the global library),
+ * then adopt existing data from extensionSettings and attach the broadcast listener.
  */
 export function initGlobalCharTags(): void {
   setGlobalCharTagSource(() => globalCharTagLib.entries);
@@ -124,7 +124,7 @@ export function findGlobalCharTag(name: string): CharTagEntry | undefined {
   return globalCharTagLib.entries.find(entry => entry.name === clean);
 }
 
-/** 新增/覆盖全局条目(仅用户手动路径调用;oldName 用于改名)。 */
+/** Adds/overwrites a global entry (called only on the user's manual path; oldName is for renaming). */
 export function upsertGlobalCharTag(entry: CharTagEntry, oldName?: string): boolean {
   const name = entry.name.trim();
   const [normalized] = normalizeGlobalEntries({ version: 3, entries: [{ ...entry, name }] });
@@ -152,9 +152,9 @@ export function removeGlobalCharTag(name: string): boolean {
 }
 
 /**
- * 把本聊天角色的**当前生效值**(含本聊天 AI 已改出的结果)快照进全局库,
- * 并删除本聊天副本、清掉该角色在本聊天的楼层 ops —— 之后由全局库接管,
- * 任何聊天(包括本聊天)都以全局值为准,AI 的 changes 对该名字一律无效。
+ * Snapshots a chat character's **currently effective value** (including results the AI already produced in this chat) into the global library,
+ * deletes this chat's copy and clears the character's floor ops in this chat; the global library then takes over,
+ * every chat (including this one) follows the global value, and AI changes for that name are always ignored.
  */
 export function promoteCharTagToGlobal(name: string): boolean {
   const current = findCharTag(name);
@@ -165,8 +165,8 @@ export function promoteCharTagToGlobal(name: string): boolean {
 }
 
 /**
- * 反向出口:把全局条目复制成本聊天副本。之后本聊天以副本为准(覆盖全局),
- * 该名字移出锁定集,AI 在本聊天可照常对它变更;其他聊天不受影响。
+ * The reverse exit: copies a global entry into this chat as a local copy. This chat then follows the copy (overriding global),
+ * the name leaves the locked set, and the AI may change it in this chat as usual; other chats are unaffected.
  */
 export function copyGlobalCharTagToChat(name: string): boolean {
   const global = findGlobalCharTag(name);

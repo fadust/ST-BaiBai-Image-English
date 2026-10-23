@@ -41,7 +41,7 @@ async function refreshRenderedMessage(context: STContext, message: STMessage, fl
       await context.updateMessageBlock(floor, message);
       return;
     } catch {
-      // 局部刷新失败时再退回整段聊天重载。
+      // If the partial refresh fails, fall back to reloading the whole chat.
     }
   }
   await context.reloadCurrentChat?.();
@@ -57,17 +57,17 @@ export type ApplyMessageResult =
 
 export interface MessageExtraUpdate {
   key: string;
-  /** undefined = 删除该键。 */
+  /** undefined = delete the key. */
   value: unknown;
 }
 
 /**
- * 判断槽位里的消息还是不是请求开始时那一条。
+ * Checks whether the message in the slot is still the one from when the request started.
  *
- * 不用对象引用比对:别的插件改正文时常整体替换消息对象(chat[i] = {...chat[i], mes})，
- * 引用比对会把这种「同一条消息、只是换了个壳」误判成楼层变化,连带整次分析作废。
- * send_date 在消息创建时定死、编辑不变,配 name 足以认人;删楼导致索引平移时
- * send_date 必然不同,该拦的照样拦住。旧消息没有 send_date 时退回引用比对。
+ * No object-reference comparison: other plugins that edit the text often replace the whole message object (chat[i] = {...chat[i], mes}),
+ * and a reference check would mistake "same message, new shell" for a floor change and discard the whole analysis.
+ * send_date is fixed at creation and unchanged by edits; together with name it identifies the message. When deleting a floor shifts the indices,
+ * send_date necessarily differs, so the right cases are still blocked. Old messages without send_date fall back to reference comparison.
  */
 function isSameMessage(message: STMessage, expected: STMessage): boolean {
   if (message === expected) return true;
@@ -76,12 +76,12 @@ function isSameMessage(message: STMessage, expected: STMessage): boolean {
 }
 
 /**
- * 以 compare-and-swap 方式修改消息正文和一个 extra 键。
+ * Modifies the message text and one extra key compare-and-swap style.
  *
- * 身份检查(聊天 / 消息 / swipe)一致才落盘;正文内容本身**不**参与比对——正文由
- * buildNext 基于「落盘那一刻的真实正文」现算,别的插件在分析期间做的修改因此得以保留，
- * 而不是被请求开始时的旧快照覆盖。buildNext 返回 null 表示它认为这次不该写。
- * 保存失败时同时回滚正文与 extra，避免留下半写状态。
+ * Writes only if identity checks (chat / message / swipe) match; the text content itself is **not** compared. The text is
+ * computed by buildNext from "the real text at the moment of writing", so edits other plugins made during the analysis are preserved
+ * instead of being overwritten by the stale snapshot from request start. buildNext returning null means it decided not to write.
+ * On save failure both the text and extra are rolled back, so no half-written state remains.
  */
 export async function applyMessageText(
   floor: number,
@@ -100,7 +100,7 @@ export async function applyMessageText(
   if (expectedMessage && !isSameMessage(message, expectedMessage)) return 'floor-changed';
   if (currentSwipeId(message) !== expectedSwipeId) return 'swipe-changed';
 
-  // 编辑框开着时它才是正文的活口径(用户改了还没确认),落盘基底以它为准
+  // While the edit box is open it holds the live text (the user changed it but hasn't confirmed), so it is the base for writing
   const nextText = buildNext(activeEditorText(floor) ?? message.mes);
   if (nextText === null) return 'build-failed';
 

@@ -14,51 +14,51 @@ import { ARTIST_PREVIEW_FOLDER, listUserImageFolders, listUserImages, probeUserI
 import { computed, onMounted, ref } from 'vue';
 
 /**
- * 图库页 —— 按角色名分组浏览已生成的图片（GALLERY-STORAGE-DESIGN.md）。
+ * Gallery page: browse generated images grouped by character name (GALLERY-STORAGE-DESIGN.md).
  *
- * 分组键取**目录名**而非文件名:落盘文件名里的角色名是哈希
- * (floor/storage.ts imageFileName,防中文名被清洗成连续下划线),可读名只能从
- * `user/images/柏宝绘_<角色名>/` 的目录名还原。
+ * The group key is the **folder name**, not the file name: the character name in saved file names is a hash
+ * (imageFileName in floor/storage.ts, preventing CJK names from being sanitised into runs of underscores), so the readable name can only be recovered from
+ * the folder name `user/images/柏宝绘_<character name>/`.
  *
- * 【删除】支持多选删除,但**只删文件、不碰聊天记录**:图片路径同时被
- * message.extra.bbiImage 引用,而图库按目录列图、指针散在各个聊天里,两者之间没有反向
- * 索引(扫全库反查不可行,见 floor/storage.ts 顶部)。破指针由楼层卡片侧运行时降级兜底:
- * 卡片的 <img> @error 会确认 404 后把这张图记进 floor/missingImages.ts,翻页器与张数
- * 随即按存活口径重算,全删光则退回「生成图片」态。删完本页也会就地标记,免得用户
- * 切回聊天才发现。
+ * [Deletion] Multi-select deletion is supported, but it **only deletes files and never touches chat history**: image paths are also
+ * referenced by message.extra.bbiImage, while the gallery lists by folder and pointers are scattered across chats, with no reverse
+ * index between them (scanning everything is infeasible; see the top of floor/storage.ts). Broken pointers are handled by runtime degradation on the floor card side:
+ * the card's <img> @error confirms the 404 and records the image in floor/missingImages.ts, the pager and image count
+ * are then recomputed from what survives, and with everything deleted it falls back to the "Generate image" state. After deleting, this page also marks them in place,
+ * so users don't only find out after switching back to the chat.
  *
- * 提示词从两处取(见 promptFor):当前聊天的 extra 直接读,其余靠存图时写下的侧写 json。
+ * Prompts come from two places (see promptFor): the current chat's extra is read directly; the rest rely on the sidecar json written when saving.
  */
 
 const FOLDER_PREFIX = '柏宝绘_';
-/** 展开后先渲染一批,每次再追加一批,不一次铺开整个目录。 */
+/** After expanding, render one batch first and append another batch each time, rather than laying out the whole folder at once. */
 const PREVIEW_COUNT = 24;
-/** 侧写请求超时:点图后要等它才开灯箱,不能让服务端卡住把点击拖成「点了没反应」。 */
+/** Sidecar request timeout: after clicking an image the lightbox waits for it, so a stuck server mustn't turn the click into "clicked, nothing happened". */
 const SIDECAR_TIMEOUT_MS = 4000;
 /**
- * 批量请求(探体积、删图)的并发上限。
- * 不开大:ST 是单进程,几十个请求一起压过去会把用户自己的聊天卡住;
- * 公网连接下更明显。6 路够快又不至于霸占连接池。
+ * Concurrency limit for batch requests (size probes, deletions).
+ * Not large: ST is single-process, and dozens of simultaneous requests would stall the user's own chat;
+ * more noticeably on remote connections. 6 is fast enough without hogging the connection pool.
  */
 const REQUEST_CONCURRENCY = 6;
-/** 体积攒够这么多张再推一次响应式更新(理由见 measureSizes)。 */
+/** Push a reactive update only once this many sizes have accumulated (reason in measureSizes). */
 const SIZE_PUBLISH_BATCH = 12;
 
 interface GalleryImage {
-  /** 目录内的文件名(组内唯一,作 key) */
+  /** File name within the folder (unique within the group, used as key) */
   file: string;
-  /** 归一化的完整路径,提示词缓存的键(跨目录唯一) */
+  /** Normalised full path, the prompt cache key (unique across folders) */
   key: string;
-  /** <img src>,已按段编码 */
+  /** <img src>, encoded segment by segment */
   src: string;
-  /** 另存文件名 */
+  /** File name for saving */
   download: string;
 }
 
 interface GalleryGroup {
-  /** 完整目录名(含前缀) */
+  /** Full folder name (with prefix) */
   folder: string;
-  /** 展示用角色名(去前缀) */
+  /** Character name for display (prefix removed) */
   name: string;
   images: GalleryImage[];
 }
@@ -66,36 +66,36 @@ interface GalleryGroup {
 const groups = ref<GalleryGroup[]>([]);
 const loading = ref(false);
 const error = ref('');
-/** 部分目录读取失败的条数:整页不失败,但要如实说明少了几组。 */
+/** Number of folders that failed to load: the page as a whole doesn't fail, but it must say honestly how many groups are missing. */
 const partialFailed = ref(0);
 const query = ref('');
 
 /**
- * 静态路由 /user/images/* 服务端做 decodeURIComponent(users.js createRouteHandler),
- * 故逐段编码:中文名浏览器本会自动编码,但角色名里的 # ? 不编码会被当成 URL 片段/查询。
+ * The static route /user/images/* runs decodeURIComponent server-side (createRouteHandler in users.js),
+ * so each segment is encoded: browsers encode CJK names automatically, but a # ? in a character name would be taken as a URL fragment/query if not encoded.
  */
 function imageSrc(folder: string, file: string): string {
   return `/user/images/${encodeURIComponent(folder)}/${encodeURIComponent(file)}`;
 }
 
-/** 从 bbi_<nameHash>_<swipe>_<promptHash>-<genId>.<ext> 里取 genId,取不到则回退原文件名。 */
+/** Takes the genId from bbi_<nameHash>_<swipe>_<promptHash>-<genId>.<ext>; falls back to the original file name if it can't. */
 function downloadName(characterName: string, file: string): string {
   const genId = file.match(/-([^-.]+)\.[a-z0-9]+$/i)?.[1];
   return genId ? imageDownloadFileName(file, characterName, genId) : file;
 }
 
-/* —— 提示词:当前聊天直接读 extra,其余走侧写 —— */
+/* —— Prompts: the current chat reads extra directly; the rest go through sidecars —— */
 
 /**
- * 归一化路径 → 提示词全文。两个来源合用一张表:
- * - load() 时从**当前聊天**的 extra 预填(零网络开销,让本聊天的存量老图也有提示词);
- * - 点图未命中时取侧写 json 回填。
- * 取不到的记 null 并留在表里,免得反复点同一张图反复打 404。
+ * Normalised path → full prompt text. Two sources share one table:
+ * - on load(), prefilled from the **current chat**'s extra (zero network cost, so this chat's older images also have prompts);
+ * - when a clicked image misses, filled from the sidecar json.
+ * Misses are recorded as null and kept in the table, so clicking the same image repeatedly doesn't keep hitting 404.
  */
 const promptCache = ref(new Map<string, string | null>());
 
-/** 侧写/extra 里存的都是 tag 原文,统一在这里解析成人读的全文(与卡片同一口径)。
- *  meta(画师串/vibe/采样参数)是只读溯源信息,追加在后面;它不在可编辑的 tag 文本里。 */
+/** Sidecars/extra all store the raw tag text, parsed here into human-readable full text (the same rule as cards).
+ *  meta (artist string/vibes/sampling parameters) is read-only provenance, appended after; it isn't in the editable tag text. */
 function renderPrompt(rawTag: string, seed: number | null, meta?: GenerationMeta): string {
   const text = formatPromptText(parseImageTagContent(rawTag));
   if (!text) return '';
@@ -106,10 +106,10 @@ function renderPrompt(rawTag: string, seed: number | null, meta?: GenerationMeta
 }
 
 /**
- * 扫当前聊天的 extra,把 path → 提示词全部收进缓存。
+ * Scans the current chat's extra and collects every path → prompt into the cache.
  *
- * 只扫当前这一个聊天:跨全库反查提示词曾评估过,单个角色的 chats 目录就能到 GB 级、
- * 且 /api/chats/get 整文件返回无分页,扫下去必然卡死。本聊天已在内存里,白拿。
+ * Only the current chat is scanned: reverse-looking-up prompts across the whole library was evaluated; one character's chats folder alone can reach GB size,
+ * and /api/chats/get returns the whole file without pagination, so scanning it would certainly freeze. This chat is already in memory, free to use.
  */
 function seedPromptsFromChat(): void {
   const chat = getContext()?.chat;
@@ -131,10 +131,10 @@ function seedPromptsFromChat(): void {
 }
 
 /**
- * 取侧写 json。走裸 fetch 不带 headers——静态路由不需要鉴权头
- * (与 backends/vibeStore.ts loadVibeData 同款)。
- * 任何失败(404 / 超时 / 不是 JSON)都返回 null 静默降级:老图本来就没有侧写,
- * 那是预期内的常态,不该报错也不该拦住灯箱。
+ * Fetches the sidecar json. Uses a bare fetch without headers: static routes need no auth headers
+ * (same as loadVibeData in backends/vibeStore.ts).
+ * Any failure (404 / timeout / not JSON) returns null and degrades silently: old images never had sidecars,
+ * which is the expected norm; it shouldn't error or block the lightbox.
  */
 async function fetchSidecarPrompt(imagePath: string): Promise<string | null> {
   const sidecar = sidecarPathFor(imagePath);
@@ -158,11 +158,11 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = '';
   partialFailed.value = 0;
-  // 刷新时重扫当前聊天:期间可能又生成了几张图,也可能切了聊天
+  // Rescan the current chat on refresh: a few more images may have been generated meanwhile, or the chat may have switched
   seedPromptsFromChat();
   try {
-    // 只列 /folders 报上来的目录:/api/images/list 对不存在的目录会 mkdir,
-    // 凭空猜名字会在 user/images 下攒出空文件夹。
+    // Only list folders reported by /folders: /api/images/list mkdirs folders that don't exist,
+    // so guessing names out of thin air would pile up empty folders under user/images.
     const folders = (await listUserImageFolders()).filter(
       folder => folder.startsWith(FOLDER_PREFIX) && folder !== ARTIST_PREVIEW_FOLDER,
     );
@@ -178,7 +178,7 @@ async function load(): Promise<void> {
         return;
       }
       const { folder, files } = result.value;
-      if (!files.length) return; // 删空后的残留目录不占位
+      if (!files.length) return; // Leftover folders emptied by deletion take no space
       const storedName = folder.slice(FOLDER_PREFIX.length);
       const name = !storedName || storedName === '未命名角色' ? 'Unnamed Character' : storedName;
       next.push({
@@ -193,7 +193,7 @@ async function load(): Promise<void> {
       });
     });
 
-    // 当前聊天角色排最前,其余按名字排序——刚生成的图不用翻着找。
+    // The current chat's character goes first, the rest sorted by name, so freshly generated images don't need searching for.
     const current = getContext()?.name2?.trim() ?? '';
     const collator = new Intl.Collator('zh-Hans-CN');
     next.sort((a, b) => {
@@ -201,9 +201,9 @@ async function load(): Promise<void> {
       return rank || collator.compare(a.name, b.name);
     });
     groups.value = next;
-    // ⚠ 暂时禁用分组体积统计:作者不满意当前方案——逐张 HEAD 读 Content-Length,
-    // 请求数随图库规模线性增长,进一次图库就是几百上千个后台请求。
-    // 体积相关的计算、模板、CSS 与测试全部原样保留,恢复时解注下面这一行即可。
+    // ⚠ Group size statistics are disabled for now: the author is unhappy with the current approach of reading Content-Length with one HEAD per image,
+    // where the request count grows linearly with the gallery size, so opening the gallery once means hundreds to thousands of background requests.
+    // The size computations, template, CSS and tests are all kept as-is; to restore, just uncomment the line below.
     // void measureSizes(next);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
@@ -214,39 +214,39 @@ async function load(): Promise<void> {
 
 onMounted(load);
 
-/* —— 体积统计(⚠ 暂时禁用:load() 里的 measureSizes 调用已注释,理由见该处) —— */
+/* —— Size statistics (⚠ disabled for now: the measureSizes call in load() is commented out; see there for why) —— */
 
 /**
- * 归一化路径 → 字节数。**逐张 HEAD 量出来的**。
+ * Normalised path → byte count. **Measured by one HEAD per image**.
  *
- * 为什么只能这样:`/api/images/list` 只返回文件名,既无 size 也无 mtime
- * (服务端 util.js getImages 只 map 出 dirent.name),没有任何现成接口报体积。
- * HEAD 走静态路由 res.sendFile,实测 1~2ms 且无 body——比缩略图本身(图库直接加载原图,
- * 一个组就是十几 MB)便宜得多。
+ * Why it has to be this way: `/api/images/list` only returns file names, with neither size nor mtime
+ * (the server's util.js getImages only maps out dirent.name), and no existing endpoint reports sizes.
+ * HEAD goes through the static route res.sendFile, measured at 1~2ms with no body; far cheaper than the thumbnails themselves (the gallery loads original images directly,
+ * one group being a dozen-plus MB).
  *
- * 不进 localStorage 缓存:文件可能被外部改动,缓存过期没法感知,而重量一遍也就几十个
- * HEAD。页面活着期间按路径缓存即可,刷新按钮会重量。
+ * Not cached in localStorage: files may be changed externally, cache staleness can't be detected, and remeasuring is only a few dozen
+ * HEADs. Caching by path while the page is alive is enough; the refresh button remeasures.
  */
 const sizes = ref(new Map<string, number>());
-/** 还在量体积的分组数:>0 时总计后面显示「计算中」,免得把半截数字当成最终值。 */
+/** Number of groups still being measured: while >0 the total is followed by "Calculating", so a partial number isn't taken as final. */
 const measuring = ref(0);
 
 /**
- * 后台量体积:限并发逐张 HEAD。**不 await、不阻塞首屏**——图已经能看了,
- * 体积是附加信息,慢慢填上来即可。
+ * Background measuring: one HEAD per image with limited concurrency. **Not awaited, not blocking the first screen**: the images are already viewable,
+ * and size is extra information that can fill in gradually.
  *
- * 已量过的路径跳过(刷新时大部分图没变,只有新增的那几张要量)。
+ * Already measured paths are skipped (on refresh most images haven't changed; only the few new ones need measuring).
  *
- * 攒批发布而非逐张写回:groupSize 要遍历组内全部图才能算出合计,每量到一张就发布一次
- * 等于让每个分组把自己重算 n 遍——几千张图时是平方级空转。攒够一批再推一次,
- * 「慢慢填上来」的观感不变。
+ * Published in batches rather than written back per image: groupSize must iterate every image in a group to compute the total, so publishing once per measured image
+ * would make every group recompute itself n times, quadratic busywork with thousands of images. Pushing once per batch
+ * keeps the same "filling in gradually" feel.
  */
 async function measureSizes(list: GalleryGroup[]): Promise<void> {
   const pending = list.flatMap(group => group.images).filter(image => !sizes.value.has(image.key));
   if (!pending.length) return;
   measuring.value++;
-  // 未发布的增量。发布时**合并进当前值**而非整份替换:连点两次刷新会有两轮
-  // measureSizes 并行,各自持有快照替换会把对方量到的数抹掉。
+  // Unpublished increments. On publish they are **merged into the current value** rather than replacing it wholesale: two quick refresh clicks give two rounds of
+  // measureSizes in parallel, and each replacing with its own snapshot would erase the other's measurements.
   const buffered = new Map<string, number>();
   const publish = (): void => {
     if (!buffered.size) return;
@@ -258,7 +258,7 @@ async function measureSizes(list: GalleryGroup[]): Promise<void> {
   try {
     await mapLimit(pending, REQUEST_CONCURRENCY, async image => {
       const probe = await probeUserImage(image.src);
-      // 只记确定的数:探不到(网络错误)就留空,由 groupSize 按「还没量全」处理
+      // Only record definite numbers: if probing fails (network error) leave it empty, and groupSize treats it as "not fully measured yet"
       if (probe?.exists && probe.size !== null) {
         buffered.set(image.key, probe.size);
         if (buffered.size >= SIZE_PUBLISH_BATCH) publish();
@@ -270,7 +270,7 @@ async function measureSizes(list: GalleryGroup[]): Promise<void> {
   }
 }
 
-/** 一组的体积合计与完整度。量全了才是准数,否则文案要带「≥」。 */
+/** A group's total size and completeness. Only fully measured is exact; otherwise the label must carry "≥". */
 function groupSize(group: GalleryGroup): { bytes: number; complete: boolean } {
   let bytes = 0;
   let known = 0;
@@ -283,7 +283,7 @@ function groupSize(group: GalleryGroup): { bytes: number; complete: boolean } {
   return { bytes, complete: known === group.images.length };
 }
 
-/** 分组角标上的体积文案;一张都没量出来时返回空串(不显示,而非显示 0 B)。 */
+/** Size label on the group badge; empty string when not one image has been measured (shown as nothing, not 0 B). */
 function groupSizeText(group: GalleryGroup): string {
   const { bytes, complete } = groupSize(group);
   if (!bytes) return '';
@@ -305,7 +305,7 @@ const filtered = computed(() => {
 
 const totalImages = computed(() => groups.value.reduce((n, g) => n + g.images.length, 0));
 
-/* 默认折叠,仅记录手动展开的分组。旧 collapsed 列表不能反推哪些组是手动展开的。 */
+/* Collapsed by default; only manually expanded groups are recorded. The old collapsed list can't tell which groups were expanded manually. */
 const EXPANDED_KEY = 'bbi.ui.galleryExpanded.v1';
 
 function loadExpanded(): Set<string> {
@@ -320,10 +320,10 @@ function loadExpanded(): Set<string> {
 const expanded = ref<Set<string>>(loadExpanded());
 
 /**
- * 已挂载过内容的分组。**只进不出**——收起不卸载,再展开时图还在,零请求。
+ * Groups whose content has been mounted. **Only added, never removed**: collapsing doesn't unmount, so on re-expanding the images are still there, with zero requests.
  *
- * 折叠容器改为常驻后,若内容也无条件渲染,一进页就要挂满所有角色的图(默认全折叠),
- * 比卸载更糟;故用它兜底:没手动展开过的分组一张图都不渲染,展开后永久留在 DOM 里。
+ * Since the fold container became permanent, rendering content unconditionally too would mount every character's images on entering the page (all collapsed by default),
+ * worse than unmounting; so this is the safeguard: groups never manually expanded render not one image, and once expanded stay in the DOM for good.
  */
 const mounted = ref<Set<string>>(new Set(expanded.value));
 
@@ -331,15 +331,15 @@ function persistExpanded(next: Set<string>): void {
   try {
     localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
   } catch {
-    /* localStorage 不可用时仅本次会话生效 */
+    /* When localStorage is unavailable it only applies to this session */
   }
 }
 
 function toggleFold(folder: string): void {
   const open = !expanded.value.has(folder);
-  // 首次展开时才挂内容;之后收起不再卸载。
-  // 不必分两帧「先挂内容、下一帧再展开」——.gal-fold-wrap 自页面加载起就常驻且停在 0fr,
-  // 过渡的起点值早已落定,同帧插入内容不影响它从 0fr 过渡到 1fr。
+  // Content is only mounted on first expansion; collapsing afterwards no longer unmounts it.
+  // No need to split into two frames, "mount content first, expand next frame": .gal-fold-wrap is permanent from page load and rests at 0fr,
+  // so the transition's start value is long settled, and inserting content in the same frame doesn't stop it transitioning from 0fr to 1fr.
   if (open) mounted.value = new Set(mounted.value).add(folder);
 
   const next = new Set(expanded.value);
@@ -349,7 +349,7 @@ function toggleFold(folder: string): void {
   persistExpanded(next);
 }
 
-/* 已显示数量仅在本次页面内保留,收起后再展开无需从第一批重来。 */
+/* The shown count is kept only within this page visit, so re-expanding after collapsing doesn't start over from the first batch. */
 const visibleCounts = ref(new Map<string, number>());
 
 function visibleImages(group: GalleryGroup): GalleryImage[] {
@@ -361,14 +361,14 @@ function showMore(group: GalleryGroup): void {
   visibleCounts.value.set(group.folder, Math.min(count + PREVIEW_COUNT, group.images.length));
 }
 
-/* —— 多选删除 —— */
+/* —— Multi-select deletion —— */
 
 /**
- * 选择模式。独立开关而非「长按进入」:图库的主用途是浏览,点图=放大必须是默认行为;
- * 选择态下点图改为勾选,两种语义靠这个开关明确分开,不让用户在放大和勾选之间猜。
+ * Selection mode. A separate toggle rather than "long-press to enter": the gallery is mainly for browsing, and click image = enlarge must be the default;
+ * in selection mode clicking an image ticks it instead, and this toggle keeps the two meanings clearly apart, so users never guess between enlarging and ticking.
  */
 const selecting = ref(false);
-/** 已勾选的图(归一化路径 key,跨分组唯一)。 */
+/** Ticked images (normalised path keys, unique across groups). */
 const selected = ref(new Set<string>());
 const deleting = ref(false);
 
@@ -376,7 +376,7 @@ const selectedCount = computed(() => selected.value.size);
 
 function toggleSelecting(): void {
   selecting.value = !selecting.value;
-  // 退出选择态一律清空:留着选中项,下次进来会对着一批不记得为何选中的图按删除
+  // Leaving selection mode always clears it: keeping selections would mean next time pressing delete on a batch of images nobody remembers selecting
   if (!selecting.value) selected.value = new Set();
 }
 
@@ -387,7 +387,7 @@ function toggleSelected(image: GalleryImage): void {
   selected.value = next;
 }
 
-/** 本组是否整组选中(空组不算)。 */
+/** Whether this whole group is selected (empty groups don't count). */
 function groupAllSelected(group: GalleryGroup): boolean {
   return group.images.length > 0 && group.images.every(image => selected.value.has(image.key));
 }
@@ -397,8 +397,8 @@ function someSelected(group: GalleryGroup): boolean {
 }
 
 /**
- * 整组全选/取消。**作用于整组而非当前可见的那批**——懒加载只是渲染策略,
- * 用户说「全选这个角色」指的是这个角色的全部图片,不该因为没往下翻而少选。
+ * Select/deselect a whole group. **Acts on the whole group, not the batch currently visible**: lazy loading is only a rendering strategy,
+ * and when the user says "select all of this character" they mean all of this character's images, not fewer because they didn't scroll down.
  */
 function toggleGroup(group: GalleryGroup): void {
   const next = new Set(selected.value);
@@ -407,17 +407,17 @@ function toggleGroup(group: GalleryGroup): void {
   selected.value = next;
 }
 
-/** 点图:选择态勾选,否则放大。 */
+/** Clicking an image: ticks it in selection mode, otherwise enlarges it. */
 function onThumbClick(image: GalleryImage): void {
   if (selecting.value) toggleSelected(image);
   else void open(image);
 }
 
 /**
- * 删除选中的图。**只删文件,不碰聊天记录**(理由见文件顶部注释)。
+ * Deletes the selected images. **Only deletes files, never touches chat history** (see the file header comment for why).
  *
- * 删完做三件事:标记缺失(让本会话里已打开的楼层卡片立刻降级,不必等它自己 404)、
- * 就地从列表摘掉(不重新 load,免得把用户的展开态和已加载批次全重置)、清理体积缓存。
+ * After deleting it does three things: marks them missing (so floor cards already open this session degrade immediately, without waiting for their own 404),
+ * removes them from the list in place (no reload, so the user's expanded state and loaded batches aren't all reset), and clears the size cache.
  */
 async function deleteSelected(): Promise<void> {
   if (!selectedCount.value || deleting.value) return;
@@ -438,12 +438,12 @@ async function deleteSelected(): Promise<void> {
 
   deleting.value = true;
   try {
-    // 逐张容错:一张失败不该中断其余的(mapLimit 会 reject 整体,故在回调里自己接住)
+    // Per-image fault tolerance: one failure shouldn't stop the rest (mapLimit would reject as a whole, so catch inside the callback)
     const results = await mapLimit(targets, REQUEST_CONCURRENCY, async image => {
       try {
-        // 传 key 而非 src:src 是给 <img> 用的逐段编码路径,而删除接口要的是解码后的
-        // 磁盘路径(ST /api/images/delete 直接 path.join,不做 decodeURIComponent)。
-        // key 与 markImagesMissing / sizes 同一口径,中文目录名不会打偏到 404。
+        // Pass the key, not src: src is the segment-encoded path for <img>, while the delete endpoint wants the decoded
+        // disk path (ST's /api/images/delete does path.join directly, without decodeURIComponent).
+        // The key follows the same rule as markImagesMissing / sizes, so CJK folder names don't drift into a 404.
         await deleteImageFileOnly(image.key);
         return { key: image.key, ok: true };
       } catch (e) {
@@ -456,9 +456,9 @@ async function deleteSelected(): Promise<void> {
     const failed = results.length - done.size;
 
     if (done.size) {
-      // 已打开的楼层卡片据此立刻降级(key 本就是归一化路径,与 missingImages 同口径)
+      // Floor cards already open degrade immediately from this (the key is already the normalised path, the same rule as missingImages)
       markImagesMissing(done);
-      // 就地摘除:不 load(),否则用户的展开态与已加载批次全被重置
+      // Remove in place: no load(), otherwise the user's expanded state and loaded batches would all be reset
       groups.value = groups.value
         .map(group => ({ ...group, images: group.images.filter(image => !done.has(image.key)) }))
         .filter(group => group.images.length > 0);
@@ -477,14 +477,14 @@ async function deleteSelected(): Promise<void> {
   }
 }
 
-/** 正在取侧写的那张图(点击后到灯箱打开之间,给个转圈别让人以为没点上)。 */
+/** The image whose sidecar is being fetched (between the click and the lightbox opening, show a spinner so nobody thinks the click missed). */
 const pending = ref('');
 
 /**
- * 点图:先备好提示词再开灯箱。
+ * Clicking an image: prepare the prompt first, then open the lightbox.
  *
- * 必须**先 await 再 openLightbox**:灯箱是命令式 h() 渲染的一次性组件,
- * props 不是响应式的,晚到的提示词补不进去。
+ * It must **await first, then openLightbox**: the lightbox is a one-off component rendered imperatively with h(),
+ * its props aren't reactive, and a prompt arriving late can't be added in.
  */
 async function open(image: GalleryImage): Promise<void> {
   let prompt = promptCache.value.get(image.key);
@@ -492,7 +492,7 @@ async function open(image: GalleryImage): Promise<void> {
     pending.value = image.key;
     try {
       prompt = await fetchSidecarPrompt(image.key);
-      // null 也要落缓存:记住「这张确实没有」,免得每次点都再打一轮 404
+      // null goes into the cache too: remember "this one really has none", so each click doesn't hit another round of 404
       promptCache.value = new Map(promptCache.value).set(image.key, prompt);
     } finally {
       pending.value = '';
@@ -512,7 +512,7 @@ async function open(image: GalleryImage): Promise<void> {
     </div>
     <hr class="bbi-rule" />
 
-    <!-- 工具条:只搜角色名(文件名是哈希,搜了没意义) -->
+    <!-- Toolbar: searches character names only (file names are hashes, searching them is pointless) -->
     <div class="gal-toolbar">
       <input v-model="query" class="bbi-input gal-search" placeholder="Search character name" />
       <button
@@ -533,9 +533,9 @@ async function open(image: GalleryImage): Promise<void> {
       </span>
     </div>
 
-    <!-- 选择态操作条:紧跟工具条、sticky 吸顶。
-         放这里而非列表末尾:呼出它的「选择」钮就在上一行,一按就看见(摆到底部的话,
-         角色多时按下去屏幕上什么都不动,像没生效);吸顶又保证往下翻多久都还在。 -->
+    <!-- Selection action bar: right after the toolbar, sticky at the top.
+         Placed here rather than at the end of the list: the "Select" button that opens it is one row up, so it's visible on press (at the bottom,
+         with many characters nothing on screen would move on press, as if it didn't work); sticky keeps it there however far you scroll. -->
     <div v-if="selecting" class="gal-actionbar">
       <span class="gal-actionbar-count">Selected {{ selectedCount }} images</span>
       <button
@@ -561,7 +561,7 @@ async function open(image: GalleryImage): Promise<void> {
       Yes {{ partialFailed }} Failed to read character directories and are not listed below (see console for details).
     </p>
 
-    <!-- 读取中 / 出错 / 空 / 列表 -->
+    <!-- Loading / error / empty / list -->
     <div v-if="loading && !groups.length" class="gal-state">
       <Icon name="refresh" :size="26" class="gal-spin" />
       <p class="gal-state-title">Loading gallery…</p>
@@ -589,9 +589,9 @@ async function open(image: GalleryImage): Promise<void> {
         class="gal-group"
         :class="{ 'is-collapsed': !expanded.has(group.folder) }"
       >
-        <!-- 标题行是「一个容器 + 内部若干独立控件」而非单个大按钮:选择态要在这一行里
-             放整组全选的复选框,而 <button> 里不能嵌 <button>/<input>(HTML 非法且
-             点击会双触发)。故折叠触发器单独是一颗按钮,复选框与它并排。 -->
+        <!-- The title row is "a container + several independent controls inside" rather than one big button: in selection mode this row must
+             hold the select-all checkbox for the group, and a <button> can't contain a <button>/<input> (invalid HTML, and
+             clicks would fire twice). So the collapse trigger is a separate button, with the checkbox beside it. -->
         <div class="gal-fold-head">
           <label v-if="selecting" class="gal-group-check" :title="`Select all${group.name}`">
             <input
@@ -617,10 +617,10 @@ async function open(image: GalleryImage): Promise<void> {
           </button>
         </div>
 
-        <!-- 折叠容器常驻 DOM(grid 1fr→0fr 只把高度归零),<img> 不卸载:
-             /user/images 静态路由 sendFile 不带 maxAge,默认 Cache-Control: max-age=0,
-             重挂一次就是一张图一个条件请求(Firefox 更是 no-store,整份重下)。
-             公网连 ST 时这些往返全压在延迟上,收起再展开会白屏一拍。同 floor/card.css。 -->
+        <!-- The collapse container stays in the DOM (grid 1fr→0fr only zeroes the height), and <img> isn't unmounted:
+             the /user/images static route's sendFile has no maxAge, defaulting to Cache-Control: max-age=0,
+             so every remount means one conditional request per image (Firefox even uses no-store and downloads it all again).
+             Over a remote ST connection all these round trips land on latency, and collapsing then expanding would flash blank. Same as floor/card.css. -->
         <div class="gal-fold-wrap" :class="{ 'is-collapsed': !expanded.has(group.folder) }">
           <div class="gal-fold-inner">
             <div v-if="mounted.has(group.folder)" class="gal-fold-body">
@@ -639,7 +639,7 @@ async function open(image: GalleryImage): Promise<void> {
                     @click="onThumbClick(image)"
                   >
                     <img class="gal-img" :src="image.src" :alt="`${group.name} The generated graph`" loading="lazy" />
-                    <!-- 勾选角标:只在选择态出现,选中时填充主色 -->
+                    <!-- Check badge: only shown in selection mode, filled with the main colour when selected -->
                     <span v-if="selecting" class="gal-check" aria-hidden="true">
                       <Icon v-if="selected.has(image.key)" name="check" :size="13" />
                     </span>
@@ -665,7 +665,7 @@ async function open(image: GalleryImage): Promise<void> {
 </template>
 
 <style scoped>
-/* —— 题首右侧刷新 —— */
+/* —— Refresh on the right of the title bar —— */
 .gal-icon-btn {
   flex: 0 0 auto;
   display: inline-flex;
@@ -692,7 +692,7 @@ async function open(image: GalleryImage): Promise<void> {
   opacity: 0.5;
 }
 
-/* —— 工具条 —— */
+/* —— Toolbar —— */
 .gal-toolbar {
   display: flex;
   align-items: center;
@@ -711,14 +711,14 @@ async function open(image: GalleryImage): Promise<void> {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* 体积还在量:总计后跟一个「+」示意「至少这么多,还在加」。
-   不用转圈——工具条里多一个动效太吵,而这个加号静态也读得懂。 */
+/* Sizes still being measured: the total is followed by a "+" meaning "at least this much, still counting".
+   No spinner: another animation in the toolbar is too noisy, and a static plus sign reads clearly. */
 .gal-measuring {
   margin-left: 1px;
   opacity: 0.6;
 }
 
-/* 选择模式开关。开启时用主色实心,与「正在选」的状态对齐。 */
+/* Selection mode toggle. Solid main colour when on, matching the "selecting" state. */
 .gal-select-toggle {
   flex: 0 0 auto;
 }
@@ -737,7 +737,7 @@ async function open(image: GalleryImage): Promise<void> {
   font-size: 12px;
 }
 
-/* —— 空/错/载入态 —— */
+/* —— Empty/error/loading states —— */
 .gal-state {
   display: grid;
   place-items: center;
@@ -779,12 +779,12 @@ async function open(image: GalleryImage): Promise<void> {
   }
 }
 
-/* —— 分组 —— */
-/* —— 分组卡片 ——
-   与设置页 .bbi-sections 同款节奏(gap 12px):每组一张有边框的卡,
-   收起时仍是一条实体标题栏,不会塌成一行浮字。
-   与角色页共用「无框折叠头」语汇的差别在于:那边组内是灰白表单,
-   这边是彩色缩略图,不给围合就镇不住。 */
+/* —— Groups —— */
+/* —— Group cards ——
+   Same rhythm as the settings page's .bbi-sections (gap 12px): each group is one bordered card,
+   still a solid title bar when collapsed, never shrinking into a line of floating text.
+   The difference from the characters page's "borderless collapse header" vocabulary: there the groups hold grey-white forms,
+   here they hold colourful thumbnails, which need an enclosure to stay tidy. */
 .gal-groups {
   display: flex;
   flex-direction: column;
@@ -794,25 +794,25 @@ async function open(image: GalleryImage): Promise<void> {
   border: 1px solid var(--bbi-line);
   border-radius: var(--bbi-radius);
   background: var(--bbi-surface);
-  /* 刻意不写 gap:.gal-fold-wrap 收成 0fr 后 gap 仍然占位,
-     加了边框就会在卡片底部露出一条死白。间距一律由各自的 padding 给。 */
+  /* Deliberately no gap: after .gal-fold-wrap collapses to 0fr, the gap still takes space,
+     and with a border it would show a dead white strip at the bottom of the card. Spacing always comes from each part's padding. */
 }
 
-/* 标题行整体可点:左箭头 + 角色名 + 张数(与角色管理页同款折叠语汇)。
-   卡片化之后头部自带 padding 并撑满圆角,hover 有底色反馈。
-   选择态下这一行还要放整组全选的复选框,故外层是普通 div、折叠触发器是内部那颗按钮
-   (<button> 里嵌 <input type=checkbox> 是非法嵌套,点击会双触发)。 */
+/* The whole title row is clickable: left arrow + character name + count (same collapse vocabulary as the character management page).
+   As a card, the header carries its own padding and fills the rounded corners, with background feedback on hover.
+   In selection mode this row also holds the group's select-all checkbox, so the outer element is a plain div and the collapse trigger is the button inside
+   (an <input type=checkbox> inside a <button> is invalid nesting, and clicks fire twice). */
 .gal-fold-head {
   display: flex;
   align-items: center;
-  /* 圆角与 hover 底色仍由本层给:它才是撑满卡片宽度的那一层 */
+  /* Rounded corners and hover background still come from this layer: it is the one filling the card's width */
   border-radius: var(--bbi-radius) var(--bbi-radius) 0 0;
   transition: background var(--bbi-dur) var(--bbi-ease);
 }
 .gal-fold-head:hover {
   background: var(--bbi-surface-2);
 }
-/* 折叠触发器:占满标题行剩余宽度,自己不画背景(底色在父层,连复选框一起变) */
+/* Collapse trigger: fills the remaining width of the title row and draws no background itself (the background is on the parent, changing together with the checkbox) */
 .gal-fold-trigger {
   display: flex;
   align-items: center;
@@ -832,10 +832,10 @@ async function open(image: GalleryImage): Promise<void> {
   outline: 2px solid var(--bbi-accent);
   outline-offset: -2px;
 }
-/* 复选框在最左侧,与触发器共享这一行的 hover 底色;
-   padding 只给左右,高度靠标题行自身撑开,免得比触发器矮一截。
-   尺寸/配色一律由全局 .bbi-checkbox 给,这里只清 margin——
-   粉彩主题把 .bbi-checkbox 改成了自绘(背景勾 14px 居中),自己再改小会把勾挤到边上。 */
+/* The checkbox is at the far left, sharing the row's hover background with the trigger;
+   padding is horizontal only; the height comes from the title row itself, so it isn't shorter than the trigger.
+   Size/colours always come from the global .bbi-checkbox; only margin is cleared here:
+   the pastel theme turns .bbi-checkbox into a custom-drawn one (background tick 14px centred), and shrinking it here would push the tick to the edge. */
 .gal-group-check {
   display: inline-flex;
   align-items: center;
@@ -847,13 +847,13 @@ async function open(image: GalleryImage): Promise<void> {
 .gal-group-check .bbi-checkbox {
   margin: 0;
 }
-/* 有复选框时触发器的左 padding 收窄,免得箭头被推得太靠右 */
+/* With a checkbox, the trigger's left padding narrows so the arrow isn't pushed too far right */
 .gal-group-check + .gal-fold-trigger {
   padding-left: 8px;
 }
-/* 圆角只在两端瞬时切换,不参与过渡:收起中途的「下两角正在变圆」会让 .gal-fold-body
-   那条满宽 border-top 的线头戳出圆角外(hover 有底色时尤其明显)。
-   展开时立刻恢复直角(0s 无延迟),收起时等高度收完再变圆(0s + --bbi-dur 延迟)。 */
+/* Corner rounding switches instantly at both ends and isn't transitioned: "the bottom two corners rounding" mid-collapse would let .gal-fold-body's
+   full-width border-top line poke out past the rounded corner (especially visible with a hover background).
+   Expanding restores square corners immediately (0s, no delay); collapsing rounds them only after the height has finished (0s + --bbi-dur delay). */
 .gal-group.is-collapsed > .gal-fold-head {
   border-radius: var(--bbi-radius);
   transition:
@@ -892,8 +892,8 @@ async function open(image: GalleryImage): Promise<void> {
   font-weight: 600;
   line-height: 1.6;
 }
-/* 体积:跟在张数角标右边,不给底色——它是附注不是标签,压过角色名就喧宾夺主了。
-   margin-left:auto 把它推到行尾,与右侧留白对齐。 */
+/* Size: follows the count badge on the right, without background: it is a note, not a label, and overpowering the character name would steal the show.
+   margin-left:auto pushes it to the end of the row, aligned with the right-hand padding. */
 .gal-size {
   flex: 0 0 auto;
   margin-left: auto;
@@ -922,9 +922,9 @@ async function open(image: GalleryImage): Promise<void> {
   min-height: 0;
   overflow: hidden;
 }
-/* padding 与分隔线都放这一层:它是 inner 的子级,收起时随 0fr 一并被裁掉,
-   不会像挂在 inner 上那样留下一截撑开的残高(同 Collapsible.vue)。
-   左 padding 12px + .gal-grid 自身 2px = 14px,正好与标题栏箭头左缘对齐。 */
+/* Padding and the divider live on this layer: it is a child of inner, so when collapsed it is clipped along with the 0fr,
+   without leaving a stub of stretched height as it would if attached to inner (same as Collapsible.vue).
+   Left padding 12px + .gal-grid's own 2px = 14px, exactly aligned with the left edge of the title bar's arrow. */
 .gal-fold-body {
   display: flex;
   flex-direction: column;
@@ -933,7 +933,7 @@ async function open(image: GalleryImage): Promise<void> {
   border-top: 1px solid var(--bbi-line);
 }
 
-/* —— 缩略图网格 —— */
+/* —— Thumbnail grid —— */
 .gal-grid {
   list-style: none;
   margin: 0;
@@ -968,12 +968,12 @@ async function open(image: GalleryImage): Promise<void> {
   outline: 2px solid var(--bbi-accent);
   outline-offset: 2px;
 }
-/* 取侧写提示词的那一小会儿:降透明度示意「在忙」,不改布局免得网格抖动 */
+/* While fetching the sidecar prompt: lowered opacity signals "busy", without layout changes, so the grid doesn't jitter */
 .gal-thumb.is-busy {
   opacity: 0.55;
   cursor: progress;
 }
-/* 选择态:光标改指针(点击不再是放大),选中时主色描边 + 轻微内缩示意「被拿起」 */
+/* Selection mode: pointer cursor (clicking no longer enlarges); selected items get a main-colour outline + a slight inset to suggest "picked up" */
 .gal-thumb.is-selectable {
   cursor: pointer;
   position: relative;
@@ -985,8 +985,8 @@ async function open(image: GalleryImage): Promise<void> {
 .gal-thumb.is-selected .gal-img {
   opacity: 0.72;
 }
-/* 勾选角标:右上角圆形。未选中时是半透明底的空圈(提示「这里可以点选」),
-   选中后填主色显白勾。 */
+/* Check badge: a circle at the top right. Unselected it is an empty ring on a translucent background (hinting "this can be selected"),
+   selected it fills with the main colour and shows a white tick. */
 .gal-check {
   position: absolute;
   top: 5px;
@@ -1005,7 +1005,7 @@ async function open(image: GalleryImage): Promise<void> {
   background: var(--bbi-accent);
   border-color: var(--bbi-accent);
 }
-/* 固定 3:4 竖构图:生图多为竖版,统一比例让整格网格对齐,溢出由 cover 裁切 */
+/* Fixed 3:4 portrait framing: generated images are mostly portrait; a uniform ratio keeps the whole grid aligned, with overflow cropped by cover */
 .gal-img {
   display: block;
   width: 100%;
@@ -1017,12 +1017,12 @@ async function open(image: GalleryImage): Promise<void> {
   align-self: center;
 }
 
-/* —— 选择态操作条 ——
-   紧跟工具条 + sticky 吸顶:呼出它的「选择」钮就在上一行,一按就看见;
-   往下翻多久它都还在,不用滚回顶部才能删。
-   top 给 calc(-1 * pad):滚动容器是 .bbi-body,它有 --bbi-page-pad 的内边距,
-   滚动视口顶边落在内边距处;top:0 会让操作条停在内边距下沿、上方露出一条缝
-   让缩略图从那里滚过去。抵消掉内边距才贴齐真实顶边(同 base.css 的 .bbi-modal-head)。 */
+/* —— Selection action bar ——
+   Right after the toolbar + sticky at the top: the "Select" button that opens it is one row up, so it's visible on press;
+   however far you scroll it stays, so there's no need to scroll back up to delete.
+   top is calc(-1 * pad): the scroll container is .bbi-body, which has --bbi-page-pad padding,
+   so the scrolling viewport's top edge is at the padding; top:0 would park the bar at the padding's lower edge, leaving a gap above
+   for thumbnails to scroll through. Cancelling the padding makes it sit flush with the real top edge (same as .bbi-modal-head in base.css). */
 .gal-actionbar {
   position: sticky;
   top: calc(-1 * var(--bbi-page-pad));
@@ -1034,7 +1034,7 @@ async function open(image: GalleryImage): Promise<void> {
   padding: 10px 12px;
   border: 1px solid var(--bbi-line);
   border-radius: var(--bbi-radius);
-  /* 不透明底:下面是缩略图网格,半透明会把图透上来,数字读不清 */
+  /* Opaque background: the thumbnail grid is underneath, and translucency would let images show through, making the numbers hard to read */
   background: var(--bbi-surface);
   box-shadow: 0 6px 18px -14px var(--bbi-overlay);
 }
@@ -1044,9 +1044,9 @@ async function open(image: GalleryImage): Promise<void> {
   color: var(--bbi-ink-soft);
   font-variant-numeric: tabular-nums;
 }
-/* .bbi-btn-danger 只声明在 ConfirmDialog 的 scoped 块里(base.css 没有),
-   本组件要用就得把 base 与 hover 两条整份复制过来——只补 hover 的话平时是默认墨色、
-   鼠标一过才变红,静态截图完全看不出问题。 */
+/* .bbi-btn-danger is only declared in ConfirmDialog's scoped block (base.css doesn't have it),
+   so using it here means copying both the base and hover rules in full; adding only hover would leave it the default ink colour normally,
+   turning red only on mouse-over, a problem invisible in static screenshots. */
 .bbi-btn-danger {
   color: var(--bbi-danger);
   border-color: var(--bbi-line-strong);

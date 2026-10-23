@@ -8,39 +8,39 @@ import {
 } from '@/autoTag/clean';
 
 describe('stripCustomTags', () => {
-  it('配对块整删(含内部内容)', () => {
+  it('removes paired blocks whole (including inner content)', () => {
     expect(stripCustomTags('前文\n<snow>状态栏内容</snow>\n后文', ['snow'])).toBe('前文\n\n后文');
   });
 
-  it('落单开/闭/自闭标签:只删标签本身', () => {
+  it('stray open/close/self-closing tags: removes only the tag itself', () => {
     expect(stripCustomTags('<snow>内容无闭合', ['snow'])).toBe('内容无闭合');
     expect(stripCustomTags('内容</snow>', ['snow'])).toBe('内容');
     expect(stripCustomTags('内容<snow/>', ['snow'])).toBe('内容');
   });
 
-  it('中文标签名同样生效(前瞻而非词边界)', () => {
+  it('CJK tag names work too (lookahead, not a word boundary)', () => {
     expect(stripCustomTags('<雪>飘雪特效</雪>正文', ['雪'])).toBe("正文");
   });
 
-  it('边界前瞻:不误吃同名前缀标签(<snow> 不吃 <snowball>)', () => {
+  it('boundary lookahead: does not eat a tag with the same prefix (<snow> does not eat <snowball>)', () => {
     expect(stripCustomTags('<snowball>保留</snowball>', ['snow'])).toBe('<snowball>保留</snowball>');
   });
 
-  it('带属性的开标签也整块删除', () => {
+  it('open tags with attributes are removed as a whole block too', () => {
     expect(stripCustomTags('前<snow class="bar">内容</snow>后', ['snow'])).toBe('前后');
   });
 
-  it('大小写不敏感', () => {
+  it('case-insensitive', () => {
     expect(stripCustomTags('<SNOW>内容</SNOW>', ['snow'])).toBe('');
   });
 
-  it('空名单 / 无匹配标签:原样返回', () => {
+  it('empty list / no matching tags: returned unchanged', () => {
     const s = '<think>思维链</think>正文';
     expect(stripCustomTags(s, [])).toBe(s);
     expect(stripCustomTags(s, ['snow'])).toBe(s);
   });
 
-  it('多个标签依次整删', () => {
+  it('multiple tags are removed one after another', () => {
     expect(stripCustomTags('<a>1</a>x<b>2</b>y', ['a', 'b'])).toBe('xy');
   });
 });

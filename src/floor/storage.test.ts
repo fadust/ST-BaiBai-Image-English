@@ -57,7 +57,7 @@ describe('promptHash', () => {
     expect(promptHash('<bbi_image>a</bbi_image>')).not.toBe(
       promptHash('<bbi_image>b</bbi_image>'),
     );
-    // 编辑提示词内容 → hash 变化（stale 检测的根基）
+    // Editing the prompt content → the hash changes (the basis of stale detection)
     expect(promptHash('<bbi_image>1girl, cat</bbi_image>')).not.toBe(
       promptHash('<bbi_image>1girl, dog</bbi_image>'),
     );
@@ -89,7 +89,7 @@ describe('sidecar naming', () => {
   });
 
   it('stays inside validateAssetFileName limits for real filenames', () => {
-    // 服务端 /api/files/upload 只收 /^[a-zA-Z0-9_\-.]+$/,名字不合规会 400
+    // The server's /api/files/upload only accepts /^[a-zA-Z0-9_\-.]+$/; non-compliant names get a 400
     const name = sidecarFileName(imageFileName('柏宝/测试 卡', 1, 'h', 'g', 'png'));
     expect(name).toMatch(/^[a-zA-Z0-9_\-.]+$/);
     expect(name.endsWith('.json')).toBe(true);
@@ -102,7 +102,7 @@ describe('sidecar naming', () => {
   });
 
   it('returns empty for files this plugin did not name', () => {
-    // 外来文件算出来的侧写名必然 404,不该白发请求
+    // A sidecar name computed from a foreign file is certain to 404, so no request should be wasted
     expect(sidecarPathFor('/user/images/柏宝绘_a/photo.png')).toBe('');
     expect(sidecarPathFor('/user/files/bbi-vibe-thumb-x.jpg')).toBe('');
     expect(sidecarPathFor('')).toBe('');
@@ -121,7 +121,7 @@ describe('store read helpers', () => {
   });
 
   it('isolates results by slot: same-hash entries of different slots stay separate', () => {
-    // 同一楼层两个 tag 内容相同（同 hash）→ 各自槽位独立取图，不串
+    // Two tags on the same floor with identical content (same hash) → each slot fetches its image independently, never crossing
     const store = appendEntry({}, 0, 'h', fakeEntry({ generationId: 'slot0', slotSeq: 0, createdAt: 1 }));
     const store2 = appendEntry(store, 0, 'h', fakeEntry({ generationId: 'slot1', slotSeq: 1, createdAt: 2 }));
     const store3 = appendEntry(store2, 0, 'h', fakeEntry({ generationId: 'slot0-again', slotSeq: 0, createdAt: 3 }));
@@ -154,19 +154,19 @@ describe('store read helpers', () => {
     const store3 = appendEntry(store2, 0, 'current', fakeEntry({ generationId: 'c', createdAt: 1, slotSeq: 0 }));
 
     expect(latestStaleEntry(store3, 0, 'current', 0)?.generationId).toBe('b');
-    // 排除自身键后返回其它键中最新的一条（old1 的 a 比 current 的 c 新）
+    // Excluding its own key, returns the newest among the other keys (old1's a is newer than current's c)
     expect(latestStaleEntry(store3, 0, 'old2', 0)?.generationId).toBe('a');
     expect(latestStaleEntry(null, 0, 'x', 0)).toBeNull();
     expect(latestStaleEntry(store3, 9, 'x', 0)).toBeNull();
   });
 
   it('never reports a neighbor slot result as stale (multi-tag floor bug)', () => {
-    // 卡片 1 生成过（槽位 0），卡片 2（槽位 1）从未生成 → 卡片 2 必须 pending，
-    // 不得把卡片 1 的图当 stale 显示
+    // Card 1 has generated (slot 0), card 2 (slot 1) never has → card 2 must be pending,
+    // and must not show card 1's image as stale
     const store = appendEntry({}, 0, 'hash-of-tag1', fakeEntry({ generationId: 'tag1-img', slotSeq: 0 }));
     expect(latestEntry(store, 0, 'hash-of-tag2', 1)).toBeNull();
     expect(latestStaleEntry(store, 0, 'hash-of-tag2', 1)).toBeNull();
-    // 但同槽位换提示词后，旧图仍可作 stale 显示
+    // But after the same slot's prompt changes, the old image can still show as stale
     expect(latestStaleEntry(store, 0, 'hash-of-tag1-edited', 0)?.generationId).toBe('tag1-img');
   });
 
@@ -198,7 +198,7 @@ describe('mutateStore (CAS)', () => {
     const ok = await mutateStore(ctx, 0, store => {
       calls += 1;
       if (calls === 1) {
-        // 模拟另一个任务抢先整体替换了 store 引用
+        // Simulate another task replacing the store reference wholesale first
         message.extra![BBI_IMAGE_EXTRA_KEY] = {};
       }
       return appendEntry(store, 0, 'h', fakeEntry({ generationId: `g${calls}` }));
@@ -206,7 +206,7 @@ describe('mutateStore (CAS)', () => {
 
     expect(ok).toBe(true);
     expect(calls).toBe(2);
-    // 基于最新引用的第二次写入生效
+    // The second write, based on the latest reference, takes effect
     expect(latestEntry(readStore(message), 0, 'h', 0)?.generationId).toBe('g2');
   });
 
@@ -249,7 +249,7 @@ describe('prepareImageForStorage', () => {
         toBlob,
       }),
     });
-    // 浏览器 FileReader.readAsDataURL 返回带 MIME 前缀的完整 Data URL
+    // The browser's FileReader.readAsDataURL returns a full Data URL with the MIME prefix
     vi.stubGlobal('FileReader', class {
       result: string | ArrayBuffer | null = null;
       onload: (() => void) | null = null;
@@ -269,7 +269,7 @@ describe('prepareImageForStorage', () => {
 
   it('falls back to the original format when reencode fails', async () => {
     settings.storage.saveAsJpeg = true;
-    // createImageBitmap 抛错 → 应回退 PNG 原样落盘
+    // createImageBitmap throws → should fall back to saving the PNG as-is
     vi.stubGlobal('createImageBitmap', vi.fn(async () => {
       throw new Error('decode failed');
     }));
@@ -334,13 +334,13 @@ describe('saveImageResult', () => {
         filename: imageName,
       }),
     });
-    // 第二发是侧写:图库跨聊天浏览时提示词的唯一来源
+    // The second send is the sidecar: the only source of prompts when the gallery browses across chats
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [sidecarUrl, sidecarInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     expect(sidecarUrl).toBe('/api/files/upload');
     const sidecarBody = JSON.parse(String(sidecarInit.body)) as { name: string; data: string };
     expect(sidecarBody.name).toBe(sidecarFileName(imageName));
-    // 角色名含中文:btoa 直接吃码点 > 255 会抛,这里连带锁住「必须 UTF-8 编码」
+    // The character name contains CJK: btoa throws on code points > 255, so this also locks down "must be UTF-8 encoded"
     expect(JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(sidecarBody.data), c => c.charCodeAt(0))))).toEqual({
       v: 2,
       character: characterName,
@@ -385,11 +385,11 @@ describe('saveImageResult', () => {
     };
     const entry = await saveImageResult(0, 0, 0, tag, 1, result, meta);
 
-    // extra 指针：图库当前聊天的快速通道直接读这里
+    // The extra pointer: the gallery's fast path for the current chat reads it directly
     expect(entry.meta).toEqual(meta);
     expect(readStore(message)?.['0']?.[hash]?.[0]?.meta).toEqual(meta);
 
-    // 侧写 json：跨聊天浏览时提示词/元信息的唯一来源
+    // The sidecar json: the only source of prompts/metadata when browsing across chats
     const [, sidecarInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     const sidecarBody = JSON.parse(String(sidecarInit.body)) as { data: string };
     const sidecar = JSON.parse(
@@ -403,7 +403,7 @@ describe('saveImageResult', () => {
     const tag = '<bbi_image>a</bbi_image>';
     const storedPath = '/user/images/柏宝绘_c/bbi_seeded.png';
     const saveChat = vi.fn(async () => undefined);
-    // 图片上传成功、侧写 500:图必须照常存下,只是没有提示词可看
+    // Image upload succeeded, sidecar 500: the image must be saved as usual, just with no prompt to view
     const fetchMock = vi.fn(async (url: string) =>
       url === '/api/files/upload'
         ? new Response('nope', { status: 500 })
@@ -480,10 +480,10 @@ describe('saveExternalImage', () => {
       ch_name: string;
       filename: string;
     };
-    // 目录前缀是图库列图的唯一依据:换个前缀,图存下去了但图库里看不见
+    // The folder prefix is the gallery's only basis for listing images: with a different prefix the image is saved but invisible in the gallery
     expect(upload.ch_name).toBe('柏宝绘_小雪');
-    // 文件名必须过 sidecarPathFor 的正则,否则图库压根不去请求侧写——
-    // 症状是图在、提示词空白、且没有任何报错
+    // The file name must pass sidecarPathFor's regex, otherwise the gallery never requests the sidecar;
+    // the symptom is the image is there, the prompt is blank, and there is no error at all
     expect(sidecarPathFor(`/user/images/柏宝绘_小雪/${upload.filename}`)).toBe(
       `/user/files/${sidecarFileName(upload.filename)}`,
     );
@@ -640,8 +640,8 @@ describe('deleteImageResult', () => {
 
 describe('deleteImageFileOnly', () => {
   it('decodes the encoded gallery src before calling the delete endpoints', async () => {
-    // 图库的 src 是逐段 encodeURIComponent 过的，而 ST 的删除接口不做解码：
-    // 编码路径原样发过去只会 404（图没删掉），这里锁死「先归一化再发请求」。
+    // The gallery's src is encodeURIComponent'd segment by segment, while ST's delete endpoint doesn't decode:
+    // sending the encoded path as-is would only 404 (the image isn't deleted), so this locks down "normalise before sending".
     const fetchMock = vi.fn(async () => new Response('OK', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     vi.stubGlobal('window', {

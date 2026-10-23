@@ -8,9 +8,9 @@ describe('SlotRegistry', () => {
     const chat = 'chat-12';
     expect(registry.key(chat, 3, 0, 0)).toBe('chat-12|3|0|0');
     expect(registry.key(chat, 3, 0, 1)).not.toBe(registry.key(chat, 3, 0, 0));
-    // 同一楼层不同 swipe 互不冲突
+    // Different swipes on the same floor don't conflict
     expect(registry.key(chat, 3, 1, 0)).not.toBe(registry.key(chat, 3, 0, 0));
-    // chatId 缺失时用占位符，仍保持 key 形状
+    // A placeholder is used when chatId is missing, keeping the key's shape
     expect(registry.key(undefined, 3, 0, 0)).toBe('-|3|0|0');
   });
 

@@ -1,139 +1,139 @@
-# ST-BaiBai-Image（柏宝绘）设计草案
+# ST-BaiBai-Image (BaiBai Image) design draft
 
-> 状态：讨论稿，记录当前已经确认的产品思路与推荐实现方案，不代表相关功能已经完成。
+> Status: discussion draft. It records the product direction and recommended implementation agreed so far. It does not mean the features are finished.
 
-## 1. 插件目标
+## 1. Plugin goals
 
-柏宝绘在 SillyTavern 生成新的 AI 正文后，发起一次与正文生成相互独立的 AI 请求，用它完成以下工作：
+After SillyTavern generates new AI text, BaiBai Image sends a separate AI request, independent of text generation, to do the following:
 
-1. 判断最新 AI 楼层中是否存在值得生成图片的场景。
-2. 在用户设定的单楼最大图片数以内，选择最有价值的画面。
-3. 为每个画面生成适合目标生图后端的提示词。
-4. 将可编辑的生图 tag 插入对应正文位置。
-5. 调用 ComfyUI、NAI 或 WebUI 等后端生成图片。
-6. 将图片显示在对应 tag 所在位置，并允许用户修改 tag 后重新生成。
+1. Judge whether the latest AI floor contains scenes worth illustrating.
+2. Choose the most valuable scenes, within the user's maximum images per floor.
+3. Write a prompt for each scene, suited to the target image backend.
+4. Insert editable image tags at the matching positions in the text.
+5. Call a backend such as ComfyUI, NAI or WebUI to generate the images.
+6. Show each image where its tag sits, and let the user edit the tag and regenerate.
 
-当前优先完成 ComfyUI 链路；其他后端在统一任务模型之上逐步接入。
+The ComfyUI path comes first. Other backends join gradually on top of a shared task model.
 
-## 2. 核心设计原则
+## 2. Core design principles
 
-### 2.1 正文 tag 与图片结果分离
+### 2.1 Text tags separate from image results
 
-采用混合存储：
+Hybrid storage:
 
-- 生图 tag 写进 `message.mes`，作为提示词的真实来源以及稳定的位置锚点。
-- 图片 URL、种子、后端信息、工作流信息和生成状态保存在消息扩展数据中。
-- 渲染时按当前 swipe 中 tag 的出现顺序和提示词哈希关联图片结果，将图片放到 tag 所在位置。
+- Image tags are written into `message.mes`. They are the source of truth for prompts and a stable position anchor.
+- Image URLs, seeds, backend info, workflow info and generation state are stored in the message's extension data.
+- At render time, image results are linked by the order tags appear in the current swipe and by prompt hash, and each image is placed where its tag sits.
 
-这样同时满足：
+This satisfies all of the following:
 
-- 用户可以直接用 ST 的消息编辑器修改提示词。
-- 用户修改或移动正文时，tag 和图片位置会随正文一起移动。
-- 图片数据不需要以 Markdown URL、Base64 等形式污染正文。
-- 同一 tag 可以保留多次生成结果，支持重新生成和切换图片。
+- Users can edit prompts directly in ST's message editor.
+- When users edit or move text, tags and image positions move with it.
+- Image data never pollutes the text as Markdown URLs, Base64 and the like.
+- One tag can keep several generation results, supporting regeneration and switching images.
 
-### 2.2 首次定位使用段尾位置 ID
+### 2.2 First placement uses paragraph-end position IDs
 
-插件清洗目标正文后，在每个保留的非空物理行末尾追加短位置 ID（如 `⟦P1⟧`）。AI 只返回位置 ID 和提示词，插件通过本地映射把 tag 插到对应原始物理行之后，不让模型复制原文或回传完整正文。
+After cleaning the target text, the plugin appends a short position ID (such as `⟦P1⟧`) to the end of each non-empty physical line it keeps. The AI returns only position IDs and prompts. The plugin uses a local mapping to insert each tag after the matching original physical line. The model never copies the original text or returns the full text.
 
-位置 ID 只服务于首次插入，不写入正文。正式 tag 写入后，tag 自身随正文移动；后续图片渲染不再依赖旧位置 ID。
+Position IDs serve only the first insertion and are never written into the text. Once a real tag is written, the tag moves with the text. Later image rendering no longer depends on old position IDs.
 
-### 2.3 不静默截断上下文
+### 2.3 No silent context truncation
 
-插件不提供“最大上下文字数”或“最大上下文 Token 数”限制。
+The plugin offers no "maximum context characters" or "maximum context tokens" limit.
 
-- 保留“携带最近 AI 楼数”的数量设置，默认建议为 2；目标楼计入数量，中间的 user 楼一并携带。
-- 被选中的楼层按柏宝书口径清洗后发送，不做字符或 token 截断；历史楼保留 `<bbi_image>`。
-- 柏宝书状态快照完整发送。
-- 如果模型供应商因自身上下文窗口拒绝请求，向用户报告错误，不在后台静默裁剪内容。
+- It keeps a "number of recent AI floors to include" setting, suggested default 2. The target floor counts towards the number, and user floors in between are included too.
+- Selected floors are cleaned with BaiBai Book's rule and sent without character or token truncation. History floors keep `<bbi_image>`.
+- The BaiBai Book state snapshot is sent in full.
+- If the model provider rejects the request because of its own context window, the error is reported to the user. Content is never trimmed silently in the background.
 
-## 3. 自动任务流程
+## 3. Automatic task flow
 
-一次完整任务建议分为以下阶段：
+A full task is suggested to run in these stages:
 
 ```text
-ST 完成新的 AI 正文
-  -> 锁定 chatId / floor / swipeId / sourceHash
-  -> 读取并清洗最近 N 个 AI 故事楼及其间 user 楼
-  -> 读取柏宝书当前有效状态及 D1/D2 语义
-  -> 调用独立 AI 判断是否需要图片
-  -> 校验 AI 返回的 JSON、目标位置 ID 和正面提示词
-  -> 安全地向正文插入 pending tag
-  -> 从已经落盘的 tag 重新读取实际提示词
-  -> 调用目标生图后端
-  -> 再次校验聊天、楼层、swipe 和 tag 是否仍匹配
-  -> 保存图片结果并刷新对应楼层显示
+ST finishes new AI text
+  -> lock chatId / floor / swipeId / sourceHash
+  -> read and clean the last N AI story floors and the user floors between them
+  -> read BaiBai Book's current effective state and its D1/D2 semantics
+  -> call the separate AI to judge whether images are needed
+  -> validate the AI's JSON, target position IDs and positive prompts
+  -> safely insert pending tags into the text
+  -> reread the actual prompts from the saved tags
+  -> call the target image backend
+  -> check again that chat, floor, swipe and tag still match
+  -> save the image results and refresh that floor's display
 ```
 
-将 tag 先写入、再开始生图有几个好处：
+Writing tags first and then starting image generation has several benefits:
 
-- 用户可以看到任务已经排队，而不是长时间没有反馈。
-- 生图阶段使用的内容来自正式 tag，而不是 AI 返回但尚未落盘的临时对象。
-- 生成期间 tag 被修改或删除时，可以通过提示词哈希发现冲突。
+- Users can see the task is queued, rather than getting no feedback for a long time.
+- The image stage uses content from the real tags, not a temporary object the AI returned but that was never saved.
+- If a tag is edited or deleted during generation, the prompt hash reveals the conflict.
 
-## 4. 上下文构成
+## 4. Context composition
 
-### 4.1 最近正文
+### 4.1 Recent text
 
-默认携带最近两个 AI 故事楼及其间 user 楼，数量可由用户调整，不另设字符上限。
+By default the last two AI story floors and the user floors between them are included. Users can change the number. There is no separate character limit.
 
-最新 AI 楼层始终单独标明，因为模型必须围绕它判断本次是否需要生图，而不是为历史内容补图。
+The latest AI floor is always marked on its own, because the model must judge around it whether images are needed this time, rather than adding images for history.
 
-建议给独立 AI 的正文结构包含：
+The text structure given to the separate AI should include:
 
-- 角色（user / assistant / system）。
-- 发言者名称。
-- 按柏宝书 `cleanBody` 口径清洗后的历史正文，并保留历史 `<bbi_image>`。
-- 明确标记哪一层是本次目标楼层。
-- 目标正文删除同款噪声和时间标签，并仅在保留的非空物理行末尾追加 `⟦P编号⟧`。
+- Role (user / assistant / system).
+- Speaker name.
+- History text cleaned with BaiBai Book's `cleanBody` rule, keeping history `<bbi_image>`.
+- A clear mark of which floor is this run's target floor.
+- Target text with the same noise and time tags removed, and `⟦P<number>⟧` appended only to the end of each non-empty physical line kept.
 
-### 4.2 柏宝书状态快照
+### 4.2 BaiBai Book state snapshot
 
-柏宝书的状态注入位置是动态的：
+Where BaiBai Book injects its state is dynamic:
 
-- 最新 AI 楼层已有有效摘要时，状态已经包含最新楼层，对应 D1。
-- 最新 AI 楼层尚无有效摘要时，状态不包含最新楼层，对应 D2。
+- When the latest AI floor already has a valid summary, the state already includes the latest floor. This is D1.
+- When the latest AI floor has no valid summary yet, the state does not include the latest floor. This is D2.
 
-柏宝绘不应固定读取 `before latest`，而应：
+BaiBai Image should not always read `before latest`. Instead it should:
 
-1. 通过柏宝书公共 API 获取最新楼层信息。
-2. 使用 `memory.valid` 判断当前状态属于 D1 还是 D2 语义。
-3. 获取柏宝书当前有效快照。
-4. 将快照的时间关系明确告诉独立 AI：
-   - `after_latest`：快照已经包含目标楼层。
-   - `before_latest`：快照是目标楼层发生之前的状态，目标正文会在其基础上产生变化。
+1. Get the latest floor info through BaiBai Book's public API.
+2. Use `memory.valid` to judge whether the current state has D1 or D2 semantics.
+3. Get BaiBai Book's current effective snapshot.
+4. Tell the separate AI the snapshot's time relation explicitly:
+   - `after_latest`: the snapshot already includes the target floor.
+   - `before_latest`: the snapshot is the state before the target floor happened, and the target text changes things from there.
 
-即使是 D1，仍然需要发送最新正文。状态快照负责提供稳定的角色、场景和物品信息，原文负责提供具体画面和插入位置，二者作用不同。
+Even with D1, the latest text must still be sent. The state snapshot provides stable character, scene and item info. The original text provides the specific scenes and insertion positions. They play different roles.
 
-读取楼层信息与快照时应检查柏宝书的 `revision`。若读取期间柏宝书刚好完成摘要并改变 revision，应重新读取一次，避免将 D1/D2 标记和不同时刻的快照拼在一起。
+When reading floor info and the snapshot, check BaiBai Book's `revision`. If BaiBai Book finishes a summary and changes the revision during the read, read again once, so a D1/D2 mark is never combined with a snapshot from a different moment.
 
-### 4.3 柏宝书不可用时
+### 4.3 When BaiBai Book is unavailable
 
-柏宝书属于增强记忆源，不应成为自动生图的硬依赖。
+BaiBai Book is an enhanced memory source. It should not be a hard dependency of automatic image generation.
 
-- API 不存在、版本不兼容或读取失败时，退回最近 N 个 AI 故事楼及其间 user 楼的正文。
-- 在日志或任务详情中记录此次未使用柏宝书状态。
-- 不应因为记忆源缺失而阻止用户手动生图。
+- If the API is missing, the version is incompatible or the read fails, fall back to the text of the last N AI story floors and the user floors between them.
+- Record in the log or task details that BaiBai Book state was not used this time.
+- A missing memory source should never block manual image generation.
 
-## 5. 独立 AI 请求
+## 5. Separate AI request
 
-### 5.1 请求职责
+### 5.1 Request responsibilities
 
-独立 AI 只负责：
+The separate AI is only responsible for:
 
-- 判断是否值得生成图片。
-- 选择画面。
-- 返回目标正文中的段尾位置 ID，指出画面应插在哪个原始物理行之后。
-- 只生成不含质量词的正面内容提示词。
+- Judging whether images are worth generating.
+- Choosing scenes.
+- Returning paragraph-end position IDs from the target text, saying which original physical line each scene goes after.
+- Writing positive content prompts only, without quality tags.
 
-它不负责：
+It is not responsible for:
 
-- 重写整段正文。
-- 直接生成最终消息文本。
-- 生成质量词或负面提示词。
-- 决定实际工作流节点或向 ComfyUI 发请求。
+- Rewriting whole passages of text.
+- Producing the final message text directly.
+- Writing quality tags or negative prompts.
+- Choosing actual workflow nodes or sending requests to ComfyUI.
 
-### 5.2 建议输出结构
+### 5.2 Suggested output structure
 
 ```json
 {
@@ -147,126 +147,126 @@ ST 完成新的 AI 正文
 }
 ```
 
-约束：
+Constraints:
 
-- `position` 必须是目标正文段尾已提供的 `P编号`，不得引用历史上下文或自行编造。
-- 插件把位置 ID 映射回清洗前的原始物理行，并在该行之后插入 tag。
-- `tag` 是 danbooru 短 tag，必填；只包含正面画面内容，不包含质量词、负面词或 `<bbi_image>`/`<tag>`/`<nl>` 标签。
-- `nl` 是自然语言部分，仅在「默认后端为 ComfyUI 且开启生成自然语言」时要求输出；与 `tag` 描述同一画面、互补不重复。未开启时协议里不出现该键。
-- 返回图片数不得超过用户设置的单楼最大值。
-- 插件仍需在本地再次截断数组，不能只依赖提示词约束。
-- 不需要图片时返回 `{"images":[]}`。
+- `position` must be a `P<number>` provided at a paragraph end of the target text. It must not reference history context or be invented.
+- The plugin maps the position ID back to the original physical line before cleaning, and inserts the tag after that line.
+- `tag` is short danbooru tags and is required. It holds only positive scene content: no quality tags, negative words or `<bbi_image>`/`<tag>`/`<nl>` tags.
+- `nl` is the natural-language part. It is required only when "the default backend is ComfyUI and Generate Natural Language is on". It describes the same scene as `tag`, complementing it without repetition. When off, the key does not appear in the protocol.
+- The number of images returned must not exceed the user's maximum per floor.
+- The plugin must still truncate the array locally. It cannot rely on prompt constraints alone.
+- When no image is needed, return `{"images":[]}`.
 
-如果位置 ID 不存在、格式错误或 `tag` 为空，整次响应校验失败，不写入正文；`nl` 缺失宽容降级为纯 tag。
+If a position ID does not exist, is badly formatted, or `tag` is empty, the whole response fails validation and nothing is written into the text. A missing `nl` degrades leniently to tags only.
 
-### 5.3 可自定义提示词
+### 5.3 Customisable prompts
 
-至少拆分以下配置：
+Split into at least these settings:
 
-- 系统职责提示词：定义判断标准、输出格式和安全边界。
-- 生图提示词规则：定义目标画风、tag 语言、角色一致性要求等。
-- 破限/附加提示词：由用户自行填写，可以关闭。
-- 输出格式约束：通常由插件维护，不建议用户完全删除。
+- System duty prompt: defines judgement criteria, output format and safety boundaries.
+- Image prompt rules: define the target style, tag language, character consistency requirements and so on.
+- Core Prompt / extra prompt: filled in by the user, and can be turned off.
+- Output format constraints: usually maintained by the plugin. Users are advised not to delete them entirely.
 
-用户自定义内容与插件的结构化输出约束应分层拼装，避免用户修改画风要求时意外破坏 JSON 协议。
+User custom content and the plugin's structured output constraints should be assembled in layers, so changing style requirements can't accidentally break the JSON protocol.
 
-## 6. 生图 tag
+## 6. Image tags
 
-### 6.1 推荐形态
+### 6.1 Recommended form
 
-推荐使用插件独占的成对标签，而不是复用 ST 宏或工作流占位符。tag 部分保持裸文本，自然语言部分包 `<nl>` 子标签：
+Use paired tags owned by the plugin, rather than reusing ST macros or workflow placeholders. The tag part stays as bare text, and the natural-language part is wrapped in an `<nl>` sub-tag:
 
 ```text
 <bbi_image>1girl, opening_a_door, moonlit_abandoned_hall</bbi_image>
 <bbi_image>1girl, opening_a_door<nl>A girl opens a door into an abandoned hall.</nl></bbi_image>
 ```
 
-解析是一条容忍式规则（src/st/imageTagRegex.ts 的 `parseImageTagContent`）：`<nl>` 子标签内容为自然语言部分；显式 `<tag>` 子标签内容或剔除子标签后的裸文本为 tag 部分；裸文本与 `<tag>` 同时存在时合并不丢内容。无论采用何种内部格式，都应满足：
+Parsing is one lenient rule (`parseImageTagContent` in src/st/imageTagRegex.ts): the `<nl>` sub-tag content is the natural-language part; explicit `<tag>` sub-tag content, or the bare text left after removing sub-tags, is the tag part; when bare text and `<tag>` both exist they are merged without losing content. Whatever internal format is used, it should:
 
-- 不包含 ID 或其他属性。
-- 标签内部只有用户可直接修改的正面内容提示词。
-- 质量词与负面词由用户直接写在 ComfyUI 工作流里（如 `质量词, %prompt%`），不经插件面板拼接。
-- 支持提示词中出现普通逗号、换行和常见符号。
-- 能完整识别并删除整个块。
-- 不与 ST 的宏替换语法、ComfyUI 工作流占位符混用。
+- Contain no ID or other attributes.
+- Hold only positive content prompts the user can edit directly.
+- Leave quality and negative words to the user, written directly in the ComfyUI workflow (such as `quality tags, %prompt%`), not assembled by a plugin panel.
+- Support ordinary commas, line breaks and common symbols in prompts.
+- Be fully recognisable and deletable as a whole block.
+- Never mix with ST's macro substitution syntax or ComfyUI workflow placeholders.
 
-ComfyUI 工作流内继续使用 `%prompt%`、`%negative_prompt%`、`%seed%`、`%nl%` 占位符；正文 tag 是另一个层次的协议。`%nl%` 只写入显式声明它的工作流，不会自动拼进 `%prompt%`。
+ComfyUI workflows keep using the `%prompt%`, `%negative_prompt%`, `%seed%` and `%nl%` placeholders. Text tags are a protocol at another level. `%nl%` is written only into workflows that declare it explicitly, and is never joined into `%prompt%` automatically.
 
-### 6.2 ST 托管隐藏正则
+### 6.2 ST managed hiding regex
 
-插件启动时向 `extension_settings.regex` 幂等注册一条固定 ID 的正则：
+On startup the plugin idempotently registers a regex with a fixed ID in `extension_settings.regex`:
 
 ```text
 /<bbi_image>[\s\S]+?<\/bbi_image>/gi
 ```
 
-它整块删除 `<bbi_image>...</bbi_image>` 及其内部提示词，因此聊天显示和发送给主模型的后端提示词都不会包含生图内容。`[\s\S]+?` 用于兼容跨行提示词，非贪婪量词确保多个 tag 分别匹配。规则同时设置：
+It deletes `<bbi_image>...</bbi_image>` and the prompt inside as a whole block, so neither the chat display nor the backend prompt sent to the main model contains image content. `[\s\S]+?` handles multi-line prompts, and the non-greedy quantifier makes several tags match separately. The rule also sets:
 
-- `markdownOnly: true`：勾选“仅影响显示”。
-- `promptOnly: true`：勾选“仅影响后端提示词”。
-- `runOnEdit: true`：编辑预览同样生效。
-- placement 覆盖 MD display、user input 与 AI output，兼容 ST 新旧正则口径。
+- `markdownOnly: true`: ticks "Alter chat display only".
+- `promptOnly: true`: ticks "Alter outgoing prompt only".
+- `runOnEdit: true`: also applies in edit previews.
+- placement covers MD display, user input and AI output, compatible with both old and new ST regex rules.
 
-两个 only 开关可以同时启用，ST 会分别在显示路径和后端提示词路径执行它。规则使用固定 ID 更新，不重复添加，也不改动用户的其他正则。
+Both "only" switches can be on together, and ST runs the rule separately on the display path and the backend prompt path. The rule is updated by fixed ID, never added twice, and never touches the user's other regexes.
 
-### 6.3 tag 生命周期
+### 6.3 Tag lifecycle
 
-每个 tag 至少具有以下逻辑状态：
+Each tag has at least these logical states:
 
-- `pending`：已经插入正文，等待生图。
-- `generating`：后端正在执行。
-- `ready`：存在与当前提示词匹配的图片。
-- `stale`：tag 已修改，现有图片来自旧提示词。
-- `error`：解析、请求或后端执行失败。
-- `cancelled`：用户取消或所属消息状态发生变化。
+- `pending`: inserted into the text, waiting for image generation.
+- `generating`: the backend is running.
+- `ready`: an image matching the current prompt exists.
+- `stale`: the tag was edited, and the existing image comes from the old prompt.
+- `error`: parsing, the request or backend execution failed.
+- `cancelled`: the user cancelled, or the state of the owning message changed.
 
-状态不必全部写进正文；正文只保存提示词，瞬时状态及结果保存在扩展数据中。
+Not every state needs to be in the text. The text stores only the prompt. Transient state and results are stored in extension data.
 
-### 6.4 编辑行为
+### 6.4 Editing behaviour
 
-- 修改提示词：计算新哈希；与结果中的 `promptHash` 不同则标记 `stale`。
-- 移动整个 tag：只改变图片位置，不重新生成。
-- 删除 tag：停止显示该 tag 的结果；正在执行的任务尽可能取消。
-- 复制 tag：按新的出现顺序视为另一个 tag；同文提示词用出现序号区分。
-- tag 格式损坏：原位显示解析错误，不提交后端。
-- 修改后重新生成：默认由用户点击单 tag 的“重新生成”按钮，避免一次普通编辑自动产生费用。
-- 自动重新生成：可以作为明确的可选设置，默认关闭。
+- Editing a prompt: compute the new hash. If it differs from `promptHash` in the results, mark `stale`.
+- Moving a whole tag: only the image position changes, with no regeneration.
+- Deleting a tag: stop showing that tag's results, and cancel any running task where possible.
+- Copying a tag: treated as another tag by its new order of appearance. Prompts with identical text are told apart by order of appearance.
+- Broken tag format: show the parse error in place and submit nothing to the backend.
+- Regenerating after an edit: by default the user clicks the single tag's "Regenerate" button, so an ordinary edit never incurs cost automatically.
+- Automatic regeneration: can be an explicit optional setting, off by default.
 
-### 6.5 生成期间发生编辑
+### 6.5 Edits during generation
 
-开始生图时记录：
+When image generation starts, record:
 
 - chatId
 - floor
 - swipeId
-- tag 在当前 swipe 中的出现序号
+- the tag's order of appearance in the current swipe
 - promptHash
 
-图片返回时再次读取正文中的 tag：
+When the image returns, reread the tag in the text:
 
-- tag 已删除：不挂载结果。
-- tag 内容已变化：不得把旧提示词生成的图片标成当前结果；可以保存为历史结果或丢弃。
-- 已切换聊天或 swipe：任务只能写回原目标，无法可靠写回时应取消，不能误挂到当前消息。
+- Tag deleted: do not attach the result.
+- Tag content changed: never mark an image from the old prompt as the current result. It may be saved as history or discarded.
+- Chat or swipe switched: the task may only write back to its original target. If it can't write back reliably, cancel it. It must never attach to the current message by mistake.
 
-## 7. 正文写入安全
+## 7. Safe text writes
 
-正文写入参考 ST-BaiBai-Pen 的事务式思路：
+Text writes follow the transactional approach of ST-BaiBai-Pen:
 
-1. 任务开始时保存原始正文和 chatId。
-2. 写入前优先读取正在打开的 ST 编辑器内容。
-3. 当前正文与预期正文不一致时停止写入。
-4. 同时更新 `message.mes` 和当前 `message.swipes[swipe_id]`。
-5. 保存失败时回滚两处内容。
-6. 同步当前编辑器或刷新楼层。
-7. 发送正确的消息编辑/更新事件。
+1. Save the original text and chatId when the task starts.
+2. Before writing, prefer reading the content of any open ST editor.
+3. Stop writing when the current text differs from the expected text.
+4. Update `message.mes` and the current `message.swipes[swipe_id]` together.
+5. Roll back both if saving fails.
+6. Sync the current editor or refresh the floor.
+7. Fire the correct message edit/update events.
 
-不要在旧正文上计算字符串位置后直接写回，否则独立 AI 请求期间用户的编辑可能被覆盖。
+Never compute string positions on the old text and write back directly. Otherwise the user's edits during the separate AI request may be overwritten.
 
-首次插入多个 tag 时，应先验证所有位置 ID 并一次性构造新正文，避免连续保存导致中间状态以及重复触发其他插件。
+When inserting several tags for the first time, validate every position ID first and build the new text in one go. This avoids intermediate states from consecutive saves and repeated triggering of other plugins.
 
-## 8. 图片结果存储与渲染
+## 8. Image result storage and rendering
 
-建议以当前 swipe 为边界保存结果，示意结构如下：
+Results are suggested to be stored per current swipe, with a structure like:
 
 ```ts
 interface BaiBaiImageMessageData {
@@ -285,185 +285,185 @@ interface BaiBaiImageMessageData {
 }
 ```
 
-实际落盘时应确认 ST 当前版本对 `message.extra` 与 `swipe_info[swipe_id].extra` 的同步行为，确保切换 swipe 后不会串图。
+When actually saving, confirm how the current ST version syncs `message.extra` and `swipe_info[swipe_id].extra`, so images never cross over after switching swipes.
 
-### 8.1 显示位置
+### 8.1 Display position
 
-渲染器扫描当前原始消息中的合法 tag，并把它转换为可交互的生图块：
+The renderer scans the current raw message for valid tags and turns them into interactive image blocks:
 
-- 可折叠查看或编辑提示词。
-- 显示等待、生成中、失败或过期状态。
-- 显示当前图片及历史图片切换。
-- 提供重新生成、取消、删除结果等操作。
+- Prompts can be collapsed for viewing or editing.
+- Waiting, generating, failed or stale states are shown.
+- The current image is shown, with switching between history images.
+- Regenerate, cancel, delete result and similar actions are offered.
 
-如果使用 ST 原生 `message.extra.media`，图片只能统一出现在楼层媒体区域。要实现多个 tag 分别位于不同段落之后，需要自定义 tag 渲染层；原生 media 可以用于文件持久化或楼层底部模式，但不能单独解决段落级定位。
+With ST's native `message.extra.media`, images can only appear together in the floor's media area. Placing several tags after different paragraphs needs a custom tag rendering layer. Native media can be used for file persistence or a floor-bottom mode, but cannot solve paragraph-level placement on its own.
 
-### 8.2 不在正文中保存图片数据
+### 8.2 No image data in the text
 
-正文中只保留可编辑 tag，不写入：
+The text keeps only editable tags, never writing:
 
-- Base64 图片。
-- 临时 Blob URL。
-- 完整 ComfyUI 工作流。
-- 大段生成元数据。
+- Base64 images.
+- Temporary Blob URLs.
+- Full ComfyUI workflows.
+- Large blocks of generation metadata.
 
-图片应先保存为可持久访问的文件，再按当前 swipe、tag 出现序号和提示词哈希关联。页面刷新、重载聊天和切换设备后的可用性需要单独验证。
+Images should first be saved as persistently accessible files, then linked by current swipe, tag order of appearance and prompt hash. Availability after page refresh, chat reload and device switching needs separate verification.
 
-## 9. 与柏宝书的兼容
+## 9. Compatibility with BaiBai Book
 
-正文内 tag 会触发消息编辑事件，也可能进入摘要、向量召回和状态分析，因此需要正式的跨插件约定。
+Tags inside the text fire message edit events and may also enter summaries, vector recall and state analysis, so a formal cross-plugin agreement is needed.
 
-### 9.1 内容清洗
+### 9.1 Content cleanup
 
-柏宝书应把 `<bbi_image>...</bbi_image>` 视为非剧情块，在以下入口中整块剔除：
+BaiBai Book should treat `<bbi_image>...</bbi_image>` as a non-story block and strip it whole at these entry points:
 
-- 自动摘要输入。
-- `cleanBody()` 返回值。
-- 向量入库和召回文本。
-- 公共 API 返回的正文清洗结果。
+- Automatic summary input.
+- The return value of `cleanBody()`.
+- Vector indexing and recall text.
+- Cleaned text returned by the public API.
 
-不建议柏宝绘静默修改用户的“自定义清洗标签”配置。更稳定的方式是：
+BaiBai Image should not silently change the user's "custom cleanup tags" setting. More robust options are:
 
-- 柏宝书内置忽略柏宝绘标签；或
-- 柏宝书提供公共 API，允许其他插件注册需要忽略的块标签。
+- BaiBai Book ignores BaiBai Image tags built in; or
+- BaiBai Book offers a public API letting other plugins register block tags to ignore.
 
-### 9.2 摘要失效判断
+### 9.2 Summary invalidation
 
-只修改生图 tag 不应使剧情摘要失效。
+Editing only image tags should not invalidate story summaries.
 
-柏宝书处理 `MESSAGE_EDITED` 时，理想规则是比较清洗后的剧情正文：
+When BaiBai Book handles `MESSAGE_EDITED`, the ideal rule is to compare the cleaned story text:
 
-- 清洗后正文相同：只有装饰性 tag 变化，保留摘要。
-- 清洗后正文不同：用户确实修改了剧情，正常清理失效链并重新计算。
+- Same cleaned text: only decorative tags changed, so keep the summary.
+- Different cleaned text: the user really changed the story, so clear the invalidation chain and recompute as usual.
 
-如果用户同时修改正文和 tag，仍应按剧情正文发生变化处理。
+If the user edits both text and tags, it should still be handled as a story text change.
 
-在该兼容能力完成前，正文 tag 编辑可能导致柏宝书摘要重算；实现柏宝绘自动链路前需要明确解决或至少向用户提示这一行为。
+Until this compatibility is in place, editing tags in the text may cause BaiBai Book summaries to be recomputed. Before implementing BaiBai Image's automatic path, this must be solved or at least made known to the user.
 
-## 10. ComfyUI 适配
+## 10. ComfyUI adaptation
 
-ComfyUI 使用 `Save (API Format)` 导出的完整工作流 JSON。插件不需要让用户手工维护节点映射，只需要让用户在工作流中放置动态占位符：
+ComfyUI uses the full workflow JSON exported with `Save (API Format)`. The plugin doesn't make users maintain node mappings by hand. Users only place dynamic placeholders in the workflow:
 
-- `%prompt%`（tag 部分）
+- `%prompt%` (the tag part)
 - `%negative_prompt%`
 - `%seed%`
-- `%nl%`（自然语言部分；工作流不含该占位符时自然语言不参与生成，不会拼进 `%prompt%`）
+- `%nl%` (the natural-language part; if the workflow lacks this placeholder, natural language takes no part in generation and is never joined into `%prompt%`)
 
-提交前：
+Before submitting:
 
-1. 解析工作流 JSON。
-2. 验证它是 API 格式节点对象。
-3. 验证存在 `%prompt%`。
-4. 替换受支持的占位符。
-5. 拒绝未知占位符，避免用户误以为它们已经生效。
-6. 将渲染后的完整工作流提交给 ComfyUI。
+1. Parse the workflow JSON.
+2. Check it is an API-format node object.
+3. Check `%prompt%` exists.
+4. Replace the supported placeholders.
+5. Reject unknown placeholders, so users don't assume they work.
+6. Submit the full rendered workflow to ComfyUI.
 
-节点映射只有在插件需要自动识别并修改没有占位符的任意工作流时才有意义。当前采用工作流模板占位符后，不需要额外节点映射 UI。
+Node mapping only matters if the plugin must automatically recognise and modify arbitrary workflows without placeholders. With workflow template placeholders in use, no extra node mapping UI is needed.
 
-## 11. 建议设置项
+## 11. Suggested settings
 
-### 自动分析
+### Automatic analysis
 
-- 总开关。
-- 自动处理新 AI 楼层。
-- 携带最近 AI 楼数，默认 2，目标楼计入数量，中间 user 楼一并携带，无字符上限。
-- 是否使用柏宝书状态。
-- 单楼最大图片数。
+- Master switch.
+- Automatically process new AI floors.
+- Number of recent AI floors to include, default 2. The target floor counts, user floors in between are included, with no character limit.
+- Whether to use BaiBai Book state.
+- Maximum images per floor.
 
-### AI 提示词
+### AI prompts
 
-- 系统职责提示词。
-- 生图 tag 编写规则。
-- 破限/附加提示词。
-- 使用的独立 API 渠道。
+- System duty prompt.
+- Image tag writing rules.
+- Core Prompt / extra prompt.
+- The separate API channel to use.
 
-### tag 与重新生成
+### Tags and regeneration
 
-- 默认显示 tag / 折叠 tag / 隐藏 tag 但保留编辑入口。
-- tag 修改后自动重新生成，默认关闭。
-- 是否保留旧图片历史。
-- 删除 tag 时是否同时删除图片文件。
+- Show tags by default / collapse tags / hide tags but keep an edit entry.
+- Regenerate automatically after a tag edit, off by default.
+- Whether to keep old image history.
+- Whether to delete the image file when deleting a tag.
 
-### 生图后端
+### Image backends
 
-- 默认后端。
-- ComfyUI 地址与请求方式。
-- ComfyUI API 工作流 JSON。
-- 后续 NAI / WebUI 各自配置。
+- Default backend.
+- ComfyUI address and request method.
+- ComfyUI API workflow JSON.
+- Separate settings for NAI / WebUI later.
 
-## 12. 并发、幂等与错误处理
+## 12. Concurrency, idempotency and error handling
 
-### 12.1 任务身份
+### 12.1 Task identity
 
-每个任务至少由以下信息唯一标识：
+Each task is uniquely identified by at least:
 
 ```text
-chatId + floor + swipeId + tag出现序号 + promptHash
+chatId + floor + swipeId + tag order of appearance + promptHash
 ```
 
-相同身份的任务不得重复提交。重新生成时 promptHash、任务序号或显式 generationId 必须变化。
+Tasks with the same identity must not be submitted twice. On regeneration, promptHash, the task sequence number or an explicit generationId must change.
 
-### 12.2 必须防止的错误
+### 12.2 Errors that must be prevented
 
-- 独立请求返回时用户已经切换聊天。
-- 用户在分析期间编辑了目标正文。
-- 用户在生图期间切换了 swipe。
-- tag 被删除、复制或修改。
-- 同一消息渲染事件重复触发自动分析。
-- 页面重载后把旧的 pending 状态再次提交。
-- 图片生成成功但聊天保存失败。
-- 多张图完成顺序不同导致结果错绑。
+- The user has switched chats when the separate request returns.
+- The user edited the target text during analysis.
+- The user switched swipes during image generation.
+- A tag was deleted, copied or edited.
+- The same message render event triggers automatic analysis twice.
+- After a page reload, an old pending state is submitted again.
+- The image generated successfully but saving the chat failed.
+- Several images finishing in a different order bind results to the wrong tags.
 
-### 12.3 推荐策略
+### 12.3 Recommended strategy
 
-- 使用 AbortController 管理可取消的网络任务。
-- 每个阶段重新验证任务身份。
-- 持久状态与瞬时运行状态分开。
-- 自动触发使用正文清洗后的 sourceHash 去重；计算时排除柏宝绘自身 tag，避免插入 tag 后再次触发整楼分析。
-- 失败保留可读错误和“重试”入口，不无限自动重试付费请求。
+- Manage cancellable network tasks with AbortController.
+- Re-verify task identity at every stage.
+- Keep persistent state separate from transient runtime state.
+- Automatic triggers deduplicate by sourceHash after cleaning the text. BaiBai Image's own tags are excluded from the computation, so inserting tags never triggers another whole-floor analysis.
+- Failures keep a readable error and a "Retry" entry. Paid requests are never retried automatically without limit.
 
-## 13. 推荐实施顺序
+## 13. Recommended implementation order
 
-### 阶段一：独立 AI 自动插入 tag（已完成首版）
+### Phase one: separate AI inserts tags automatically (first version done)
 
-- 监听新 AI 正文完成事件。
-- 拼装清洗后的最近 N 个 AI 故事楼及其间 user 楼和 D1/D2 柏宝书快照。
-- 发送带段尾位置 ID 的目标正文并要求模型返回位置 ID JSON。
-- 校验位置 ID、提示词和最大数量后安全写回正文。
+- Listen for the new AI text finished event.
+- Assemble the cleaned last N AI story floors, the user floors between them, and the D1/D2 BaiBai Book snapshot.
+- Send the target text with paragraph-end position IDs and ask the model to return position ID JSON.
+- Validate position IDs, prompts and the maximum count, then write back to the text safely.
 
-### 阶段二：单 tag 生图闭环
+### Phase two: single-tag image loop
 
-- 解析 `<bbi_image>提示词</bbi_image>`。
-- 从 tag 调用已完成的 ComfyUI 适配。
-- 将结果保存并显示在 tag 位置。
-- 支持修改 tag 后手动重新生成。
+- Parse `<bbi_image>prompt</bbi_image>`.
+- Call the finished ComfyUI adaptation from the tag.
+- Save the result and show it at the tag position.
+- Support manual regeneration after editing a tag.
 
-### 阶段三：tag 编辑与任务状态
+### Phase three: tag editing and task state
 
-- 完成删除、移动、复制和损坏 tag 的处理。
-- 完成过期图片、取消、重试和历史图片。
+- Finish handling of deleted, moved, copied and broken tags.
+- Finish stale images, cancel, retry and history images.
 
-### 阶段四：柏宝书兼容
+### Phase four: BaiBai Book compatibility
 
-- 按 D1/D2 语义读取当前状态快照（已完成首版）。
-- 完成柏宝书对 `<bbi_image>` 块的清洗。
-- 避免纯 tag 修改导致剧情摘要失效。
+- Read the current state snapshot with D1/D2 semantics (first version done).
+- Finish BaiBai Book's cleanup of `<bbi_image>` blocks.
+- Prevent tag-only edits from invalidating story summaries.
 
-### 阶段五：体验与其他后端
+### Phase five: experience and other backends
 
-- 任务队列、取消、重试和历史图片。
-- NAI / WebUI 适配。
-- 重做正式 UI。
+- Task queue, cancel, retry and history images.
+- NAI / WebUI adaptation.
+- Rebuild the final UI.
 
-## 14. 尚待确认的设计项
+## 14. Design items still to be decided
 
-以下内容在编码前仍需要最终决定：
+These still need a final decision before coding:
 
-1. tag 是否默认展开显示提示词。
-2. 旧图片是保留为历史、立即替换，还是由用户选择。
-3. 删除 tag 时是否删除服务器上的图片文件。
-4. 是否需要允许同一个 tag 同时生成多张批次图片。
-5. 柏宝书兼容采用内置标签、注册清洗器 API，还是两者同时提供。
-6. 自动任务在用户切换 swipe 后是取消，还是允许写回原 swipe。
+1. Whether tags show their prompts expanded by default.
+2. Whether old images are kept as history, replaced immediately, or left to the user's choice.
+3. Whether deleting a tag deletes the image file on the server.
+4. Whether one tag should be allowed to generate a batch of several images at once.
+5. Whether BaiBai Book compatibility uses built-in tags, a registered cleaner API, or both.
+6. Whether an automatic task is cancelled after the user switches swipes, or allowed to write back to the original swipe.
 
-这些项目不影响“正文 tag 是提示词与位置真源、图片结果保存在扩展数据中”的总体方向。
+None of these affects the overall direction: "text tags are the source of truth for prompts and positions, and image results are stored in extension data".

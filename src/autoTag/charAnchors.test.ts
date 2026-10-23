@@ -57,7 +57,7 @@ describe('formatEntryForPrompt / buildLibraryText', () => {
     expect(text).toContain("- 小雪 [locked]: Gender=1girl");
     expect(text).toContain("- 张三: Gender=1boy");
     expect(text).toContain('[locked] are global and immutable');
-    // 无锁定名时头部保持原样(不带锁定说明)
+    // Without locked names the header stays as-is (no locked note)
     expect(buildLibraryText([entry('小雪', { sex: '1girl' })])).not.toContain('immutable');
   });
 });
@@ -133,7 +133,7 @@ describe('parseConvertedTags', () => {
 
 describe('positioned character state', () => {
   it('renders the library without firing any request', () => {
-    // 建档已交给主请求:这层只做本地渲染,不再发外貌转换请求
+    // Profile creation moved to the main request: this layer only renders locally and no longer sends an appearance conversion request
     const entries = [entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'blue eyes' })];
     const resolved = resolveCharAnchors(entries);
     expect(resolved.entries).toBe(entries);
@@ -155,8 +155,8 @@ describe('positioned character state', () => {
   });
 
   it('makes a same-response new profile available across the whole floor', () => {
-    // 新角色的固定外貌是本楼全程成立的事实,不是「从某处开始」的变化:
-    // 按位置门控会让建档位置之前的图片查不到条目,@占位符被整个剥掉 = 角色没有外貌。
+    // A new character's fixed appearance holds for the whole floor; it is not a change "starting somewhere":
+    // gating by position would leave images before the profile position without an entry, and the @placeholder would be stripped = the character has no appearance.
     const profile = createCharTagNewOp({
       name: '阿黛尔',
       fields: { ...emptyCharFields(), sex: '1girl', hair: 'short silver hair', eyes: 'red eyes' },
@@ -180,11 +180,11 @@ describe('positioned character state', () => {
     const dye = createCharTagSetOp('玩家', 'hair', 'long red hair', '染发')!;
     const ops = [{ op: dye, sourceLine: 0 }];
     const locked = new Set(['玩家']);
-    // 锁定:set 被丢弃,始终用库中值
+    // Locked: set is discarded; the library value always applies
     expect(applyPositionedCharRefs('@玩家, standing', base, ops, 5, 'tag', locked).text).toBe(
       '1boy, short black hair, standing',
     );
-    // 不锁定:照旧按位置生效
+    // Not locked: takes effect by position as before
     expect(applyPositionedCharRefs('@玩家, standing', base, ops, 5).text).toBe(
       '1boy, long red hair, standing',
     );

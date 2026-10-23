@@ -4,9 +4,9 @@ import { ref } from 'vue';
 
 const props = withDefaults(
   defineProps<{
-    /** 标题文本。用 #header 插槽时可留空。 */
+    /** Title text. May be empty when the #header slot is used. */
     title?: string;
-    /** 初始是否展开 */
+    /** Whether it starts expanded */
     open?: boolean;
   }>(),
   { title: '', open: true },
@@ -14,14 +14,14 @@ const props = withDefaults(
 
 const expanded = ref(props.open);
 
-// 用 grid-template-rows 0fr<->1fr 做高度过渡,无需测量 scrollHeight,内容自适应。
+// Height transition via grid-template-rows 0fr<->1fr: no scrollHeight measuring needed, content sizes itself.
 </script>
 
 <template>
   <section class="bbi-collapsible" :class="{ 'is-open': expanded }">
     <button class="bbi-collapsible-head" type="button" :aria-expanded="expanded" @click="expanded = !expanded">
-      <!-- 默认只放标题文本;需要在标题行放徽章/元信息时用 #header 插槽覆盖
-           (插槽内不要放按钮等可交互元素——整个头本身就是一个 button)。 -->
+      <!-- Holds only the title text by default; override with the #header slot to put badges/meta in the title row
+           (do not put buttons or other interactive elements in the slot: the whole header is itself a button). -->
       <slot name="header">
         <span class="bbi-collapsible-title">{{ title }}</span>
       </slot>
@@ -74,13 +74,13 @@ const expanded = ref(props.open);
   color: var(--bbi-ink-muted);
   transition: transform var(--bbi-dur) var(--bbi-ease);
 }
-/* 用直接子代 > 限定:嵌套 Collapsible 时,外层 .is-open 不得波及内层的 outer/chevron,
-   否则内层会被外层钉死在展开态、永远收不起来。 */
+/* Restricted with the direct-child > combinator: with nested Collapsibles, an outer .is-open must not reach the inner outer/chevron,
+   or the inner one gets pinned open by the outer one and can never collapse. */
 .bbi-collapsible.is-open > .bbi-collapsible-head .bbi-collapsible-chevron {
   transform: rotate(180deg);
 }
 
-/* 高度过渡:grid 0fr -> 1fr */
+/* Height transition: grid 0fr -> 1fr */
 .bbi-collapsible-outer {
   display: grid;
   grid-template-rows: 0fr;
@@ -98,7 +98,7 @@ const expanded = ref(props.open);
   border-top: 1px solid var(--bbi-line);
 }
 
-/* 移动端:折叠区标题略小一号,与窄屏整体节奏更协调 */
+/* Mobile: collapsible titles one size smaller, matching the overall rhythm of narrow screens */
 @media (max-width: 640px) {
   .bbi-collapsible-head {
     font-size: 13px;

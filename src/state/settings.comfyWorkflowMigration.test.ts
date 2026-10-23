@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * ComfyUI 单套工作流 → 工作流库的存量迁移。
+ * Migration of existing data from a single ComfyUI workflow → the workflow library.
  *
- * 两个关键点:
- * 1. 老配置的 workflow / naturalLanguage / 横竖尺寸不搬进第一条预设的话,升级后
- *    用户配好的工作流会凭空消失(面板变空白、出图直接失败)。
- * 2. workflows 恒非空是全局不变式:面板与出图门槛都直接取 workflows[0] 兜底,
- *    库为空会一路 undefined 炸开。脏数据也必须被兜住。
+ * Two key points:
+ * 1. If old configs' workflow / naturalLanguage / landscape and portrait sizes weren't moved into the first preset, after upgrading
+ *    the user's configured workflow would vanish into thin air (the panel goes blank, image generation fails outright).
+ * 2. workflows never being empty is a global invariant: the panel and image gates take workflows[0] directly as the fallback,
+ *    and an empty library would blow up with undefined all the way down. Dirty data must be caught too.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -28,14 +28,14 @@ async function hydrateWithComfy(comfyui: Record<string, unknown> | undefined) {
   return settings;
 }
 
-describe('ComfyUI 工作流库迁移', () => {
+describe('ComfyUI workflow library migration', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('toastr', { info: vi.fn(), success: vi.fn(), error: vi.fn() });
     vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
   });
 
-  it('老单套配置折成一条预设,JSON/开关/横竖尺寸原样搬入并成为当前项', async () => {
+  it('old single config folds into one preset, with JSON/toggles/landscape and portrait sizes moved in as-is and made current', async () => {
     const settings = await hydrateWithComfy({
       url: 'http://127.0.0.1:8188',
       workflow: '{"3":{"class_type":"KSampler","inputs":{"seed":"%seed%"}}}',
@@ -51,26 +51,26 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(preset.naturalLanguage).toBe(true);
     expect(preset.portraitSize).toBe('1024×1536');
     expect(preset.landscapeSize).toBe('1536×1024');
-    // 当前项指向它,否则升级后面板显示空白
+    // The current entry points at it, otherwise the panel shows a blank after upgrading
     expect(settings.comfyui.activeWorkflowId).toBe(preset.id);
-    // url 仍是渠道级,不下沉进预设
+    // url stays at the channel level and does not move down into the preset
     expect(settings.comfyui.url).toBe('http://127.0.0.1:8188');
   });
 
-  it('从未配过(comfyui 键缺失)→ 也给一条空预设,不抛错', async () => {
+  it('never configured (comfyui key missing) → still gets one empty preset without throwing', async () => {
     const settings = await hydrateWithComfy(undefined);
     expect(settings.comfyui.workflows).toHaveLength(1);
     expect(settings.comfyui.workflows[0].workflow).toBe('');
     expect(settings.comfyui.activeWorkflowId).toBe(settings.comfyui.workflows[0].id);
   });
 
-  it('老配置 workflow 是空串 → 仍建这一条(那正是用户面对的空槽位,不是垃圾数据)', async () => {
+  it('old config workflow is an empty string → still creates the entry (that is the empty slot the user faces, not junk data)', async () => {
     const settings = await hydrateWithComfy({ workflow: '', naturalLanguage: false });
     expect(settings.comfyui.workflows).toHaveLength(1);
     expect(settings.comfyui.workflows[0].workflow).toBe('');
   });
 
-  it('新格式数据原样保留,不会被再折一次(迁移幂等)', async () => {
+  it('new-format data kept as-is and not folded again (migration is idempotent)', async () => {
     const settings = await hydrateWithComfy({
       workflows: [
         { id: 'wf_a', name: 'Illustrious', workflow: '{"1":{}}', naturalLanguage: false, portraitSize: '832×1216', landscapeSize: '1216×832' },
@@ -84,7 +84,7 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(settings.comfyui.activeWorkflowId).toBe('wf_b');
   });
 
-  it('当前项指向已删条目 → 回落第一条(悬空 id 会让面板空白、出图取不到工作流)', async () => {
+  it('current entry points at a deleted entry → falls back to the first (a dangling id would blank the panel and leave image generation with no workflow)', async () => {
     const settings = await hydrateWithComfy({
       workflows: [{ id: 'wf_a', name: 'A', workflow: '{"1":{}}' }],
       activeWorkflowId: 'wf_gone',
@@ -92,13 +92,13 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(settings.comfyui.activeWorkflowId).toBe('wf_a');
   });
 
-  it('workflows 是空数组 → 补一条,保住恒非空不变式', async () => {
+  it('workflows is an empty array → one entry added, keeping the never-empty invariant', async () => {
     const settings = await hydrateWithComfy({ workflows: [], activeWorkflowId: '' });
     expect(settings.comfyui.workflows).toHaveLength(1);
     expect(settings.comfyui.activeWorkflowId).toBe(settings.comfyui.workflows[0].id);
   });
 
-  it('条目缺字段/含脏数据 → 逐项补齐,不变式仍成立', async () => {
+  it('entries missing fields/containing dirty data → filled item by item, invariant still holds', async () => {
     const settings = await hydrateWithComfy({
       workflows: [{ name: 'no id' }, null, { id: 'wf_c', workflow: 42, portraitSize: '   ' }],
       activeWorkflowId: 'wf_c',
@@ -106,18 +106,18 @@ describe('ComfyUI 工作流库迁移', () => {
 
     expect(settings.comfyui.workflows).toHaveLength(3);
     const [first, second, third] = settings.comfyui.workflows;
-    // 缺 id 的补一个,缺名字的给默认名
+    // Entries missing an id get one; entries missing a name get the default name
     expect(first.id).toBeTruthy();
     expect(first.name).toBe('no id');
     expect(second.id).toBeTruthy();
     expect(second.name).toBe("Default workflow");
-    // 非字符串的 workflow 归空串;空白尺寸回默认值(不能留空,否则 %width% 拿不到值)
+    // Non-string workflow becomes an empty string; blank sizes go back to defaults (they can't stay empty, otherwise %width% has no value)
     expect(third.workflow).toBe('');
     expect(third.portraitSize).toBe('832×1216');
     expect(settings.comfyui.activeWorkflowId).toBe('wf_c');
   });
 
-  it('activeComfyPreset / effectiveComfyConn 取的是当前项', async () => {
+  it('activeComfyPreset / effectiveComfyConn take the current entry', async () => {
     mocks.context = {
       extensionSettings: {
         baibai_image: {
@@ -141,7 +141,7 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(effectiveComfyConn()).toEqual({
       url: 'http://example:8188',
       workflow: '{"2":{}}',
-      // 存量预设没有 mode/simple 字段 → custom + 简易模式默认值
+      // Existing presets lack mode/simple fields → custom + simple-mode defaults
       mode: 'custom',
       simple: simpleDefaults(),
       portraitSize: '1024×1024',

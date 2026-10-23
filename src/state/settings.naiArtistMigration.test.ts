@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * NAI 画师串库的存量与脏数据处理。
+ * Existing data and dirty data handling for the NAI artist string library.
  *
- * 与 ComfyUI 工作流库**刻意相反**的三条,是本文件的主要看点:
- * 1. 库允许为空,`naiDefaults` 也不播种任何条目——画师串是可选调味,
- *    凭空塞一条会让人以为自己被套了某种画风;
- * 2. `activeArtistId` 悬空时清成空串,**不**回落第一条。回落等于给用户静默换一套画风,
- *    而下拉显示的正是那一条(看起来就是自己设的),几乎无法排查;
- * 3. 纯加法迁移,没有老字段可折——老配置升级后正向提示词输出必须逐字节不变。
+ * Three rules **deliberately opposite** to the ComfyUI workflow library are this file's main focus:
+ * 1. The library may be empty, and `naiDefaults` seeds no entries either: the artist string is optional seasoning,
+ *    and inserting one out of thin air would make people think some style had been forced on them;
+ * 2. a dangling `activeArtistId` is cleared to an empty string, **not** falling back to the first. Falling back would silently change the user's style,
+ *    and the dropdown would show exactly that entry (looking like their own choice), nearly impossible to trace;
+ * 3. a purely additive migration with no old fields to fold: after upgrading, old configs' positive prompt output must stay byte for byte the same.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -29,26 +29,26 @@ async function hydrateWithNai(nai: Record<string, unknown> | undefined) {
   return settings;
 }
 
-describe('NAI 画师串库', () => {
+describe('NAI artist string library', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('toastr', { info: vi.fn(), success: vi.fn(), error: vi.fn() });
     vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
   });
 
-  it('存量配置没有这两个键 → 空库 + 不使用,不抛(升级后出图提示词零变化)', async () => {
+  it('existing configs without these two keys → empty library + None, no throw (image prompts unchanged after upgrading)', async () => {
     const settings = await hydrateWithNai({ model: 'nai-diffusion-4-5-full', key: 'k' });
     expect(settings.nai.artistPresets).toEqual([]);
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('nai 键整个缺失 → 同样是空库 + 不使用', async () => {
+  it('nai key missing entirely → likewise empty library + None', async () => {
     const settings = await hydrateWithNai(undefined);
     expect(settings.nai.artistPresets).toEqual([]);
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('新格式原样保留,当前项不被动(迁移幂等)', async () => {
+  it('new format kept as-is, current entry untouched (migration is idempotent)', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [
         { id: 'art_a', name: '厚涂', prompt: 'artist:wlop', quality: 'masterpiece', negative: 'lowres' },
@@ -63,9 +63,9 @@ describe('NAI 画师串库', () => {
     expect(settings.nai.activeArtistId).toBe('art_b');
   });
 
-  it('存量条目没有绑定的正/负面词键 → 补空串(= 跟随渠道级,升级后提示词零变化)', async () => {
-    // 绑定字段上线前的老数据只有 id/name/prompt;补空串而非官方词,
-    // 才能保住「配方 → 渠道 → 官方」回落链里老用户原有的渠道级/官方行为。
+  it('existing entries without bound positive/negative keys → filled with empty strings (= follow the channel level; prompts unchanged after upgrading)', async () => {
+    // Old data from before the binding fields has only id/name/prompt; filling empty strings rather than official words
+    // is what preserves old users' existing channel-level/official behaviour in the "recipe → channel → official" fallback chain.
     const settings = await hydrateWithNai({
       qualityTags: 'channel q',
       undesiredContent: 'channel n',
@@ -75,12 +75,12 @@ describe('NAI 画师串库', () => {
     const preset = settings.nai.artistPresets[0];
     expect(preset.quality).toBe('');
     expect(preset.negative).toBe('');
-    // 渠道级覆盖值不受迁移影响
+    // Channel-level overrides are unaffected by the migration
     expect(settings.nai.qualityTags).toBe('channel q');
     expect(settings.nai.undesiredContent).toBe('channel n');
   });
 
-  it('绑定字段是非字符串脏数据 → 归空串,不整条丢弃', async () => {
+  it('binding fields with non-string dirty data → empty strings, entry not discarded', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [{ id: 'art_a', name: 'A', prompt: 'artist:a', quality: 42, negative: null }],
       activeArtistId: 'art_a',
@@ -90,7 +90,7 @@ describe('NAI 画师串库', () => {
     expect(settings.nai.activeArtistId).toBe('art_a');
   });
 
-  it('previewPath:合法字符串保留,缺失/脏数据视为无预览', async () => {
+  it('previewPath: valid strings kept; missing/dirty data treated as no preview', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [
         { id: 'art_a', name: 'A', prompt: '', previewPath: '/user/images/柏宝绘_画师串/art_a.jpg' },
@@ -107,25 +107,25 @@ describe('NAI 画师串库', () => {
     expect(d.previewPath).toBeUndefined();
   });
 
-  it('当前项指向已删条目 → 清成空串,**不**回落第一条', async () => {
-    // 与 normalizeComfyUI 的「悬空回落 workflows[0]」刻意不同:那里工作流是必需品,
-    // 这里回落会给用户静默套上一套没选过的画风,每张图都变样却查不出原因。
+  it('current entry points at a deleted entry → cleared to an empty string, **not** falling back to the first', async () => {
+    // Deliberately different from normalizeComfyUI's "dangling falls back to workflows[0]": there the workflow is essential;
+    // here falling back would silently apply a style the user never chose, changing every image with no traceable cause.
     const settings = await hydrateWithNai({
       artistPresets: [{ id: 'art_a', name: 'A', prompt: 'artist:a' }],
       activeArtistId: 'art_gone',
     });
     expect(settings.nai.activeArtistId).toBe('');
-    // 库本身不受影响,条目还在
+    // The library itself is unaffected; the entries are still there
     expect(settings.nai.artistPresets).toHaveLength(1);
   });
 
-  it('库为空数组但 id 非空 → id 清空,库保持空(不补条目,与工作流库的恒非空相反)', async () => {
+  it('library is an empty array but id is not empty → id cleared, library stays empty (no entry added, opposite of the never-empty workflow library)', async () => {
     const settings = await hydrateWithNai({ artistPresets: [], activeArtistId: 'art_x' });
     expect(settings.nai.artistPresets).toEqual([]);
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('activeArtistId 不是字符串 → 清成空串', async () => {
+  it('activeArtistId not a string → cleared to an empty string', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [{ id: 'art_a', name: 'A', prompt: 'artist:a' }],
       activeArtistId: 42,
@@ -133,7 +133,7 @@ describe('NAI 画师串库', () => {
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('条目缺字段/含脏数据 → 逐项补齐,不整条丢弃', async () => {
+  it('entries missing fields/containing dirty data → filled item by item, not discarded whole', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [{ name: 'no id' }, null, { id: 'art_c', prompt: 42 }],
       activeArtistId: 'art_c',
@@ -141,19 +141,19 @@ describe('NAI 画师串库', () => {
 
     expect(settings.nai.artistPresets).toHaveLength(3);
     const [first, second, third] = settings.nai.artistPresets;
-    // 缺 id 的补一个,名字保留
+    // Entries missing an id get one; the name is kept
     expect(first.id).toBeTruthy();
     expect(first.name).toBe('no id');
-    // null 条目也补齐成可用的空槽位,名字按序号给
+    // null entries are also filled into usable empty slots, named by sequence number
     expect(second.id).toBeTruthy();
     expect(second.name).toBe('Artist Tags 2');
     expect(second.prompt).toBe('');
-    // 非字符串 prompt 归空串;有效 id 仍被 activeArtistId 认到
+    // Non-string prompts become empty strings; a valid id is still recognised by activeArtistId
     expect(third.prompt).toBe('');
     expect(settings.nai.activeArtistId).toBe('art_c');
   });
 
-  it('prompt 是空串的条目照样保留(那是用户面对的空槽位,不是垃圾数据)', async () => {
+  it('entries whose prompt is an empty string are kept as usual (that is the empty slot the user faces, not junk data)', async () => {
     const settings = await hydrateWithNai({
       artistPresets: [{ id: 'art_a', name: '待填', prompt: '' }],
       activeArtistId: 'art_a',
@@ -162,7 +162,7 @@ describe('NAI 画师串库', () => {
     expect(settings.nai.activeArtistId).toBe('art_a');
   });
 
-  it('activeNaiArtist 取当前项;未选 / 悬空时返回 null', async () => {
+  it('activeNaiArtist takes the current entry; returns null when none is selected / dangling', async () => {
     mocks.context = {
       extensionSettings: {
         baibai_image: {
@@ -183,33 +183,33 @@ describe('NAI 画师串库', () => {
     expect(activeNaiArtist()?.name).toBe('B');
     expect(activeNaiArtist()?.prompt).toBe('artist:b');
 
-    // 切到「不使用」
+    // Switch to "None"
     settings.nai.activeArtistId = '';
     expect(activeNaiArtist()).toBeNull();
 
-    // 悬空(UI 运行中把库改坏这种时序)也返回 null,而不是兜底成第一条
+    // Dangling (timing like the UI breaking the library while running) also returns null, rather than falling back to the first
     settings.nai.activeArtistId = 'art_gone';
     expect(activeNaiArtist()).toBeNull();
   });
 
-  it('newNaiArtist 连续调用 id 不重复(同一毫秒内也不撞)', async () => {
+  it('newNaiArtist gives unique ids on repeated calls (no collision even within the same millisecond)', async () => {
     const { newNaiArtist } = await import('@/state/settings');
     const ids = [newNaiArtist(), newNaiArtist(), newNaiArtist()].map(a => a.id);
     expect(new Set(ids).size).toBe(3);
-    // art_ 前缀不与 wf_ / ch_ 的 id 空间相撞
+    // The art_ prefix doesn't collide with the wf_ / ch_ id spaces
     expect(ids.every(id => id.startsWith('art_'))).toBe(true);
   });
 });
 
-describe('内置画师串(bi_*)与新老用户', () => {
+describe('built-in artist strings (bi_*) and new vs old users', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('toastr', { info: vi.fn(), success: vi.fn(), error: vi.fn() });
     vi.stubGlobal('window', { addEventListener: vi.fn(), dispatchEvent: vi.fn() });
   });
 
-  it('全新安装(没有任何已存设置)→ 默认启用内置「默认画师串」', async () => {
-    // 默认只在这条路径生效:stored 整个不存在时,模块级默认值直接被写进 extension_settings。
+  it('fresh install (no stored settings at all) → the built-in Default artist string enabled by default', async () => {
+    // The default only applies on this path: when stored doesn't exist at all, the module-level defaults are written straight into extension_settings.
     mocks.context = {
       extensionSettings: {},
       saveSettingsDebounced: vi.fn(),
@@ -217,10 +217,10 @@ describe('内置画师串(bi_*)与新老用户', () => {
     const { hydrateSettings, settings } = await import('@/state/settings');
     await hydrateSettings();
     expect(settings.nai.activeArtistId).toBe('bi_default');
-    expect(settings.nai.artistPresets).toEqual([]); // 用户库仍为空:内置条不进 settings
+    expect(settings.nai.artistPresets).toEqual([]); // The user library is still empty: built-in entries don't go into settings
   });
 
-  it('老用户:已存的 activeArtistId 原样保留(空串 = 不使用,不会被默认值顶掉)', async () => {
+  it('old users: the stored activeArtistId kept as-is (empty string = None, not displaced by the default)', async () => {
     const settings = await hydrateWithNai({
       model: 'nai-diffusion-4-5-full',
       artistPresets: [],
@@ -229,17 +229,17 @@ describe('内置画师串(bi_*)与新老用户', () => {
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('老用户的存量 nai 段没有 activeArtistId 键 → 空串,不吃新装默认', async () => {
+  it('old users whose stored nai section lacks the activeArtistId key → empty string, not taking the fresh-install default', async () => {
     const settings = await hydrateWithNai({ model: 'nai-diffusion-4-5-full', key: 'k' });
     expect(settings.nai.activeArtistId).toBe('');
   });
 
-  it('选中内置条目的配置:用户库为空也不算悬空,normalize 不清掉', async () => {
+  it('configs with a built-in entry selected: not dangling even with an empty user library, so normalize does not clear it', async () => {
     const settings = await hydrateWithNai({ artistPresets: [], activeArtistId: 'bi_default' });
     expect(settings.nai.activeArtistId).toBe('bi_default');
   });
 
-  it('bi_ 前缀但 id 不存在(内置条目下线后)→ 仍按悬空清成空串', async () => {
+  it('bi_ prefix but the id does not exist (after a built-in entry was retired) → still cleared as dangling to an empty string', async () => {
     const settings = await hydrateWithNai({ artistPresets: [], activeArtistId: 'bi_gone' });
     expect(settings.nai.activeArtistId).toBe('');
   });

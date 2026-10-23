@@ -73,14 +73,14 @@ describe('prompt-side hide script (promptOnly)', () => {
 
 describe('placement covers narrator floors (regression lock)', () => {
   /**
-   * 为什么这条锁得写清楚缘由:旁白楼(`/narrator`、`/sys`)是 `is_system:false` +
-   * `extra.type:'narrator'`,st/context.ts 的 isAiStoryMessage **认它是剧情楼**、
-   * 自动 tag 会往里写 tag;而 script.js 的 getRegexPlacement 给这种楼派的是
-   * SLASH_COMMAND(3),不是 AI_OUTPUT(2)。少这个 3,锚点正则整条不命中——
-   * tag 原文当正文显示出来,还没有锚点可挂卡片。
+   * Why this lock must spell out its reason: narrator floors (`/narrator`, `/sys`) are `is_system:false` +
+   * `extra.type:'narrator'`; st/context.ts's isAiStoryMessage **counts them as story floors**, and
+   * auto-tag writes tags into them; but script.js's getRegexPlacement assigns such floors
+   * SLASH_COMMAND(3), not AI_OUTPUT(2). Without this 3, the anchor regex never matches at all:
+   * the raw tag text shows as body text, and there is no anchor to hang a card on.
    *
-   * 只断言 `[1,2,3]` 的话,后人「精简掉用不上的 placement」时看不到代价;
-   * 这条测试要说的是 3 对应哪一类楼。
+   * Asserting only `[1,2,3]` wouldn't show the cost to someone later "trimming unused placements";
+   * this test says which kind of floor 3 corresponds to.
    */
   const PLACEMENT_BY_MESSAGE_KIND = {
     user: 1,
@@ -97,8 +97,8 @@ describe('placement covers narrator floors (regression lock)', () => {
   });
 
   it('never covers the deprecated MD_DISPLAY placement', () => {
-    // 0 已被 ST 弃用,且 regex/index.js 会把带 0 的规则改写成「全部 placement」,
-    // 那会让占位规则跑到世界书(5)/思维链(6)上去。
+    // 0 is deprecated by ST, and regex/index.js rewrites rules containing 0 into "all placements",
+    // which would make the placeholder rule run on the lorebook (5)/thought chain (6).
     expect(imageTagSlotScript().placement).not.toContain(0);
     expect(imageTagHideScript().placement).not.toContain(0);
   });
@@ -123,8 +123,8 @@ describe('hasImageTagTrace', () => {
   });
 
   it('sees a lone closing tag — the case that used to make the button a no-op', () => {
-    // 按钮层曾用 /<bbi_image\b/(只认开标签)→ 判定「没 tag」不弹确认、传 replace=false;
-    // runner 层认开也认闭 → 判定「有 tag」静默放弃。两侧同源后这种楼照样能重新生成。
+    // The button layer once used /<bbi_image\b/ (open tags only) → judged "no tag", showed no confirmation, passed replace=false;
+    // the runner layer recognised both open and close → judged "has tag" and silently gave up. With both sharing a source, such floors can be regenerated.
     expect(hasImageTagTrace('模型学着上下文写了半截 </bbi_image>')).toBe(true);
   });
 
@@ -160,8 +160,8 @@ describe('stripImageTags', () => {
   });
 
   it('also clears half-written orphan tags left after the pairs are gone', () => {
-    // 留一个孤立的 <bbi_image> 会让非贪婪查找正则从它吃到下一个 </bbi_image>,
-    // 把中间的正文连同后面那条真 tag 一起吞掉 —— 残骸只删自己,真 tag 整段删。
+    // Leaving a lone <bbi_image> would let the non-greedy find regex eat from it to the next </bbi_image>,
+    // swallowing the text in between along with the real tag after it; the debris deletes only itself, the real tag is deleted whole.
     expect(stripImageTags('第一行\n<bbi_image>\n第二行\n<bbi_image>1girl</bbi_image>\n第三行')).toBe(
       '第一行\n第二行\n第三行',
     );
@@ -216,7 +216,7 @@ describe('parseImageTagContent', () => {
   });
 
   it('strips <size> out of the tag part instead of leaking it into the prompt', () => {
-    // 漏剥的话 landscape 这个词会直接混进正向提示词
+    // If not stripped, the word landscape would mix straight into the positive prompt
     expect(parseImageTagContent('<bbi_image>2girls, wide shot<size>landscape</size></bbi_image>')).toEqual(
       { tag: '2girls, wide shot', nl: '', negative: '', characters: [], size: 'landscape' },
     );
@@ -265,7 +265,7 @@ describe('parseImageTagContent', () => {
   });
 
   it('falls back to portrait for legacy tags without <size>', () => {
-    // 存量正文里的 tag 没有 size,必须维持改动前的竖屏行为
+    // Tags in existing text have no size and must keep the pre-change portrait behaviour
     expect(parseImageTagContent('<bbi_image>1girl</bbi_image>').size).toBe('portrait');
     expect(parseImageTagContent('<bbi_image>1girl<size>乱写</size></bbi_image>').size).toBe('portrait');
   });
@@ -301,7 +301,7 @@ describe('serializeImageTag', () => {
   });
 
   it('round-trips through parseImageTagContent byte-for-byte in canonical form', () => {
-    // 这条锁死「打开弹窗、什么都不改、保存」不会换 promptHash 桶 —— 一换,老图全变 stale。
+    // This locks down that "open the dialog, change nothing, save" doesn't switch promptHash buckets; if it did, all old images would turn stale.
     const canonical = [
       '<bbi_image>1girl<size>portrait</size></bbi_image>',
       '<bbi_image>2girls<nl>Two girls.</nl><size>landscape</size></bbi_image>',
@@ -345,7 +345,7 @@ describe('formatPromptText', () => {
   });
 
   it('renders what parseImageTagContent produces (gallery reads tags this way)', () => {
-    // 图库拿到的只有 tag 原文,要靠这条链路还原成与卡片一致的展示
+    // The gallery only gets the raw tag text and relies on this chain to restore a display matching the card
     const raw = serializeImageTag({
       tag: '1girl',
       nl: 'night',
@@ -389,7 +389,7 @@ describe('replaceImageTagAt', () => {
   });
 
   it('is not affected by a shared regex lastIndex across repeated calls', () => {
-    // 模块级 IMAGE_TAG_FIND_REGEX 带 /g 有状态,故本函数就地新建正则;连调三次结果须一致
+    // The module-level IMAGE_TAG_FIND_REGEX has /g and is stateful, so this function creates its regex locally; three calls in a row must give the same result
     expect(replaceImageTagAt(text, 0, next)).toBe(replaceImageTagAt(text, 0, next));
     expect(replaceImageTagAt(text, 2, next)).toBe(replaceImageTagAt(text, 2, next));
   });
@@ -403,7 +403,7 @@ describe('replaceImageTagAt', () => {
 
 describe('containsTagMarkup', () => {
   it('catches sub-tag literals that would truncate the tag block', () => {
-    // 查找正则是非贪婪的:内容里混进 </bbi_image> 会让 tag 提前截断,后半截漏进 DOM 与提示词
+    // The find regex is non-greedy: a </bbi_image> mixed into the content would cut the tag off early, leaking the second half into the DOM and prompt
     expect(containsTagMarkup('1girl</bbi_image>后半截')).toBe(true);
     expect(containsTagMarkup('1girl<bbi_image>')).toBe(true);
     expect(containsTagMarkup('a<nl>b')).toBe(true);
@@ -446,7 +446,7 @@ describe('managed bbi image-tag regex registration', () => {  it('registers both
     expect(list).toHaveLength(3);
     expect(list[0]).toBe(unrelated);
 
-    // 旧单条 hide 规则被原位升级为 promptOnly 版本（不再双开），用户字段保留
+    // The old single hide rule is upgraded in place to the promptOnly version (no longer both on), keeping user fields
     const hide = list.find(s => s.id === IMAGE_TAG_HIDE_REGEX_ID);
     expect(hide).toMatchObject({
       scriptName: "BaiBai Image · Hidden Picture Tags",
@@ -456,7 +456,7 @@ describe('managed bbi image-tag regex registration', () => {  it('registers both
       customField: 'preserved',
     });
 
-    // 新增 slot 规则且只出现一次
+    // The slot rule is added, and appears only once
     const slots = list.filter(s => s.id === IMAGE_TAG_SLOT_REGEX_ID);
     expect(slots).toHaveLength(1);
     expect(slots[0]).toMatchObject({

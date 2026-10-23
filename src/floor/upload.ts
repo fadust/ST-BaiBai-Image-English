@@ -1,11 +1,11 @@
 import { getContext } from '@/st/context';
 
 /**
- * ST 文件存储（user/files）的上传/删除封装。
+ * Upload/delete wrappers for ST file storage (user/files).
  *
- * 不依赖 ST 内部 uploadFileAttachment（chats.js:274 未暴露给第三方扩展，
- * 且失败时吞错返回 undefined 并弹 toastr）——这里用完全等价的
- * POST /api/files/upload 自实现，可拿到状态码与响应体，错误由调用方呈现。
+ * Does not rely on ST's internal uploadFileAttachment (chats.js:274 is not exposed to third-party extensions,
+ * and on failure it swallows the error, returns undefined and shows a toastr). This is an exactly equivalent
+ * POST /api/files/upload implementation that exposes the status code and response body; callers present errors.
  */
 
 export class FileStoreError extends Error {
@@ -27,37 +27,37 @@ async function postFile(endpoint: string, body: Record<string, unknown>): Promis
   return { ok: response.ok, status: response.status, text };
 }
 
-/** 上传 base64 文件，返回可访问的相对路径（/user/files/...）。失败抛错。 */
+/** Uploads a base64 file and returns an accessible relative path (/user/files/...). Throws on failure. */
 export async function uploadBase64File(name: string, base64: string): Promise<string> {
   const { ok, status, text } = await postFile('/api/files/upload', { name, data: base64 });
   if (!ok) {
-    throw new FileStoreError(`File upload failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
+    throw new FileStoreError(`File upload failed (${status})${text ? `: ${text.slice(0, 300)}` : ''}`, status);
   }
   let path = '';
   try {
     const parsed = JSON.parse(text) as { path?: unknown };
     if (typeof parsed.path === 'string') path = parsed.path;
   } catch {
-    /* 响应不是 JSON，落到下方统一报错 */
+    /* Response is not JSON; falls through to the shared error below */
   }
   if (!path) throw new FileStoreError('File upload failed: The server did not return the path');
   return path;
 }
 
-/** 上传图片。 */
+/** Uploads an image. */
 export function uploadImageFile(name: string, base64: string): Promise<string> {
   return uploadBase64File(name, base64);
 }
 
-/** 删除已上传文件。返回 false 表示文件本就不存在（无需清理）。 */
+/** Deletes an uploaded file. Returns false if the file did not exist (nothing to clean up). */
 export async function deleteUploadedFile(path: string): Promise<boolean> {
   const { ok, status, text } = await postFile('/api/files/delete', { path });
   if (ok) return true;
   if (status === 404) return false;
-  throw new FileStoreError(`File deletion failed (${status})${text ? `：${text.slice(0, 300)}` : ''}`, status);
+  throw new FileStoreError(`File deletion failed (${status})${text ? `: ${text.slice(0, 300)}` : ''}`, status);
 }
 
-/** 删除已上传图片。 */
+/** Deletes an uploaded image. */
 export function deleteImageFile(path: string): Promise<boolean> {
   return deleteUploadedFile(path);
 }

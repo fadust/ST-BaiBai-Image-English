@@ -31,11 +31,11 @@ describe('book memory', () => {
             condition: '左臂缠着绷带',
           },
           npcs: [
-            // 重要角色:常驻全量
+            // Important characters: always included in full
             { name: '阿黛尔', title: '归雁客栈掌柜', gender: '女', age: '28', important: true, desc: '银色短发', outfit: '青衫', condition: '脸色苍白', relation: '挚友', location: '归雁客栈二楼' },
-            // 不在场但正文提到:按正文发送
+            // Not present but mentioned in the text: sent per the text
             { name: '铁匠老周', title: '铁匠', gender: '男', desc: '络腮胡', outfit: '皮围裙' },
-            // 不在场且正文未提到:不发送
+            // Not present and not mentioned in the text: not sent
             { name: '路人甲', title: '路过商贩', gender: '男' },
           ],
           plans: [{ kind: 'plan', status: 'open', content: '三日后决斗' }],
@@ -52,7 +52,7 @@ describe('book memory', () => {
     expect(text).toContain("阿黛尔(女·28·归雁客栈掌柜) ——With the protagonist:挚友 〔Appearance:银色短发;Outfit:青衫;Condition:脸色苍白;In:归雁客栈二楼〕");
     expect(text).toContain("铁匠老周(男·铁匠) 〔Appearance:络腮胡;Outfit:皮围裙〕");
     expect(text).not.toContain('路人甲');
-    // 与画面无关的内容一律不注入
+    // Content unrelated to the image is never injected
     expect(text).not.toContain('当前时间');
     expect(text).not.toContain("Current location");
     expect(text).not.toContain('三日后决斗');
