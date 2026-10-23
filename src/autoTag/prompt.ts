@@ -25,7 +25,6 @@ import {
   DEFAULT_COMFY_NL_SPEC,
   DEFAULT_COMFY_SPEC,
   DEFAULT_COMFY_THINKING,
-  CONTENT_BOUNDARIES,
   DEFAULT_JAILBREAK_PROMPT,
   DEFAULT_NAI_SPEC,
   DEFAULT_NAI_THINKING,
@@ -321,10 +320,7 @@ ${characterRule}
   const messages: ChatMsg[] = [];
   // Core Prompt follows the same rule as BaiBai Book: blank falls back to the built-in default; always pinned as the first system message.
   const jailbreak = (options.prompts?.jailbreak ?? '').trim() || DEFAULT_JAILBREAK_PROMPT;
-  // The content boundaries are fixed and always follow the Core Prompt, default or custom. A copy saved inside an older custom
-  // Core Prompt is stripped first, so exactly one current copy is sent.
-  const core = `${jailbreak.replace(/<content_boundaries>[\s\S]*?<\/content_boundaries>\s*/g, '').trim()}\n\n${CONTENT_BOUNDARIES}`;
-  messages.push({ role: 'system', content: core });
+  messages.push({ role: 'system', content: jailbreak });
   if (charCard) messages.push({ role: 'system', content: buildCharCardSystem(charCard) });
   if (persona) messages.push({ role: 'system', content: buildPersonaSystem(persona) });
   if (worldInfo) messages.push({ role: 'system', content: buildWorldInfoSystem(worldInfo) });

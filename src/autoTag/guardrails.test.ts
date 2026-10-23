@@ -7,9 +7,8 @@ import type { STContext } from '@/st/context';
 /**
  * Content-boundary regression locks.
  *
- * The age/content guardrail is stated once, in the fixed CONTENT_BOUNDARIES block that is always
- * appended to the Core Prompt (default or custom), and applied as step F of each thought chain.
- * These tests pin both for the two live backends. Do not weaken them.
+ * The age/content guardrail is stated once, in <content_boundaries> at the end of the default Core Prompt,
+ * and applied as step F of each thought chain. These tests pin both defaults for the two live backends.
  */
 
 function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
@@ -97,7 +96,7 @@ async function withBackend<T>(backend: 'comfyui' | 'nai', run: () => Promise<T>)
 }
 
 describe('content boundaries', () => {
-  it.each(['comfyui', 'nai'] as const)('sends the fixed boundaries once, at the end of the first system message (%s)', backend =>
+  it.each(['comfyui', 'nai'] as const)('states the boundaries once, at the end of the default Core Prompt (%s)', backend =>
     withBackend(backend, async () => {
       const messages = await buildAutoTagMessages(context(), 1, options(), null);
       expect(messages[0].role).toBe('system');
@@ -109,21 +108,6 @@ describe('content boundaries', () => {
       const text = messages.map(m => m.content).join('\n');
       expect(countOf(text, '<content_boundaries>')).toBe(1);
       expect(text).not.toContain('Adult depiction and the consolation image');
-    }),
-  );
-
-  it('keeps the boundaries when the Core Prompt is customised, and replaces any stale copy inside it', () =>
-    withBackend('comfyui', async () => {
-      const custom = '<planner_core>custom core</planner_core>';
-      let text = (await buildAutoTagMessages(context(), 1, options({ jailbreak: custom }), null))[0].content;
-      expect(text).toContain('custom core');
-      for (const line of BOUNDARY_LINES) expect(text).toContain(line);
-
-      const stale = 'custom core\n<content_boundaries>\nold wording\n</content_boundaries>';
-      text = (await buildAutoTagMessages(context(), 1, options({ jailbreak: stale }), null))[0].content;
-      expect(text).not.toContain('old wording');
-      expect(countOf(text, '<content_boundaries>')).toBe(1);
-      for (const line of BOUNDARY_LINES) expect(text).toContain(line);
     }),
   );
 

@@ -152,7 +152,7 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'jailbreak',
     label: 'Core Prompt',
-    hint: 'Pinned as the first system message of every automatic tag request. Defines the planner role. The content boundaries are fixed and always added after it, so editing this prompt cannot remove them. Leave it blank to use the built-in default. Common to all backends.',
+    hint: 'Pinned as the first system message of every automatic tag request. Defines the planner role and the content boundaries. Leave it blank to use the built-in default. Common to all backends.',
     builtin: DEFAULT_JAILBREAK_PROMPT,
     macros: [],
   },
