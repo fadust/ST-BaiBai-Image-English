@@ -583,13 +583,13 @@ General requirements:
 /** Expansion of the {{nl}} macro (when "Generate Natural Language" is on); when off the macro expands to an empty string. */
 export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): natural language - an English caption of the same image, written as connected prose for image models with large text encoders (such as MOSS-Image). No word count: keep a simple scene short and add detail only where it makes the image more specific. No quality words, no tag lists inside sentences, and nothing the image does not show (no feelings, backstory, intentions or narrative commentary).
 Sentence pattern (one sentence per line of the pattern, in this order):
-- [Name] from [Source] is [age] [race] [gender] with [full appearance: face, hair, skin, body, outfit, accessories]. Write one such sentence per character in frame, early, before any action.
+- [Name] ([Source]) is [age] [race] [gender] with [full appearance: face, hair, skin, body, outfit, accessories]. Write one such sentence per character in frame, early, before any action.
 - [Name] [body action or posture] while [specific physical interaction with the other character(s)].
 - [Name] [secondary weight, contact or movement that responds to the other character's position].
-- Both / All characters from [Source] [shared environment, lighting and background that contains them together].
+- [Name] and [Name] [shared environment, lighting and background that contains them together].
 Rules:
 - Name the character in every sentence, using the exact name from the profile/story (Chinese names stay in Chinese). Never use he/she/they in place of a name; a possessive (her, his) is fine only inside a sentence that already names that character. Otherwise the model loses who is who.
-- Source: for a fan-work character, the work's English title (Rin from Fate/stay night); otherwise the medium: Anime, Cartoon, Comic, Movie or Original (Lin from Original).
+- Source goes in brackets after the name, only in the appearance sentence: for a fan-work character, the copyright as in the profile's fandom field, without backslashes (Batman (DC), Rin Tohsaka (Fate/stay night)); for everyone else, (original character). Later sentences use the name alone.
 - Appearance is stated once per character, in that character's first sentence, and not repeated later. Say it in words (long black hair tied in a low ponytail), never as a tag string.
 - Age, race and gender open every appearance sentence. Age: the stated age, or the age the character clearly looks ("an adult woman in her late twenties", "a middle-aged man"). Race: the ethnicity, or the species for non-humans (elf, demon, catgirl), as given by the profile, card, lorebook or story; when none is given, choose one that fits the world and keep it the same in every image of the floor. Gender: woman, man, girl, boy, or as the story states.
 - Interaction must be physical and mutual whenever the story shows the characters together: leaning on each other, supporting weight, arms overlapping, hips touching, hair or fabric crossing between them. Avoid side-by-side posing with only a glance. Never invent contact the story does not support; when the story keeps them apart, describe the real distance and what each body does toward the other.
@@ -599,11 +599,11 @@ Rules:
 - The content boundaries still apply: when the content gate requires it, the appearance sentence states adulthood plainly ("an adult woman in her thirties"). The consolation image keeps its fixed one-sentence nl.
 - nl and tag describe the same scene: tag holds entity and attribute keywords, and nl writes the caption above.
 Two-person example:
-Mei from Original is an adult East Asian woman in her mid-twenties with a round face, brown eyes, shoulder-length black hair with blunt bangs, fair skin and a slender build, wearing a cream knit sweater, a pleated navy skirt and a thin silver bracelet.
-Aiko from Original is an adult European woman in her early thirties with a narrow face, green eyes, long wavy auburn hair, light skin and a tall build, wearing a dark green trench coat over a white blouse and black boots.
+Mei (original character) is an adult East Asian woman in her mid-twenties with a round face, brown eyes, shoulder-length black hair with blunt bangs, fair skin and a slender build, wearing a cream knit sweater, a pleated navy skirt and a thin silver bracelet.
+Aiko (original character) is an adult European woman in her early thirties with a narrow face, green eyes, long wavy auburn hair, light skin and a tall build, wearing a dark green trench coat over a white blouse and black boots.
 Mei sits on a park bench and leans her shoulder into Aiko's side while both hands hold a paper cup of tea.
 Aiko wraps her right arm around Mei's back, her coat sleeve draped over Mei's sweater and a strand of auburn hair falling across Mei's shoulder.
-Both characters from Original sit together under a maple tree at sunset, warm orange light across them, falling leaves and a softly blurred lamp-lit path behind, medium shot from a low front angle, clean anime illustration with soft cel shading.`;
+Mei and Aiko sit together under a maple tree at sunset, warm orange light across them, falling leaves and a softly blurred lamp-lit path behind, medium shot from a low front angle, clean anime illustration with soft cel shading.`;
 
 /**
  * Built-in default NAI specification: same shape as the ComfyUI one, short danbooru tags; quality tags are appended by the backend per model, so writing them is forbidden.
