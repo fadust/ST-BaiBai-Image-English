@@ -269,7 +269,7 @@ export function applyWorkflowBindings(template: string, bindings: WorkflowBindin
 
   for (const binding of bindings) {
     const before = editableInput(workflow, binding);
-    if (binding.purpose === 'positive_tag' || binding.purpose === 'positive_combined') hasPositive = true;
+    if (binding.purpose === 'positive_tag' || binding.purpose === 'positive_nl' || binding.purpose === 'positive_combined') hasPositive = true;
     if (binding.purpose === 'positive_nl' && nlMode === 'none') nlMode = 'separate';
     if (binding.purpose === 'positive_combined') nlMode = 'combined';
     if (binding.purpose === 'negative') hasNegative = true;
@@ -283,12 +283,12 @@ export function applyWorkflowBindings(template: string, bindings: WorkflowBindin
     if (String(before) !== after) changes.push({ ...binding, before, after });
   }
 
-  if (!hasPositive && !getWorkflowPlaceholders(template).includes('prompt')) {
+  if (!hasPositive && !getWorkflowPlaceholders(template).some(name => name === 'prompt' || name === 'nl')) {
     throw new Error('The AI found No positive prompt input');
   }
   const rendered = JSON.stringify(workflow, null, 2);
-  if (!getWorkflowPlaceholders(rendered).includes('prompt')) {
-    throw new Error('The configured workflow is still missing %prompt%');
+  if (!getWorkflowPlaceholders(rendered).some(name => name === 'prompt' || name === 'nl')) {
+    throw new Error('The configured workflow needs %prompt% or %nl%');
   }
   return { workflow: rendered, changes, nlMode, hasNegative };
 }

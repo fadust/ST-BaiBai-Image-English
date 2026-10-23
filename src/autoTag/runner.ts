@@ -1,5 +1,6 @@
 import { requestCompletion, requestViaMainApi } from '@/api/client';
 import { readBookMemory } from '@/autoTag/bookMemory';
+import { codexAppearance } from '@/autoTag/codexAppearance';
 import {
   applyPositionedCharRefs,
   resolveCharAnchors,
@@ -300,9 +301,10 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // rewrite profiled characters as newcomers. charTagsBeforeFloor(floor + 1) includes exactly this floor (applies when the swipe matches).
     const entriesBefore = slot ? charTagsBeforeFloor(floor + 1) : charTagsBeforeFloor(floor);
     // Locked names (global library ⊖ this chat's baseline): AI changes never apply to these names; they carry a [locked] marker in the library text
-    const lockedNames = lockedCharTagNames();
+    const codex = codexAppearance(context, floor, rawSource, entriesBefore, lockedCharTagNames(), memory?.roles.map(role => role.name));
+    const lockedNames = codex.locked;
     // Purely local rendering: profile creation is done by the main request in the same output (changes with field="new")
-    const anchors = resolveCharAnchors(entriesBefore, lockedNames);
+    const anchors = resolveCharAnchors(codex.entries, lockedNames);
     // Single-slot rewrite: the protocol forces "exactly 1 image" and gives the model this slot's current prompt plus summaries of the other slots
     // (anchoring the same scene and not taking others' scenes). min/max must cover both the rule text in build and the parse validation below;
     // changing only one would contradict itself.
@@ -320,6 +322,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       anchors.text,
       slot ? buildSlotTaskNote(rawSource, slot.seq) : '',
       profile,
+      codex.note,
     );
     const channel = getTagGenChannel();
     // Retry on failure: both request errors and "unparseable/failed validation" responses count as retryable (the latter is common when the model ignores the protocol);
@@ -402,11 +405,12 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
 
     // Single-slot rewrites do not apply changes: the first full analysis already created profiles for the whole floor; applying again would only produce
     // duplicate profile/change records. The library text already includes this floor's delta (see entriesBefore above); the AI just copies it.
+    if (!codex.isCurrent()) throw new Error('NPC Codex appearance changed during image planning. Run image planning again.');
     const planOps = slot ? [] : planChangeOps(plan);
     // Locked characters (global library) don't accept AI changes: discard them; they are not written to the floor and take no part in @ replacement.
     // The replay side's applyCharTagOps blocks locked names again (old messages may already hold such ops).
     const effectiveOps = lockedNames.size
-      ? planOps.filter(item => !lockedNames.has(item.op.name))
+      ? planOps.filter(item => !lockedNames.has(item.op.name) && !lockedNames.has(item.op.name.normalize('NFKC').toLocaleLowerCase().trim()))
       : planOps;
     const floorOps = effectiveOps.map(item => item.op);
     const previousDelta = readCharTagFloorDelta(message);
@@ -510,6 +514,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     const result = await applyMessageText(
       floor,
       currentText => {
+        if (!codex.isCurrent()) return null;
         // Single-slot rewrite: replace only tag number seq; the text and other tags stay untouched, and no relocation is needed.
         // The position the model returns deliberately plays no part here: the scene is pinned in place; the model only rewrites the content.
         // The raw text snapshotted at start doesn't match = changed by the user/another flow meanwhile; don't overwrite (same as the prompt editor dialog).

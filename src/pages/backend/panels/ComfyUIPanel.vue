@@ -257,8 +257,8 @@ const workflowState = computed(() => {
   if (!active.value.workflow.trim()) return { tone: 'muted', text: 'Empty', detail: '' };
   try {
     const placeholders = getWorkflowPlaceholders(active.value.workflow);
-    if (!placeholders.includes('prompt')) {
-      return { tone: 'error', text: 'Missing %prompt%', detail: 'The JSON is valid but lacks the required %prompt% placeholder' };
+    if (!placeholders.includes('prompt') && !placeholders.includes('nl')) {
+      return { tone: 'error', text: 'Missing prompt input', detail: 'JSON is valid but needs a %prompt% or %nl% placeholder' };
     }
     const unknown = placeholders.filter(
       name => !['prompt', 'negative_prompt', 'seed', 'nl', 'width', 'height'].includes(name),
@@ -341,7 +341,7 @@ function applyAssist() {
     const target = settings.comfyui.workflows.find(w => w.id === assistTargetId.value);
     if (!target) throw new Error('The target workflow was deleted; configure it again');
     const placeholders = getWorkflowPlaceholders(assistDraft.value);
-    if (!placeholders.includes('prompt')) throw new Error('The preview workflow lacks the %prompt% placeholder');
+    if (!placeholders.includes('prompt') && !placeholders.includes('nl')) throw new Error('Preview workflow needs a %prompt% or %nl% placeholder');
     target.workflow = assistDraft.value;
     const name = target.name;
     closeAssist();

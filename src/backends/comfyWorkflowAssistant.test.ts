@@ -52,6 +52,11 @@ describe('parseWorkflowBindings', () => {
 });
 
 describe('applyWorkflowBindings', () => {
+  it('supports a prose-only positive binding', () => {
+    const result = applyWorkflowBindings(WORKFLOW, [{ node: '6', input: 'text', purpose: 'positive_nl', keep: [] }]);
+    expect(JSON.parse(result.workflow)['6'].inputs.text).toBe('%nl%');
+    expect(result.nlMode).toBe('separate');
+  });
   it('preserves fixed prompt text and appends local macros', () => {
     const result = applyWorkflowBindings(WORKFLOW, [
       { node: '6', input: 'text', purpose: 'positive_combined', keep: ['F1', 'F2'] },

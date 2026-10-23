@@ -162,6 +162,7 @@ export async function buildAutoTagMessages(
   taskNote?: string,
   /** Protocol shape; the runner snapshots one at start and passes it in, so validation and finishing use the same one (computed on the spot when omitted). */
   profile: AutoTagProfile = autoTagProfile(),
+  appearanceAuthority = '',
 ): Promise<ChatMsg[]> {
   const target = context.chat[targetFloor];
   const preparedTarget =
@@ -331,6 +332,7 @@ ${characterRule}
   // The parsing side (protocol.ts) strips think blocks before taking the JSON; the two go together; the one matching the backend is picked.
   const thinking = backendThinkingPrompt(options, nlOn, naiCharPromptsOn);
   if (thinking) messages.push({ role: 'system', content: thinking });
+  if (appearanceAuthority) messages.push({ role: 'system', content: appearanceAuthority });
   const libraryBlock = library?.trim() || `【 character fixed appearance library 】[system-maintained; currently empty]\n (Currently empty, no character has been profiled. The World Info, character card, BaiBai Book and text only provide the basis for creation; official characters not listed in this block must be profiled through field:"new".)`;
   const taskBlock = taskNote?.trim() ? `${taskNote.trim()}\n\n` : '';
   const userContent = `${memoryText}\n\n${libraryBlock}\n\n${taskBlock}${previous ? `${previous}\n\n` : ''}---Target text｜${roleLabel(context, targetFloor)} ---\n${preparedTarget.promptText}`;
