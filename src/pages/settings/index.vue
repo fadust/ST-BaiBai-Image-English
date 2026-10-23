@@ -151,15 +151,15 @@ const NL_SECTION_MACROS = [
 const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'jailbreak',
-    label: 'Breaking word',
-    hint: 'As a pinned system, it is appended to the automatic tag request to reduce the secondary API rejection rate. Leave it blank to use the built-in default (the same text as BaiBai Book). Common to all backends.',
+    label: 'Core Prompt',
+    hint: 'Pinned as the first system message of every automatic tag request. Defines the planner role and the content boundaries that no card, lorebook or chat can override. Leave it blank to use the built-in default. Common to all backends.',
     builtin: DEFAULT_JAILBREAK_PROMPT,
     macros: [],
   },
   {
     key: 'naiV5Spec',
-    label: 'NAI \u89c4\u8303',
-    hint: '\u9ed8\u8ba4\u540e\u7aef\u4e3a NAI \u65f6\u62fc\u8fdb\u81ea\u52a8 tag \u8bf7\u6c42\uff0c\u5b9a\u4e49 Base Prompt\u3001\u539f\u751f Character Prompts \u4e0e\u82f1\u6587\u81ea\u7136\u8bed\u8a00\uff08nl \u4e00\u5f8b\u5199\u82f1\u6587\uff09\u30024.5 \u4e0e V5 \u5171\u7528\u8fd9\u4e00\u4efd\uff1achar_captions \u672c\u5c31\u662f v4 \u65f6\u4ee3\u7684\u534f\u8bae\uff0c\u4e24\u4ee3\u5199\u6cd5\u53e3\u5f84\u76f8\u540c\u3002{{#nl}}\u2026{{/nl}} \u4e4b\u95f4\u7684\u5185\u5bb9\u53ea\u5728 NAI \u9762\u677f\u5f00\u542f\u300c\u751f\u6210\u81ea\u7136\u8bed\u8a00\u300d\u65f6\u4fdd\u7559\uff0c{{^nl}}\u2026{{/nl}} \u4e4b\u95f4\u7684\u53ea\u5728\u5173\u95ed\u65f6\u4fdd\u7559\u3002\u7559\u7a7a\u7528\u5185\u7f6e\u9ed8\u8ba4\u3002',
+    label: 'NAI Specification',
+    hint: 'Added to automatic tag requests when the default backend is NAI. Defines the Base Prompt, native Character Prompts and English natural language (nl is always written in English). NAI 4.5 and V5 share this one specification: char_captions is the v4-era protocol, so both use the same rules. Content between {{#nl}}\u2026{{/nl}} is kept only when "Generate Natural Language" is on in the NAI panel; content between {{^nl}}\u2026{{/nl}} only when it is off. Leave blank to use the built-in default.',
     builtin: DEFAULT_NAI_V5_SPEC,
     macros: NL_SECTION_MACROS,
   },
