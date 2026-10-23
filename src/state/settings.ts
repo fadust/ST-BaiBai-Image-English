@@ -584,6 +584,7 @@ General requirements:
 export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): natural language - an English caption of the same image, written as connected prose for image models with large text encoders (such as MOSS-Image). No word count: keep a simple scene short and add detail only where it makes the image more specific. No quality words, no tag lists inside sentences, and nothing the image does not show (no feelings, backstory, intentions or narrative commentary).
 Sentence pattern (one sentence per line of the pattern, in this order):
 - [Name] ([Source]) is [age] [race] [gender] with [full appearance: face, hair, skin, body, outfit, accessories]. Write one such sentence per character in frame, early, before any action.
+- [Name], on the [left/right], faces [direction] toward [Name], and [Name], on the [left/right], faces [direction] toward [Name]. (Multi-person images only.)
 - [Name] [body action or posture] while [specific physical interaction with the other character(s)].
 - [Name] [secondary weight, contact or movement that responds to the other character's position].
 - [Name] and [Name] [shared environment, lighting and background that contains them together].
@@ -592,8 +593,14 @@ Rules:
 - Source goes in brackets after the name, only in the appearance sentence: for a fan-work character, the copyright as in the profile's fandom field, without backslashes (Batman (DC), Rin Tohsaka (Fate/stay night)); for everyone else, (original character). Later sentences use the name alone.
 - Appearance is stated once per character, in that character's first sentence, and not repeated later. Say it in words (long black hair tied in a low ponytail), never as a tag string.
 - Age, race and gender open every appearance sentence. Age: the stated age, or the age the character clearly looks ("an adult woman in her late twenties", "a middle-aged man"). Race: the ethnicity, or the species for non-humans (elf, demon, catgirl), as given by the profile, card, lorebook or story; when none is given, choose one that fits the world and keep it the same in every image of the floor. Gender: woman, man, girl, boy, or as the story states.
+- Every adult character's appearance sentence includes at least one visible adult cue besides the age words (adult proportions, a mature face with defined cheekbones or jawline, stubble, adult styling). Anime styles and LoRAs pull faces younger, and age words alone do not hold.
+- Race needs concrete features: pair the race word with face shape and an explicit skin tone. The model weighs the skin word more than the race word.
+- The model takes skin and damage words literally and exaggerates them. Use natural skin tones (fair, light, olive, tan, brown, dark brown); never bare "pale". Keep damage mild and specific (scuffed, a few dents, a torn sleeve).
+- Placement and facing come before any action: say where each character stands in the frame and which way each faces. Without it the model lines characters up facing the same way.
+- One primary contact per image, written in a single sentence that names both characters (Kaito's arms locked around Sera's waist). Extra contact points are optional detail; too many at once collapse into side-by-side posing. The responding character's sentence is the one most often dropped, so never put the key contact only there.
+- State what each body rests on: "both boots planted on top of the gargoyle", not just "on the gargoyle"; "squats low, knees deeply bent", not just "crouches".
 - Interaction must be physical and mutual whenever the story shows the characters together: leaning on each other, supporting weight, arms overlapping, hips touching, hair or fabric crossing between them. Avoid side-by-side posing with only a glance. Never invent contact the story does not support; when the story keeps them apart, describe the real distance and what each body does toward the other.
-- The final sentence carries environment, lighting and background, and treats the characters as one group. Camera distance/angle and the medium/style go in this sentence too.
+- The final sentence carries environment, lighting and background, and treats the characters as one group. Camera distance/angle and the medium/style go in this sentence too. The background must match the camera angle: a low angle shows sky and ceilings above the characters, a high angle shows the ground or city below. Never describe a view the chosen angle cannot see.
 - Single-person image: the appearance sentence, then one or two sentences of action and pose with the setting and props touched, then the final environment sentence with that one character.
 - Visible text in the image (signs, letters, screens) is quoted exactly, in its original language.
 - The content boundaries still apply: when the content gate requires it, the appearance sentence states adulthood plainly ("an adult woman in her thirties"). The consolation image keeps its fixed one-sentence nl.
@@ -601,6 +608,7 @@ Rules:
 Two-person example:
 Mei (original character) is an adult East Asian woman in her mid-twenties with a round face, brown eyes, shoulder-length black hair with blunt bangs, fair skin and a slender build, wearing a cream knit sweater, a pleated navy skirt and a thin silver bracelet.
 Aiko (original character) is an adult European woman in her early thirties with a narrow face, green eyes, long wavy auburn hair, light skin and a tall build, wearing a dark green trench coat over a white blouse and black boots.
+Mei, on the left, faces slightly right toward Aiko, and Aiko, on the right, faces slightly left toward Mei.
 Mei sits on a park bench and leans her shoulder into Aiko's side while both hands hold a paper cup of tea.
 Aiko wraps her right arm around Mei's back, her coat sleeve draped over Mei's sweater and a strand of auburn hair falling across Mei's shoulder.
 Mei and Aiko sit together under a maple tree at sunset, warm orange light across them, falling leaves and a softly blurred lamp-lit path behind, medium shot from a low front angle, clean anime illustration with soft cel shading.`;
