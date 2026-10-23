@@ -151,14 +151,14 @@ async function onFetchModels(silent = false) {
     if (!silent) {
       toastr.success(
         lists.value.mode === 'server'
-          ? 'The model list has been pulled (ST forwarded; LoRA/CLIP needs to enter the file name manually)'
-          : 'Pulled model list',
+          ? 'Model list fetched (via ST forwarding; type LoRA/CLIP file names by hand)'
+          : 'Model list fetched',
         'BaiBai Image',
       );
     }
   } catch (error) {
     fetchError.value = errorMessage(error);
-    if (!silent) toastr.error(fetchError.value, 'Failed to pull model list');
+    if (!silent) toastr.error(fetchError.value, 'Failed to fetch the model list');
   } finally {
     fetching.value = false;
   }
@@ -180,7 +180,7 @@ watch(
 const fetchStatus = computed(() => {
   if (fetchError.value) return `Fetch failed: ${fetchError.value}`;
   if (!lists.value || lists.value.mode === 'browser') return '';
-  return 'ST forwarding cannot get the LoRA/CLIP list, these two items need to be entered manually (ComfyUI plus --enable-cors-header can be directly connected)';
+  return 'ST forwarding cannot fetch LoRA/CLIP lists, so type those by hand (start ComfyUI with --enable-cors-header to connect directly)';
 });
 
 const modelOptions = computed(() => {
@@ -248,17 +248,17 @@ const simpleState = computed(() => {
 
 const nlHint = computed(() =>
   active.value.mode === 'simple'
-    ? 'Generate an additional natural language description; in simple mode, it takes precedence over tag as a positive prompt word (Flux/Anima is recommended to be turned on)'
-    : 'Generate an additional natural language description and inject it into the workflow with %nl%',
+    ? 'Also write a natural-language description; in simple mode it replaces tags as the positive prompt (recommended for Flux/Anima)'
+    : 'Also write a natural-language description and insert it into the workflow at %nl%',
 );
 
 /** The pill shows only one word; the specific reason goes in the title tooltip, taking no space. */
 const workflowState = computed(() => {
-  if (!active.value.workflow.trim()) return { tone: 'muted', text: 'Not filled in', detail: '' };
+  if (!active.value.workflow.trim()) return { tone: 'muted', text: 'Empty', detail: '' };
   try {
     const placeholders = getWorkflowPlaceholders(active.value.workflow);
     if (!placeholders.includes('prompt')) {
-      return { tone: 'error', text: 'Missing %prompt%', detail: 'JSON is valid but missing the required %prompt% placeholder' };
+      return { tone: 'error', text: 'Missing %prompt%', detail: 'The JSON is valid but lacks the required %prompt% placeholder' };
     }
     const unknown = placeholders.filter(
       name => !['prompt', 'negative_prompt', 'seed', 'nl', 'width', 'height'].includes(name),
@@ -266,7 +266,7 @@ const workflowState = computed(() => {
     if (unknown.length) {
       return {
         tone: 'error',
-        text: 'Placeholder is not supported',
+        text: 'Unsupported placeholder',
         detail: `Not supported yet: ${unknown.map(name => `%${name}%`).join(', ')}`,
       };
     }
@@ -276,7 +276,7 @@ const workflowState = computed(() => {
       detail: `Recognized ${placeholders.map(name => `%${name}%`).join(', ')}`,
     };
   } catch (error) {
-    return { tone: 'error', text: 'JSON is invalid', detail: errorMessage(error) };
+    return { tone: 'error', text: 'Invalid JSON', detail: errorMessage(error) };
   }
 });
 
@@ -290,7 +290,7 @@ async function onTestConnection() {
   testing.value = true;
   try {
     const result = await testComfyConnection(effectiveComfyConn());
-    toastr.success(result.mode === 'server' ? 'ComfyUI connection is normal (ST backend forwarding)' : 'ComfyUI connection is normal (browser direct connection)');
+    toastr.success(result.mode === 'server' ? 'ComfyUI connection OK (via ST backend forwarding)' : 'ComfyUI connection OK (direct from browser)');
   } catch (error) {
     toastr.error(errorMessage(error), 'ComfyUI connection failed');
   } finally {
@@ -299,11 +299,11 @@ async function onTestConnection() {
 }
 
 const purposeLabels: Record<WorkflowBindingPurpose, string> = {
-  positive_tag: 'Forward tag',
-  positive_nl: 'independent natural language',
-  positive_combined: 'Forward tag + natural language sharing',
-  negative: 'negative cue words',
-  seed: 'random seed',
+  positive_tag: 'Positive tags',
+  positive_nl: 'Separate natural language',
+  positive_combined: 'Positive tags + natural language, shared',
+  negative: 'Negative prompt',
+  seed: 'Random seed',
   width: 'Main canvas width',
   height: 'Main canvas height',
 };
@@ -315,7 +315,7 @@ async function onAutoConfigure() {
   try {
     const result = await configureWorkflowWithAi(active.value.workflow);
     if (!result.changes.length) {
-      toastr.info('The dynamic parameters in the workflow have been configured and do not need to be modified.', 'BaiBai Image');
+      toastr.info('The workflow\'s dynamic parameters are already set up; nothing to change.', 'BaiBai Image');
       return;
     }
     assistResult.value = result;
@@ -323,7 +323,7 @@ async function onAutoConfigure() {
     assistTargetId.value = targetId;
     assistOpen.value = true;
   } catch (error) {
-    toastr.error(errorMessage(error), 'AI Failed to configure workflow');
+    toastr.error(errorMessage(error), 'AI workflow configuration failed');
   } finally {
     configuring.value = false;
   }
@@ -339,18 +339,18 @@ function closeAssist() {
 function applyAssist() {
   try {
     const target = settings.comfyui.workflows.find(w => w.id === assistTargetId.value);
-    if (!target) throw new Error('The target workflow has been deleted, please reconfigure it');
+    if (!target) throw new Error('The target workflow was deleted; configure it again');
     const placeholders = getWorkflowPlaceholders(assistDraft.value);
-    if (!placeholders.includes('prompt')) throw new Error('Preview workflow is missing %prompt% placeholder');
+    if (!placeholders.includes('prompt')) throw new Error('The preview workflow lacks the %prompt% placeholder');
     target.workflow = assistDraft.value;
     const name = target.name;
     closeAssist();
-    toastr.success(`Workflow with AI configuration applied (${name})`, 'BaiBai Image');
+    toastr.success(`Applied the AI-configured workflow (${name})`, 'BaiBai Image');
     if (placeholders.includes('nl') && !target.naturalLanguage) {
-      toastr.info('Workflow has been configured %nl%; please turn on "Generate Natural Language" if needed', 'BaiBai Image');
+      toastr.info('The workflow now has %nl%; turn on "Generate natural language" if you need it', 'BaiBai Image');
     }
   } catch (error) {
-    toastr.error(errorMessage(error), 'Workflow cannot be applied');
+    toastr.error(errorMessage(error), 'Could not apply the workflow');
   }
 }
 </script>
@@ -378,7 +378,7 @@ function applyAssist() {
             type="button"
             @click="settings.defaultBackend = 'comfyui'"
           >
-            Use this channel to publish pictures
+            Use this channel for images
           </button>
           <button class="bbi-btn" type="button" :disabled="testing" @click="onTestConnection">
             <Icon name="plug" />
@@ -398,7 +398,7 @@ function applyAssist() {
             v-model="renameDraft"
             placeholder="Workflow name"
             spellcheck="false"
-            title="Enter confirmed, Esc canceled"
+            title="Enter to confirm, Esc to cancel"
             @keydown.enter.prevent="commitRename"
             @keydown.esc.stop.prevent="renaming = false"
             @blur="commitRename"
@@ -432,8 +432,8 @@ function applyAssist() {
             <button
               class="bbi-icon-btn wf-op"
               type="button"
-              title="Copy current workflow (including switches and dimensions)"
-              aria-label="Copy current workflow"
+              title="Duplicate current workflow (including toggles and sizes)"
+              aria-label="Duplicate current workflow"
               @click="duplicateWorkflow"
             >
               <Icon name="copy" :size="14" />
@@ -442,7 +442,7 @@ function applyAssist() {
               class="bbi-icon-btn wf-op wf-remove"
               type="button"
               :disabled="!canRemove"
-              :title="canRemove ? 'Delete current workflow' : 'Keep at least one set of workflows'"
+              :title="canRemove ? 'Delete current workflow' : 'At least one workflow must remain'"
               aria-label="Delete current workflow"
               @click="confirmDeleteOpen = true"
             >
@@ -456,7 +456,7 @@ function applyAssist() {
 
         <!-- Configuration mode: a two-option segmented switch (reusing the global bbi-segmented; a dropdown is too heavy for two options), status pill on the right -->
         <div class="wf-mode-bar">
-          <div class="bbi-segmented" role="tablist" aria-label="Configuration method">
+          <div class="bbi-segmented" role="tablist" aria-label="Setup mode">
             <button
               v-for="opt in modeOptions"
               :key="opt.value"
@@ -497,9 +497,9 @@ function applyAssist() {
             spellcheck="false"
           />
           <datalist id="comfy-portrait-presets">
-            <option value="832×1216">vertical version</option>
-            <option value="1024×1536">Large vertical version</option>
-            <option value="1024×1024">square diagram</option>
+            <option value="832×1216">Portrait</option>
+            <option value="1024×1536">Large portrait</option>
+            <option value="1024×1024">Square</option>
           </datalist>
         </div>
 
@@ -514,15 +514,15 @@ function applyAssist() {
             spellcheck="false"
           />
           <datalist id="comfy-landscape-presets">
-            <option value="1216×832">Horizontal version</option>
-            <option value="1536×1024">Large horizontal version</option>
-            <option value="1024×1024">square diagram</option>
+            <option value="1216×832">Landscape</option>
+            <option value="1536×1024">Large landscape</option>
+            <option value="1024×1024">Square</option>
           </datalist>
         </div>
 
         <div class="bbi-select-row">
-          <span class="bbi-field-label">Frame direction</span>
-          <div class="bbi-segmented" role="tablist" aria-label="Workflow frame direction">
+          <span class="bbi-field-label">Size lock</span>
+          <div class="bbi-segmented" role="tablist" aria-label="Workflow size lock">
             <button
               v-for="opt in ORIENTATION_LOCKS"
               :key="opt.value"
@@ -538,8 +538,8 @@ function applyAssist() {
           </div>
         </div>
         <p class="bbi-field-hint wf-switch-hint">
-          &quot;Automatic&quot; uses the automatic tag to determine the horizontal and vertical orientation according to the screen; after locking, every picture in this workflow will be drawn in this direction, and the automatic tag will also compose the picture according to this frame.
-          The direction already noted in the text will not be overwritten and will be restored by changing it back to &quot;Auto&quot;.
+          &quot;Auto&quot; lets auto-tagging choose portrait or landscape per image. When locked, every image from this workflow uses that orientation, and auto-tagging composes for that frame.
+          Orientations already written in the text are not overwritten; they apply again when you switch back to &quot;Auto&quot;.
         </p>
 
         <!-- Simple mode: pick models and fill parameters; the plugin assembles the JSON from a template.
@@ -557,7 +557,7 @@ function applyAssist() {
                   @click="onFetchModels()"
                 >
                   <Icon name="refresh" :size="12" />
-                  {{ fetching ? 'Retrieving…' : lists ? 'Refresh list' : 'Pull model list' }}
+                  {{ fetching ? 'Fetching…' : lists ? 'Refresh list' : 'Fetch model list' }}
                 </button>
               </span>
             </div>
@@ -578,12 +578,12 @@ function applyAssist() {
                 v-model="active.simple.model"
                 :options="modelOptions"
                 placeholder="safetensors / gguf file name"
-                aria-label="model file"
+                aria-label="Model file"
               />
               <label
                 v-if="meta.modelKind === 'unet'"
                 class="wf-gguf"
-                title="Model is in GGUF format (loaded with UnetLoaderGGUF); selection from list will automatically recognize"
+                title="Model is in GGUF format (loaded with UnetLoaderGGUF); detected automatically when picked from the list"
               >
                 <input v-model="active.simple.gguf" type="checkbox" class="bbi-checkbox" />
                 GGUF
@@ -603,7 +603,7 @@ function applyAssist() {
               <BbiCombo
                 v-model="active.simple[clip.key]"
                 :options="clipOptions"
-                placeholder="clip file name"
+                placeholder="CLIP file name"
                 :aria-label="clip.label"
               />
             </div>
@@ -615,7 +615,7 @@ function applyAssist() {
               <button
                 class="bbi-icon-btn wf-op"
                 type="button"
-                title="Add LoRA (multiple can be connected in series)"
+                title="Add LoRA (several can be chained)"
                 aria-label="Add LoRA"
                 @click="addLora"
               >
@@ -626,7 +626,7 @@ function applyAssist() {
               <BbiCombo
                 v-model="lora.name"
                 :options="loraOptions"
-                placeholder="lora file name"
+                placeholder="LoRA file name"
                 aria-label="LoRA file"
               />
               <input
@@ -636,8 +636,8 @@ function applyAssist() {
                 min="0"
                 max="2"
                 step="0.05"
-                title="intensity"
-                aria-label="LoRA Strength"
+                title="Strength"
+                aria-label="LoRA strength"
               />
               <button
                 class="bbi-icon-btn wf-op wf-remove"
@@ -650,59 +650,59 @@ function applyAssist() {
               </button>
             </div>
             <p v-if="active.simple.loras.length" class="bbi-field-hint wf-lora-hint">
-              The trigger words of LoRA should be written into the fixed front or tag by yourself.
+              Add LoRA trigger words yourself, in the fixed positive prompt or in tags.
             </p>
           </section>
 
           <section class="wf-group">
             <div class="wf-group-head">
-              <span class="bbi-field-label">sampling</span>
+              <span class="bbi-field-label">Sampling</span>
             </div>
             <div class="wf-params">
               <label class="wf-param">
-                <span>number of steps</span>
+                <span>Steps</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.steps" min="1" max="150" />
               </label>
               <label class="wf-param" v-if="active.simple.template !== 'flux'">
                 <span>CFG</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.cfg" min="1" max="30" step="0.5" />
               </label>
-              <label class="wf-param" v-if="active.simple.template === 'flux'" title="FluxGuidance strength;1 = do not add this node">
+              <label class="wf-param" v-if="active.simple.template === 'flux'" title="FluxGuidance strength; 1 = node not added">
                 <span>Guidance</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.guidance" min="1" max="10" step="0.1" />
               </label>
-              <label class="wf-param" v-if="active.simple.template === 'anima'" title="ModelSamplingAuraFlow of shift">
+              <label class="wf-param" v-if="active.simple.template === 'anima'" title="Shift for ModelSamplingAuraFlow">
                 <span>Shift</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.shift" min="0" max="10" step="0.1" />
               </label>
               <label class="wf-param">
-                <span>sampler</span>
-                <BbiCombo v-model="active.simple.sampler" :options="samplerOptions" placeholder="euler" aria-label="sampler" />
+                <span>Sampler</span>
+                <BbiCombo v-model="active.simple.sampler" :options="samplerOptions" placeholder="euler" aria-label="Sampler" />
               </label>
               <label class="wf-param">
-                <span>scheduler</span>
-                <BbiCombo v-model="active.simple.scheduler" :options="schedulerOptions" placeholder="normal" aria-label="scheduler" />
+                <span>Scheduler</span>
+                <BbiCombo v-model="active.simple.scheduler" :options="schedulerOptions" placeholder="normal" aria-label="Scheduler" />
               </label>
             </div>
           </section>
 
           <section class="wf-group">
             <div class="wf-group-head">
-              <span class="bbi-field-label">prompt word</span>
+              <span class="bbi-field-label">Prompts</span>
             </div>
             <div class="wf-prompts">
               <BbiTextarea
                 v-model="active.simple.positive"
                 :rows="2"
                 :max-rows="6"
-                placeholder="Fixed front: quality words/style words, etc., spelled before the content generated by AI"
+                placeholder="Fixed positive: quality/style words, placed before the AI-generated content"
               />
               <BbiTextarea
                 v-if="meta.supportsNegative"
                 v-model="active.simple.negative"
                 :rows="2"
                 :max-rows="6"
-                placeholder="Fixed negative: universal negative words; dynamic negative words generated by AI are appended at the end"
+                placeholder="Fixed negative: general negative words; the AI's dynamic negative words are appended at the end"
               />
             </div>
           </section>
@@ -725,11 +725,11 @@ function applyAssist() {
               class="bbi-btn bbi-btn-primary bbi-btn-sm"
               type="button"
               :disabled="configuring || !active.workflow.trim()"
-              title="AI determines the node usage and automatically configures the placeholder; the workflow node, model name and local path will be sent to API in the settings page &quot;Generate tag for use&quot;"
+              title="AI identifies what each node does and sets up the placeholders. Workflow nodes, model names and local paths are sent to the API chosen under &quot;Tag generation&quot; on the settings page"
               @click="onAutoConfigure"
             >
               <Icon name="sparkles" :size="12" />
-              {{ configuring ? 'Analyzing…' : 'AI automatic configuration' }}
+              {{ configuring ? 'Analysing…' : 'AI auto-configure' }}
             </button>
           </span>
         </div>
@@ -741,7 +741,7 @@ function applyAssist() {
           placeholder='{"3": {"class_type": "KSampler", ...}, ...}'
         />
         <p class="bbi-field-hint wf-hint">
-          &quot;Save (API Format)&quot; export; available %prompt% %negative_prompt% %seed% %nl% %width% %height%
+          Export with &quot;Save (API Format)&quot;. Placeholders: %prompt% %negative_prompt% %seed% %nl% %width% %height%
         </p>
         </template>
       </Collapsible>
@@ -755,7 +755,7 @@ function applyAssist() {
       tone="danger"
       @confirm="confirmRemoveWorkflow"
     >
-      Confirm deletion workflow&quot;{{ active.name || 'Unnamed workflow' }}”? It cannot be restored after deletion.
+      Delete workflow &quot;{{ active.name || 'Unnamed workflow' }}&quot;? This cannot be undone.
     </ConfirmDialog>
 
     <ModalMask :open="assistOpen" @close="closeAssist">
@@ -764,16 +764,16 @@ function applyAssist() {
         class="bbi-modal workflow-assist-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="Preview workflow for AI configuration"
+        aria-label="Preview AI-configured workflow"
       >
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">Preview workflow modifications</span>
+          <span class="bbi-modal-title">Preview workflow changes</span>
           <button class="bbi-icon-btn" type="button" aria-label="Close" @click="closeAssist">
             <Icon name="close" />
           </button>
         </header>
 
-        <p class="bbi-field-hint">The original text and macros are rebuilt locally, AI only returns node usage; please check before applying.</p>
+        <p class="bbi-field-hint">The original text and macros are rebuilt locally; the AI only returns what each node does. Check before applying.</p>
         <div class="workflow-change-list">
           <div
             v-for="change in assistResult.changes"
@@ -788,10 +788,10 @@ function applyAssist() {
         <BbiTextarea v-model="assistDraft" :rows="10" :max-rows="24" mono />
 
         <p v-if="assistResult.nlMode !== 'none'" class="workflow-detection">
-          Natural language:{{ assistResult.nlMode === 'combined' ? 'Shared input with forward tag' : 'Use independent input' }}
+          Natural language:{{ assistResult.nlMode === 'combined' ? 'Shares the input with positive tags' : 'Uses its own input' }}
         </p>
         <p v-if="assistResult.hasNegative" class="workflow-detection">
-          Dynamic negative words have been configured; when generating tag, the supplementary negative tag will be output according to the screen.
+          Dynamic negative words are set up; when generating tags, the AI also writes extra negative tags per image.
         </p>
 
         <footer class="bbi-modal-foot">

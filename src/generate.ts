@@ -113,10 +113,10 @@ export function backendStatus(): BackendStatus {
     // Without the name it is still easy to locate: it is the one selected in the panel dropdown.
     const conn = activeNaiEndpoint();
     if (!conn.url.trim()) {
-      return { ...base, configured: false, reason: 'The current NAI access point has no service address filled in' };
+      return { ...base, configured: false, reason: 'The current NAI endpoint has no API address' };
     }
     if (!conn.key.trim()) {
-      return { ...base, configured: false, reason: 'Current NAI access point is not filled in API Key' };
+      return { ...base, configured: false, reason: 'The current NAI endpoint has no API key' };
     }
     return { ...base, configured: true, reason: '' };
   }
@@ -125,7 +125,7 @@ export function backendStatus(): BackendStatus {
     const preset = activeComfyPreset();
     const base = { backend, model: preset.name, supportsCharacters: false };
     if (!settings.comfyui.url.trim()) {
-      return { ...base, configured: false, reason: 'ComfyUI service address not filled in' };
+      return { ...base, configured: false, reason: 'The ComfyUI address is empty' };
     }
     if (preset.mode === 'simple') {
       const invalid = validateSimpleConfig(preset.simple);
@@ -133,7 +133,7 @@ export function backendStatus(): BackendStatus {
       return { ...base, configured: true, reason: '' };
     }
     if (!preset.workflow.trim()) {
-      return { ...base, configured: false, reason: 'The current workflow preset does not fill in the workflow JSON' };
+      return { ...base, configured: false, reason: 'The current workflow preset has no workflow JSON' };
     }
     return { ...base, configured: true, reason: '' };
   }
@@ -144,7 +144,7 @@ export function backendStatus(): BackendStatus {
     configured: false,
     model: '',
     supportsCharacters: false,
-    reason: 'The image rendering backend is not selected. Please select the image rendering channel on the "Backend" page of BaiBai Image.',
+    reason: 'No image backend is selected. Choose one on the "Backend" page of BaiBai Image.',
   };
 }
 
@@ -178,7 +178,7 @@ export async function generateImage(
   const status = backendStatus();
   // Safety net: the card side already blocks the button via configured, and the public API reports not_configured first.
   // Reaching here means the upstream criterion drifted; better to say so than send a request certain to fail with 401/404.
-  if (!status.configured) throw new Error(status.reason || 'The drawing backend is not configured');
+  if (!status.configured) throw new Error(status.reason || 'The image backend is not configured');
 
   const isNai = status.backend === 'nai';
   const characters = input.characters ?? [];

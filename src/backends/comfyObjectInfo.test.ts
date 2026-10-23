@@ -111,6 +111,6 @@ describe('fetchComfyModelLists', () => {
   });
 
   it('an empty url errors immediately', async () => {
-    await expect(fetchComfyModelLists('  ')).rejects.toThrow("service address");
+    await expect(fetchComfyModelLists('  ')).rejects.toThrow("ComfyUI address");
   });
 });

@@ -146,7 +146,7 @@ describe('NAI artist string library', () => {
     expect(first.name).toBe('no id');
     // null entries are also filled into usable empty slots, named by sequence number
     expect(second.id).toBeTruthy();
-    expect(second.name).toBe('Artist Tags 2');
+    expect(second.name).toBe('Artist string 2');
     expect(second.prompt).toBe('');
     // Non-string prompts become empty strings; a valid id is still recognised by activeArtistId
     expect(third.prompt).toBe('');

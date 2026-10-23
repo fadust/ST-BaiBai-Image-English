@@ -163,7 +163,7 @@ describe('NAI endpoint library · never-empty and official-entry invariants', ()
     expect(first.id).toBeTruthy();
     expect(first.name).toBe('no id');
     expect(second.id).toBeTruthy();
-    expect(second.name).toBe('access point 2');
+    expect(second.name).toBe('Endpoint 2');
     expect(second.url).toBe('');
     // Non-strings become empty strings; a valid id is still recognised by activeEndpointId
     expect(third.url).toBe('');

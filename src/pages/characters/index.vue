@@ -64,14 +64,14 @@ const confirmRollbackOpen = ref(false);
 const pendingRollback = ref<{ name: string; record: CharTagChangeRecord } | null>(null);
 
 const FIELD_PLACEHOLDERS: Record<CharTagField, string> = {
-  fandom: 'Fill in the fan character: character name (copyright name), without escaping brackets; leave blank for original',
-  sex: 'Such as 1girl / 1boy',
-  hair: 'Such as long black hair',
-  eyes: 'Such as red eyes',
-  skin: 'Such as pale skin (optional)',
-  body: 'Such as petite, small breasts',
-  extra: 'Such as heterochromia (optional)',
-  outfit: 'Fixed attire, optional',
+  fandom: 'For fan-work characters: character name (copyright name), brackets not escaped; blank for originals',
+  sex: 'e.g. 1girl / 1boy',
+  hair: 'e.g. long black hair',
+  eyes: 'e.g. red eyes',
+  skin: 'e.g. pale skin (optional)',
+  body: 'e.g. petite, slender',
+  extra: 'e.g. heterochromia (optional)',
+  outfit: 'Signature outfit (optional)',
 };
 
 /** Set of global library names (reactive), for sections and the "override" badge. */
@@ -191,11 +191,11 @@ function confirmEntry() {
   if (!d) return;
   const name = d.name.trim();
   if (!name) {
-    toastr.warning('Role name cannot be empty', 'BaiBai Image');
+    toastr.warning('Character name cannot be empty', 'BaiBai Image');
     return;
   }
   if (!previewTag.value) {
-    toastr.warning('Fill in at least one Appearance fields (or the entire string tag)', 'BaiBai Image');
+    toastr.warning('Fill in at least one appearance field (or the whole tag string)', 'BaiBai Image');
     return;
   }
   const entryData: CharTagEntry = {
@@ -262,7 +262,7 @@ async function regenerateFromBook() {
   const ctx = getContext();
   const floor = (ctx?.chat.length ?? 0) - 1;
   if (!ctx || floor < 0) {
-    toastr.info('There are currently no open chats', 'BaiBai Image');
+    toastr.info('No chat is open', 'BaiBai Image');
     return;
   }
   regenerating.value = true;
@@ -270,12 +270,12 @@ async function regenerateFromBook() {
     const memory = readBookMemory(floor, ctx.chat[floor]?.mes ?? '', ctx.name1);
     const role = memory?.roles.find(r => r.name === name);
     if (!role?.desc) {
-      toastr.info('There is no appearance record of this character in the latest status of BaiBai Book. It can be filled in manually.', 'BaiBai Image');
+      toastr.info('BaiBai Book\'s latest state has no appearance for this character. Fill it in by hand.', 'BaiBai Image');
       return;
     }
     const [result] = await generateCharTags([{ name, desc: role.desc }]);
     if (!result) {
-      toastr.warning('The model did not return tag for this character, please try again or fill it in manually.', 'BaiBai Image');
+      toastr.warning('The model returned no tags for this character. Try again or fill them in by hand.', 'BaiBai Image');
       return;
     }
     const fields = { ...emptyCharFields(), ...result.fields };
@@ -283,7 +283,7 @@ async function regenerateFromBook() {
     d.raw = '';
     draftSource.value = 'book';
     draftDesc.value = role.desc;
-    toastr.success('The latest appearance of BaiBai Book has been generated. Click "Finish" to save.', 'BaiBai Image');
+    toastr.success('Generated from BaiBai Book\'s latest appearance. Click "Done" to save.', 'BaiBai Image');
   } catch (error) {
     toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
   } finally {
@@ -293,9 +293,9 @@ async function regenerateFromBook() {
 
 /* —— History display and rollback (this chat's entries only) —— */
 function fieldLabel(field: CharTagChangeRecord['field']): string {
-  if (field === 'new') return 'Create a file';
-  if (field === 'raw') return 'whole string';
-  if (field === 'nl') return 'Natural Language';
+  if (field === 'new') return 'Profile created';
+  if (field === 'raw') return 'Whole string';
+  if (field === 'nl') return 'Natural language';
   return CHAR_TAG_FIELD_LABELS[field];
 }
 
@@ -311,14 +311,14 @@ function confirmRollback() {
   pendingRollback.value = null;
   if (!p) return;
   if (rollbackCharTag(p.name, p.record)) {
-    toastr.success(`Rolled back"${p.name}" of${fieldLabel(p.record.field)}Changed`, 'BaiBai Image');
+    toastr.success(`Rolled back the ${fieldLabel(p.record.field)} change for "${p.name}"`, 'BaiBai Image');
   } else {
-    toastr.warning('Rollback failed: entry may have been deleted', 'BaiBai Image');
+    toastr.warning('Rollback failed: the entry may have been deleted', 'BaiBai Image');
   }
 }
 
 function sourceLabel(entry: CharTagEntry): string {
-  return entry.source === 'book' ? 'BaiBai Book' : entry.source === 'ai' ? 'AI Maintenance' : 'Manual';
+  return entry.source === 'book' ? 'BaiBai Book' : entry.source === 'ai' ? 'AI' : 'Manual';
 }
 </script>
 
@@ -357,7 +357,7 @@ function sourceLabel(entry: CharTagEntry): string {
       <div class="bbi-fold-wrap" :class="{ 'is-collapsed': !globalShown }">
         <div class="bbi-fold-inner">
           <p class="bbi-field-hint">
-            All chats are in effect, only manual maintenance - AI will not modify the global character and is suitable for fixed images such as player roles. When this chat has a character with the same name, this chat shall prevail.
+            Applies in every chat and is maintained by hand only: the AI never changes global characters, which suits fixed designs such as the player character. If this chat has a character with the same name, this chat's entry wins.
           </p>
           <ul v-if="globalCharTagLib.entries.length" class="bbi-char-grid">
           <li v-for="entry in globalCharTagLib.entries" :key="entry.name" class="bbi-char-card">
@@ -366,8 +366,8 @@ function sourceLabel(entry: CharTagEntry): string {
                 <span class="bbi-char-name">{{ entry.name }}</span>
                 <span class="bbi-char-pills">
                   <span class="bbi-char-pill is-global">Global</span>
-                  <span v-if="charTagBaseNames.has(entry.name)" class="bbi-char-pill is-override" title="This chat has a character with the same name. The current chat is based on this chat.">
-                    This chat has been covered
+                  <span v-if="charTagBaseNames.has(entry.name)" class="bbi-char-pill is-override" title="This chat has a character with the same name, so this chat uses its own entry.">
+                    Overridden in this chat
                   </span>
                 </span>
               </span>
@@ -381,7 +381,7 @@ function sourceLabel(entry: CharTagEntry): string {
           </li>
           </ul>
           <p v-else class="bbi-char-empty">
-            There is no global character yet. Click &quot;Promote to global&quot; in the editing pop-up window of chat character, or click &quot;+&quot; in the upper right corner to add.
+            No global characters yet. Click &quot;Promote to global&quot; when editing a chat character, or click &quot;+&quot; at the top right.
           </p>
         </div>
       </div>
@@ -396,7 +396,7 @@ function sourceLabel(entry: CharTagEntry): string {
           :class="{ 'is-static': !chatFoldable }"
           :disabled="!chatFoldable"
           :aria-expanded="chatShown"
-          :title="chatFoldable ? (chatShown ? 'Close chat character' : 'Expand chat character') : ''"
+          :title="chatFoldable ? (chatShown ? 'Collapse chat characters' : 'Expand chat characters') : ''"
           @click="toggleFold('chat')"
         >
           <Icon v-if="chatFoldable" name="chevron" class="bbi-fold-caret" :class="{ 'is-collapsed': !chatShown }" />
@@ -410,7 +410,7 @@ function sourceLabel(entry: CharTagEntry): string {
       <div class="bbi-fold-wrap" :class="{ 'is-collapsed': !chatShown }">
         <div class="bbi-fold-inner">
           <p class="bbi-field-hint">
-            Only the current chat is effective: BaiBai Book characters are automatically archived, and AI changes permanently with the plot report; the history can be viewed and rolled back.
+            Applies to this chat only. BaiBai Book characters are profiled automatically, and the AI records permanent changes as the story goes; history can be viewed and rolled back.
           </p>
           <ul v-if="chatEntries.length" class="bbi-char-grid">
           <li v-for="entry in chatEntries" :key="entry.name" class="bbi-char-card">
@@ -424,13 +424,13 @@ function sourceLabel(entry: CharTagEntry): string {
                   >
                     {{ sourceLabel(entry) }}
                   </span>
-                  <span v-if="globalNameSet.has(entry.name)" class="bbi-char-pill is-override" title="The same name as the global library, the current chat is subject to this article">
-                    Cover the whole world
+                  <span v-if="globalNameSet.has(entry.name)" class="bbi-char-pill is-override" title="Same name as a global character; this chat uses this entry">
+                    Overrides global
                   </span>
                   <span
                     v-if="entry.history.length"
                     class="bbi-char-history-badge"
-                    :title="`${entry.history.length} Change records, click on the card to view`"
+                    :title="`${entry.history.length} change records; click the card to view`"
                   >
                     <Icon name="history" />{{ entry.history.length }}
                   </span>
@@ -446,7 +446,7 @@ function sourceLabel(entry: CharTagEntry): string {
           </li>
           </ul>
           <p v-else class="bbi-char-empty">
-            This chat has no characters yet. When tag is generated, the BaiBai Book character will be automatically created. You can also click the &quot;+&quot; in the upper right corner to manually add it.
+            This chat has no characters yet. They are created from BaiBai Book when tags are generated, or click &quot;+&quot; at the top right to add one by hand.
           </p>
         </div>
       </div>
@@ -457,7 +457,7 @@ function sourceLabel(entry: CharTagEntry): string {
       <div v-if="draft" class="bbi-modal bbi-char-modal" role="dialog" aria-modal="true" aria-label="Edit character">
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">
-            {{ editingName ? 'Edit character' : 'Add role' }}
+            {{ editingName ? 'Edit character' : 'Add character' }}
             <span v-if="editingName" class="bbi-char-pill" :class="editingScope === 'global' ? 'is-global' : 'is-chat'">
               {{ editingScope === 'global' ? 'Global' : 'This chat' }}
             </span>
@@ -467,7 +467,7 @@ function sourceLabel(entry: CharTagEntry): string {
 
         <!-- Scope: only selectable when creating; existing entries change layer via "Promote to global / Copy to this chat" at the bottom -->
         <div v-if="!editingName" class="bbi-modal-field">
-          <span class="bbi-modal-label">save to</span>
+          <span class="bbi-modal-label">Save to</span>
           <div class="bbi-segmented">
             <button
               class="bbi-seg"
@@ -487,13 +487,13 @@ function sourceLabel(entry: CharTagEntry): string {
             </button>
           </div>
           <span class="bbi-field-hint">
-            {{ draftScope === 'global' ? 'Global: All chats take effect, AI will not be modified, tag needs to be modified manually if there is any problem.' : 'This chat: Only the current chat, AI can automatically change with the plot.' }}
+            {{ draftScope === 'global' ? 'Global: applies in all chats; the AI never changes it, so fix tags by hand if needed.' : 'This chat: applies here only; the AI can update it as the story goes.' }}
           </span>
         </div>
 
         <label class="bbi-modal-field">
           <span class="bbi-modal-label">Character name</span>
-          <input v-model="draft.name" class="bbi-input" placeholder="The name is consistent with the name in the main text/BaiBai Book" @input="markManual" />
+          <input v-model="draft.name" class="bbi-input" placeholder="Same name as in the story/BaiBai Book" @input="markManual" />
         </label>
         <span class="bbi-field-hint">Use the exact name from the story or BaiBai Book. Names are matched verbatim; renaming an entry does not update earlier references.</span>
 
@@ -525,7 +525,7 @@ function sourceLabel(entry: CharTagEntry): string {
             :rows="2"
             :max-rows="6"
             mono
-            placeholder="If left blank, the above fields will be used to splice it; when the entire string is filled in and the fields are all empty, the entire string will prevail (old data format)"
+            placeholder="Blank = built from the fields above. If this is filled in and every field is empty, this whole string is used (old data format)"
             @input="markManual"
           />
         </label>
@@ -537,7 +537,7 @@ function sourceLabel(entry: CharTagEntry): string {
             :rows="2"
             :max-rows="4"
             mono
-            placeholder="A coherent description of appearance in English. Use it to replace @character name in nl in natural language mode; if left blank, use tag string to replace it."
+            placeholder="A coherent English appearance description. Replaces @character name in nl in natural-language mode; blank = the tag string is used instead."
             @input="markManual"
           />
         </label>
@@ -552,7 +552,7 @@ function sourceLabel(entry: CharTagEntry): string {
         <div v-if="editingHistory.length" class="bbi-char-history">
           <button class="bbi-char-history-toggle" type="button" @click="historyOpen = !historyOpen">
             <span class="bbi-char-history-caret" :class="{ 'is-open': historyOpen }"><Icon name="chevron" /></span>
-            Change History ({{ editingHistory.length }})
+            Change history ({{ editingHistory.length }})
           </button>
           <ul v-if="historyOpen" class="bbi-char-history-list">
             <li v-for="(record, i) in [...editingHistory].reverse()" :key="i" class="bbi-char-history-item">
@@ -563,7 +563,7 @@ function sourceLabel(entry: CharTagEntry): string {
                   <template v-else>{{ record.to }}</template>
                 </span>
                 <span v-if="record.reason" class="bbi-char-history-reason">{{ record.reason }}</span>
-                <span class="bbi-char-history-meta">{{ record.floor >= 0 ? `No.${record.floor}building` : 'Manual' }}·{{ new Date(record.at).toLocaleString() }}</span>
+                <span class="bbi-char-history-meta">{{ record.floor >= 0 ? `Floor ${record.floor}` : 'Manual' }}·{{ new Date(record.at).toLocaleString() }}</span>
               </div>
               <button class="bbi-btn bbi-btn-sm" type="button" title="Roll back the field to its value before the change" @click="askRollback(record)">
                 rollback
@@ -581,7 +581,7 @@ function sourceLabel(entry: CharTagEntry): string {
             v-if="editingName && editingScope === 'chat'"
             class="bbi-btn"
             type="button"
-            title="Snapshot the current appearance into the global library, all chats will take effect; this chat copy and change history will be cleared"
+            title="Snapshot the current appearance into the global library for all chats; this chat's copy and change history are cleared"
             @click="askPromote"
           >
             <Icon name="star" /> Promote to global
@@ -590,7 +590,7 @@ function sourceLabel(entry: CharTagEntry): string {
             v-if="editingName && editingScope === 'global'"
             class="bbi-btn"
             type="button"
-            title="Copy as this chat copy: This chat will be based on the copy later, and AI can change it."
+            title="Copy into this chat: from now on this chat uses the copy, and the AI can change it"
             @click="copyToChat"
           >
             <Icon name="copy" /> Copy to this chat
@@ -598,36 +598,36 @@ function sourceLabel(entry: CharTagEntry): string {
           <button
             class="bbi-btn"
             type="button"
-            title="Read the appearance of the character in the latest status of BaiBai Book and convert it into a field again."
+            title="Read this character's appearance from BaiBai Book's latest state and convert it into fields again"
             :disabled="regenerating"
             @click="regenerateFromBook"
           >
-            <Icon name="refresh" /> {{ regenerating ? 'Generating...' : 'Generate from BaiBai Book' }}
+            <Icon name="refresh" /> {{ regenerating ? 'Generating…' : 'Generate from BaiBai Book' }}
           </button>
           <button class="bbi-btn bbi-btn-primary" type="button" @click="confirmEntry">Done</button>
         </footer>
 
         <ConfirmDialog
           v-model:open="confirmDeleteOpen"
-          title="Delete role"
+          title="Delete character"
           confirm-text="Delete"
           confirm-icon="trash"
           tone="danger"
           top-layer
           @confirm="confirmRemove"
         >
-          Confirm to delete &quot;{{ editingName }}&quot;tag's fixed appearance? The character's appearance will no longer be anchored when generated later.
+          Delete the fixed appearance of &quot;{{ editingName }}&quot;? Later images will no longer anchor this character's appearance.
         </ConfirmDialog>
 
         <ConfirmDialog
           v-model:open="confirmPromoteOpen"
           title="Promote to global"
-          confirm-text="promote"
+          confirm-text="Promote"
           confirm-icon="star"
           top-layer
           @confirm="confirmPromote"
         >
-          Put &quot;{{ editingName }}”’s current appearance snapshot into the global database? All subsequent chats (including this chat) will be based on the global value.
+          Save a snapshot of &quot;{{ editingName }}&quot;'s current appearance to the global library? All chats, this one included, will then use the global value.
           AI can no longer modify it; the copy and change history of this chat will be cleared.
         </ConfirmDialog>
       </div>
@@ -636,17 +636,17 @@ function sourceLabel(entry: CharTagEntry): string {
     <!-- ===== Rollback confirmation ===== -->
     <ConfirmDialog
       v-model:open="confirmRollbackOpen"
-      title="Rollback changes"
-      confirm-text="rollback"
+      title="Roll back change"
+      confirm-text="Roll back"
       tone="danger"
       top-layer
       @confirm="confirmRollback"
     >
       <template v-if="pendingRollback">
-        Put &quot;{{ pendingRollback.name }}&quot; of &quot;{{ fieldLabel(pendingRollback.record.field) }}&quot;From
-        <code>{{ pendingRollback.record.to }}</code> rollback to
+        Roll back &quot;{{ fieldLabel(pendingRollback.record.field) }}&quot; for &quot;{{ pendingRollback.name }}&quot; from
+        <code>{{ pendingRollback.record.to }}</code> to
         <code>{{ pendingRollback.record.from || '(empty)' }}</code> ?
-        Rolling back an archived record deletes the entire entry.
+        Rolling back a profile-creation record deletes the whole entry.
       </template>
     </ConfirmDialog>
   </section>

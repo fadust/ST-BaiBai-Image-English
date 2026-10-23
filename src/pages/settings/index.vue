@@ -143,9 +143,9 @@ interface TagPromptMeta {
 // Natural-language conditional sections (expandNlSections in autoTag/prompt.ts) expand in both backends' specifications and thought chains,
 // so all four carry this macro set; the two built-in NAI texts rely on it to serve both sides of the "Generate Natural Language" toggle with one text.
 const NL_SECTION_MACROS = [
-  { token: '{{#nl}}', desc: 'The beginning of the conditional section: The content up to {{/nl}} is only retained when "Generate Natural Language" is turned on.' },
-  { token: '{{^nl}}', desc: 'The beginning of the conditional section: the content up to {{/nl}} is only retained when "Generate Natural Language" is turned off.' },
-  { token: '{{/nl}}', desc: 'End of conditional section, paired with {{#nl}} or {{^nl}}; nesting is not supported.' },
+  { token: '{{#nl}}', desc: 'Starts a conditional section: the content up to {{/nl}} is kept only when "Generate natural language" is on.' },
+  { token: '{{^nl}}', desc: 'Starts a conditional section: the content up to {{/nl}} is kept only when "Generate natural language" is off.' },
+  { token: '{{/nl}}', desc: 'Ends a conditional section opened by {{#nl}} or {{^nl}}; nesting is not supported.' },
 ];
 
 const TAG_PROMPT_METAS: TagPromptMeta[] = [
@@ -159,26 +159,26 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'naiV5Spec',
     label: 'NAI Specification',
-    hint: 'Added to automatic tag requests when the default backend is NAI. Defines the Base Prompt, native Character Prompts and English natural language (nl is always written in English). NAI 4.5 and V5 share this one specification: char_captions is the v4-era protocol, so both use the same rules. Content between {{#nl}}\u2026{{/nl}} is kept only when "Generate Natural Language" is on in the NAI panel; content between {{^nl}}\u2026{{/nl}} only when it is off. Leave blank to use the built-in default.',
+    hint: 'Added to automatic tag requests when the default backend is NAI. Defines the Base Prompt, native Character Prompts and English natural language (nl is always written in English). NAI 4.5 and V5 share this one specification: char_captions is the v4-era protocol, so both use the same rules. Content between {{#nl}}\u2026{{/nl}} is kept only when "Generate natural language" is on in the NAI panel; content between {{^nl}}\u2026{{/nl}} only when it is off. Leave blank to use the built-in default.',
     builtin: DEFAULT_NAI_V5_SPEC,
     macros: NL_SECTION_MACROS,
   },
   {
     key: 'naiV5Thinking',
     label: 'NAI Thought Chain',
-    hint: 'The pre-output thought list used when the default backend is NAI, as system is pressed after the task message (the think block is automatically stripped off when parsing). The slot block is "Base block + one block for each character", which corresponds to the characters[] protocol and is not common with the single string form of ComfyUI. Matched with the "NAI specification", the same selection should be made according to the {{#nl}}...{{/nl}} / {{^nl}}...{{/nl}} conditional section. Leave blank to use the built-in default.',
+    hint: 'The pre-output checklist used when the default backend is NAI, sent as a system message after the task message (the thinking block is stripped when parsing). Its slot blocks are "one Base block + one block per character", matching the characters[] protocol, so it is not shared with the single-string ComfyUI form. Like the NAI Specification, it supports {{#nl}}…{{/nl}} / {{^nl}}…{{/nl}} conditional sections. Leave blank to use the built-in default.',
     builtin: DEFAULT_NAI_V5_THINKING,
     macros: NL_SECTION_MACROS,
   },
   {
     key: 'comfySpec',
-    label: 'ComfyUI Specifications',
-    hint: 'When the default backend is ComfyUI, automatic tag requests are entered, constraining the writing specifications of tag / nl. You can also use {{#nl}}…{{/nl}} / {{^nl}}…{{/nl}} conditional segments, and select according to the "Generate Natural Language" switch of the current workflow. Leave blank to use the built-in default.',
+    label: 'ComfyUI Specification',
+    hint: 'Added to automatic tag requests when the default backend is ComfyUI. Sets the writing rules for tag / nl. Supports {{#nl}}…{{/nl}} / {{^nl}}…{{/nl}} conditional sections, chosen by the current workflow\'s "Generate natural language" toggle. Leave blank to use the built-in default.',
     builtin: DEFAULT_COMFY_SPEC,
     macros: [
       {
         token: '{{nl}}',
-        desc: 'Natural language specification; the ComfyUI panel is expanded when "Generate Natural Language" is turned on, and left blank when it is closed. When this macro is not written, the enable switch will be automatically appended to the end.',
+        desc: 'The natural-language rules. Expands when "Generate natural language" is on in the ComfyUI panel, and to nothing when off. If this macro is absent, the rules are appended to the end when the toggle is on.',
       },
       ...NL_SECTION_MACROS,
     ],
@@ -186,7 +186,7 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'comfyThinking',
     label: 'ComfyUI Thought Chain',
-    hint: 'The pre-output thought list used when the default backend is ComfyUI, as system is pressed after the task message (thought blocks are automatically stripped off when parsing). Compatible with the "ComfyUI specification", it also supports {{#nl}}...{{/nl}} / {{^nl}}...{{/nl}} conditional segments. Leave blank to use the built-in default.',
+    hint: 'The pre-output checklist used when the default backend is ComfyUI, sent as a system message after the task message (the thinking block is stripped when parsing). Pairs with the ComfyUI Specification and also supports {{#nl}}…{{/nl}} / {{^nl}}…{{/nl}} conditional sections. Leave blank to use the built-in default.',
     builtin: DEFAULT_COMFY_THINKING,
     macros: NL_SECTION_MACROS,
   },
@@ -500,7 +500,7 @@ async function confirmUpdate() {
   const toastr = (globalThis as Record<string, any>).toastr;
   try {
     await performUpdate();
-    toastr?.success?.('Update successful, refreshing the page...', 'BaiBai Image');
+    toastr?.success?.('Updated. Refreshing the page…', 'BaiBai Image');
   } catch (error) {
     toastr?.error?.(`Update failed: ${error instanceof Error ? error.message : String(error)}`, 'BaiBai Image');
   }
@@ -530,7 +530,7 @@ async function confirmUpdate() {
           :title="`Upstream version v${updateState.latest}`"
           @click="openUpdateConfirm"
         >
-          {{ updateState.updating ? 'Updating…' : 'Updated' }}
+          {{ updateState.updating ? 'Updating…' : 'Update' }}
         </button>
       </div>
     </div>
@@ -539,14 +539,14 @@ async function confirmUpdate() {
     <!-- Master switch: the main control of the whole plugin. The page's only large slide switch, set apart in rank from the small checkboxes below. -->
     <div class="bbi-master" :class="{ 'is-off': !settings.enabled }">
       <span class="bbi-master-spine" aria-hidden="true"></span>
-      <span class="bbi-master-title">BaiBai Image·Wen Sheng Tu</span>
+      <span class="bbi-master-title">BaiBai Image · Text to Image</span>
       <button
         type="button"
         role="switch"
         class="bbi-toggle"
         :class="{ 'is-on': settings.enabled }"
         :aria-checked="settings.enabled"
-        :title="settings.enabled ? 'Click to deactivate' : 'Click to enable'"
+        :title="settings.enabled ? 'Click to turn off' : 'Click to turn on'"
         @click="settings.enabled = !settings.enabled"
       >
         <span class="bbi-toggle-knob"></span>
@@ -562,38 +562,38 @@ async function confirmUpdate() {
         </div>
 
         <div class="bbi-select-row">
-          <span class="bbi-field-label">Navigation location</span>
-          <BbiSelect v-model="navSel" :options="NAV_OPTIONS" aria-label="Navigation location" />
+          <span class="bbi-field-label">Navigation position</span>
+          <BbiSelect v-model="navSel" :options="NAV_OPTIONS" aria-label="Navigation position" />
         </div>
 
         <div class="bbi-select-row">
-          <span class="bbi-field-label">Plot backend</span>
-          <BbiSelect v-model="backendSel" :options="BACKEND_OPTIONS" aria-label="Plot backend" />
+          <span class="bbi-field-label">Image backend</span>
+          <BbiSelect v-model="backendSel" :options="BACKEND_OPTIONS" aria-label="Image backend" />
         </div>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Save the new image as JPG</span>
+          <span class="bbi-field-label">Save new images as JPG</span>
           <input v-model="settings.storage.saveAsJpeg" type="checkbox" class="bbi-checkbox" />
         </label>
         <p class="bbi-field-hint">
-          The volume is about 10% to 20% of PNG; the price is that the generation parameters are no longer embedded in the image (the prompt words and seeds are still left in the chat history).
+          About 10–20% of the PNG size. The trade-off: generation parameters are no longer embedded in the image (prompts and seeds stay in the chat history).
         </p>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Floor pictures are folded by default</span>
+          <span class="bbi-field-label">Collapse floor images by default</span>
           <input v-model="settings.ui.autoCollapseImages" type="checkbox" class="bbi-checkbox" />
         </label>
         <p class="bbi-field-hint">
-          After turning it on, the picture will be a thin strip by default and will expand when you click it. It is suitable for preventing prying eyes when playing outside. Cards that have been manually expanded/collapsed will be subject to the manual status (reset after refreshing the page).
+          When on, images show as a thin bar and expand on click, handy in public. Cards you expand/collapse by hand keep that state (reset when the page refreshes).
         </p>
 
         <div class="bbi-select-row">
-          <span class="bbi-field-label">Floor picture display size</span>
-          <BbiSelect v-model="imageDisplaySel" :options="IMAGE_DISPLAY_OPTIONS" aria-label="Floor picture display size" />
+          <span class="bbi-field-label">Floor image display size</span>
+          <BbiSelect v-model="imageDisplaySel" :options="IMAGE_DISPLAY_OPTIONS" aria-label="Floor image display size" />
         </div>
         <p class="bbi-field-hint">
-          No matter how big the picture is displayed in the chat, it is mainly for computer wide screens; the resolution and orientation of the picture will not be changed, nor will the picture file itself be changed.
-          Narrow screens such as mobile phones are inherently limited by width and are basically unaffected. &quot;Full floor width&quot; is the old version effect.
+          Sets how large images show in the chat, mainly for wide desktop screens. It never changes the image resolution, orientation or file.
+          Narrow screens such as phones are limited by width anyway and barely change. &quot;Fill the floor width&quot; is the old behaviour.
         </p>
 
         <label class="bbi-switch-row">
@@ -603,22 +603,22 @@ async function confirmUpdate() {
         <p class="bbi-field-hint">On mobile, tap the current page’s navigation button again to close the window. Disable this if you close it accidentally.</p>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Display button in ST top bar</span>
+          <span class="bbi-field-label">Show button in ST top bar</span>
           <input v-model="ui.showTopBar" type="checkbox" class="bbi-checkbox" />
         </label>
-        <p class="bbi-field-hint">Add a button to quickly open BaiBai Image in the navigation bar at the top of SillyTavern. The wand entrance in the lower left corner remains as before.</p>
+        <p class="bbi-field-hint">Adds a button to SillyTavern's top bar that opens BaiBai Image. The wand menu entry at the bottom left stays.</p>
 
         <label class="bbi-switch-row">
           <span class="bbi-field-label">Show floating button</span>
           <input v-model="ui.showOrb" type="checkbox" class="bbi-checkbox" />
         </label>
-        <p class="bbi-field-hint">Hang a draggable floating ball on the edge of the screen and click to open BaiBai Image. Drag it to the center to permanently suspend it, and drag it close to the left and right edges to adsorb the edges.</p>
+        <p class="bbi-field-hint">Shows a draggable floating button that opens BaiBai Image. Drop it mid-screen to leave it there, or near the left/right edge to dock it.</p>
 
         <!-- Floating-orb appearance: many options, tucked into a small group only once enabled -->
-        <Collapsible v-if="ui.showOrb" title="Appearance of floating ball" :open="false">
+        <Collapsible v-if="ui.showOrb" title="Floating button appearance" :open="false">
           <div class="bbi-select-row">
             <span class="bbi-field-label">Shape</span>
-            <BbiSelect v-model="orbShapeSel" :options="ORB_SHAPES" aria-label="suspended ball shape" />
+            <BbiSelect v-model="orbShapeSel" :options="ORB_SHAPES" aria-label="Floating button shape" />
           </div>
 
           <div class="bbi-field">
@@ -635,35 +635,35 @@ async function confirmUpdate() {
               <span class="bbi-field-value">{{ ui.orbOpacity }}%</span>
             </div>
             <input class="bbi-range" type="range" min="20" max="100" step="1" v-model.number="ui.orbOpacity" />
-            <p class="bbi-field-hint">The opacity of the floating ball when it is at rest; it will always be fully visible when raised/draged.</p>
+            <p class="bbi-field-hint">Opacity of the floating button at rest; it is always fully visible when summoned or dragged.</p>
           </div>
 
           <div class="bbi-field">
             <div class="bbi-field-head">
               <span class="bbi-field-label">Custom icon</span>
             </div>
-            <input class="bbi-input" type="text" v-model="ui.orbImage" placeholder="ST server image path" spellcheck="false" />
+            <input class="bbi-input" type="text" v-model="ui.orbImage" placeholder="Image path on the ST server" spellcheck="false" />
             <p class="bbi-field-hint">Leave blank to use the default brush icon.</p>
           </div>
         </Collapsible>
       </Collapsible>
 
       <!-- Secondary API: the model channels used to generate image tags (channel list shared with BaiBai Book) -->
-      <Collapsible title="Auxiliary API" :open="false">
+      <Collapsible title="Secondary API" :open="false">
         <!-- Task assignment: there is only one task, generating tags -->
         <div class="bbi-field bbi-assign">
           <div class="bbi-assign-row">
-            <span class="bbi-field-label">Generate tag using</span>
-            <BbiSelect v-model="tagGenSel" :options="TAG_GEN_OPTIONS" aria-label="Generate tag using the API channel" />
+            <span class="bbi-field-label">Tag generation</span>
+            <BbiSelect v-model="tagGenSel" :options="TAG_GEN_OPTIONS" aria-label="API channel for tag generation" />
           </div>
         </div>
-        <p class="bbi-field-hint">Follow the main API when not assigning a channel: directly borrow the API (chat completion/text completion) currently used in your main interface to generate the drawing tag, no additional configuration is required. If you want to use different models, create a sub-channel assignment below. The channel list is shared with BaiBai Book, and changes at either end will be automatically synchronized to the other end.</p>
+        <p class="bbi-field-hint">With no channel assigned, it follows the main API: the API your main chat uses (chat or text completion) writes the image tags, with no extra setup. To use a different model, add a secondary channel below and assign it. The channel list is shared with BaiBai Book, and changes on either side sync automatically.</p>
 
         <hr class="bbi-rule" />
 
         <!-- Channels: add button at the top + compact read-only list (click a row to edit in a dialog), no longer one long flat list -->
         <div class="bbi-channel-bar">
-          <span class="bbi-field-label">Backend</span>
+          <span class="bbi-field-label">Channels</span>
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="addChannel()">
             <Icon name="plus" /> Add channel
           </button>
@@ -673,28 +673,28 @@ async function confirmUpdate() {
           <li v-for="ch in settings.channels" :key="ch.id" class="bbi-channel-item">
             <button class="bbi-channel-open" type="button" @click="openChannel(ch.id)">
               <span class="bbi-channel-item-name">{{ ch.name || 'Unnamed channel' }}</span>
-              <span class="bbi-channel-item-model">{{ ch.model || 'No model set up' }}</span>
+              <span class="bbi-channel-item-model">{{ ch.model || 'No model set' }}</span>
             </button>
           </li>
         </ul>
-        <p v-else class="bbi-field-hint">There is no channel yet. Click &quot;Add Channel&quot; to configure API to be used to generate tag.</p>
+        <p v-else class="bbi-field-hint">No channels yet. Click &quot;Add channel&quot; to set up an API for tag generation.</p>
       </Collapsible>
 
-      <Collapsible title="Automatically generate tag" :open="false">
+      <Collapsible title="Automatic tags" :open="false">
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Automatically generate tag</span>
+          <span class="bbi-field-label">Generate tags automatically</span>
           <input v-model="settings.autoTag.enabled" type="checkbox" class="bbi-checkbox" />
         </label>
-        <p class="bbi-field-hint">AI After the text is generated, it will automatically determine whether the building needs illustrations, and if so, write the raw illustration tag.</p>
+        <p class="bbi-field-hint">After AI text is generated, it judges whether the floor needs images and, if so, writes image tags.</p>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Automatically generate pictures</span>
+          <span class="bbi-field-label">Generate images automatically</span>
           <input v-model="settings.autoTag.autoGenerate" type="checkbox" class="bbi-checkbox" />
         </label>
-        <p class="bbi-field-hint">After writing tag, the picture will be automatically output according to the current picture output channel; if it is turned off, only tag will be written and generated manually on the card.</p>
+        <p class="bbi-field-hint">After tags are written, images are generated with the current image channel. When off, only tags are written, and you generate from the card.</p>
 
         <label class="bbi-num-row">
-          <span class="bbi-field-label">Carry the latest AI floor number</span>
+          <span class="bbi-field-label">Recent AI floors to include</span>
           <input
             v-model.number="settings.autoTag.contextMessages"
             class="bbi-input bbi-num"
@@ -704,10 +704,10 @@ async function confirmUpdate() {
             @change="normalizeAutoTagNumbers"
           />
         </label>
-        <p class="bbi-field-hint">Count according to the AI story floor, and the user floor in the middle is carried together.</p>
+        <p class="bbi-field-hint">Counts AI story floors; user floors in between are included too.</p>
 
         <label class="bbi-num-row">
-          <span class="bbi-field-label">Minimum number of pictures for a single floor</span>
+          <span class="bbi-field-label">Minimum images per floor</span>
           <input
             v-model.number="settings.autoTag.minImages"
             class="bbi-input bbi-num"
@@ -720,7 +720,7 @@ async function confirmUpdate() {
         </label>
 
         <label class="bbi-num-row">
-          <span class="bbi-field-label">Maximum number of pictures on a single floor</span>
+          <span class="bbi-field-label">Maximum images per floor</span>
           <input
             v-model.number="settings.autoTag.maxImages"
             class="bbi-input bbi-num"
@@ -730,10 +730,10 @@ async function confirmUpdate() {
             @change="normalizeAutoTagNumbers('maxImages')"
           />
         </label>
-        <p class="bbi-field-hint">No picture is allowed when the minimum setting is 0; the maximum number is always hard-limited by the plug-in.</p>
+        <p class="bbi-field-hint">A minimum of 0 allows floors with no image; the plugin always enforces the maximum.</p>
 
         <label class="bbi-num-row">
-          <span class="bbi-field-label">Number of failed automatic retries</span>
+          <span class="bbi-field-label">Automatic retries on failure</span>
           <input
             v-model.number="settings.autoTag.retryCount"
             class="bbi-input bbi-num"
@@ -744,12 +744,12 @@ async function confirmUpdate() {
             @change="normalizeAutoTagNumbers"
           />
         </label>
-        <p class="bbi-field-hint">Deputy API Automatically retry when the request fails or the response cannot be parsed; 0 = No retry, up to 5 times.</p>
+        <p class="bbi-field-hint">Retries the secondary API automatically when the request fails or the response cannot be parsed. 0 = no retry; up to 5.</p>
       </Collapsible>
 
       <!-- Excluded characters: list shared with BaiBai Book (see shared storage in state/settings.ts); a change on either side syncs automatically -->
       <Collapsible title="Excluded characters" :open="false">
-        <p class="bbi-field-hint">Pictures of characters in the list are not automatically generated in the chat tag. The list is shared with BaiBai Book, and changes at either end are automatically synchronized.</p>
+        <p class="bbi-field-hint">Chats with a listed character get no automatic image tags. The list is shared with BaiBai Book, and changes on either side sync automatically.</p>
         <div class="bbi-channel-bar">
           <span class="bbi-field-label">Excluded {{ settings.excludes.excludedChars.length }} items</span>
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="openExclude">
@@ -764,13 +764,13 @@ async function confirmUpdate() {
             </button>
           </li>
         </ul>
-        <p v-else class="bbi-field-hint">List is empty, all characters have auto tag enabled.</p>
+        <p v-else class="bbi-field-hint">The list is empty; auto-tagging is on for every character.</p>
       </Collapsible>
 
       <!-- Excluded lorebook content: same lists shared with BaiBai Book -->
       <Collapsible title="Exclude lorebook content" :open="false">
         <p class="bbi-field-hint">
-          Eliminate entries that are useless to the picture from the World Info that generated the tag reference, saving token and avoiding interference. List shared with Cypress; only affects deputy API.
+          Removes lorebook entries that are useless for images from the tag-generation context, saving tokens and avoiding noise. Shared with BaiBai Book; affects only the secondary API.
         </p>
 
         <!-- Whole-book exclusion: copies the excluded-characters search+check dialog -->
@@ -788,24 +788,24 @@ async function confirmUpdate() {
             </button>
           </li>
         </ul>
-        <p v-else class="bbi-field-hint">No World Infos are excluded, and all activated entries will be generated in tag for reference.</p>
+        <p v-else class="bbi-field-hint">No lorebooks are excluded; every activated entry is sent for tag generation.</p>
 
         <hr class="bbi-rule" />
 
         <!-- Filter by entry name: copies the cleanup-tag input + chips -->
         <div class="bbi-field-head">
-          <span class="bbi-field-label">Filter by entry comment</span>
+          <span class="bbi-field-label">Filter by entry name</span>
         </div>
         <p class="bbi-field-hint">
           Matches entry names by <strong>substring</strong> (case-insensitive) and supports regular expressions (such as <code>^Rules</code>).
-          preset <code>\[mvu[\s\S]*?\]</code> Used to filter MVU mechanism entries and can be deleted if not required.
+          The preset <code>\[mvu[\s\S]*?\]</code> filters MVU system entries; delete it if you do not need it.
         </p>
         <div class="bbi-striptag-bar">
           <input
             v-model="wiPatternDraft"
             class="bbi-input"
             type="text"
-            placeholder="Entry name or regular rule, such as append or ^ rule"
+            placeholder="Entry name or regex, e.g. append or ^Rules"
             @keydown.enter.prevent="addWiPattern"
           />
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="addWiPattern">
@@ -820,20 +820,20 @@ async function confirmUpdate() {
             </button>
           </li>
         </ul>
-        <p v-else class="bbi-field-hint">There are no rules for entry names.</p>
+        <p v-else class="bbi-field-hint">No entry-name rules.</p>
       </Collapsible>
 
       <!-- Custom cleanup tags: same list shared with BaiBai Book -->
       <Collapsible title="Custom cleanup tags" :open="false">
         <p class="bbi-field-hint">
-          Fill in the tag name (such as <code>snow</code>), the text and World Info will be scanned <code>&lt;snow&gt;…&lt;/snow&gt;</code> Delete the entire block. The list is shared with BaiBai Book.
+          Enter a tag name (such as <code>snow</code>) and every <code>&lt;snow&gt;…&lt;/snow&gt;</code> block is removed from the story text and lorebook before scanning. The list is shared with BaiBai Book.
         </p>
         <div class="bbi-striptag-bar">
           <input
             v-model="stripTagDraft"
             class="bbi-input"
             type="text"
-            placeholder="Tag name, such as snow"
+            placeholder="Tag name, e.g. snow"
             @keydown.enter.prevent="addStripTag"
           />
           <button class="bbi-btn bbi-btn-primary bbi-btn-sm" type="button" @click="addStripTag">
@@ -893,7 +893,7 @@ async function confirmUpdate() {
             />
             <span class="bbi-exclude-row-name">{{ name }}</span>
           </label>
-          <p v-if="!charNames.length" class="bbi-field-hint">The role list was not read. Please load the character card in ST first.</p>
+          <p v-if="!charNames.length" class="bbi-field-hint">No character list found. Load a character card in ST first.</p>
           <p v-else-if="!filteredCharNames.length" class="bbi-field-hint">No match &quot;{{ excludeSearch }}” role.</p>
         </div>
 
@@ -907,9 +907,9 @@ async function confirmUpdate() {
 
     <!-- ===== Excluded lorebooks dialog: search + checklist (copying excluded characters) ===== -->
     <ModalMask :open="excludeWorldOpen" @close="closeExcludeWorld">
-      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Edit Excluded lorebook List">
+      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Edit excluded lorebooks">
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">The entire excluded lorebook</span>
+          <span class="bbi-modal-title">Excluded lorebooks</span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="closeExcludeWorld"><Icon name="close" /></button>
         </header>
 
@@ -931,7 +931,7 @@ async function confirmUpdate() {
             />
             <span class="bbi-exclude-row-name">{{ name }}</span>
           </label>
-          <p v-if="!worldNames.length" class="bbi-field-hint">The lorebook has not been read. Please load/mount the lorebook in ST first.</p>
+          <p v-if="!worldNames.length" class="bbi-field-hint">No lorebooks found. Load or attach a lorebook in ST first.</p>
           <p v-else-if="!filteredWorldNames.length" class="bbi-field-hint">No match &quot;{{ excludeWorldSearch }}” lorebook.</p>
         </div>
 
@@ -957,7 +957,7 @@ async function confirmUpdate() {
         </label>
         <label class="bbi-modal-field">
           <span class="bbi-modal-label">API URL</span>
-          <input v-model="editingChannel.url" class="bbi-input" placeholder="Such as https://api.openai.com/v1" />
+          <input v-model="editingChannel.url" class="bbi-input" placeholder="e.g. https://api.openai.com/v1" />
         </label>
         <label class="bbi-modal-field">
           <span class="bbi-modal-label">API Key</span>
@@ -987,7 +987,7 @@ async function confirmUpdate() {
               <input
                 v-model="editingChannel.model"
                 class="bbi-input"
-                :placeholder="modelList.length ? 'Search or enter model name…' : 'Model name, such as gpt-4o-mini'"
+                :placeholder="modelList.length ? 'Search or enter model name…' : 'Model name, e.g. gpt-4o-mini'"
                 @focus="openModelMenu"
                 @input="modelQuery = editingChannel.model; modelMenuOpen = true"
                 @blur="closeModelMenuSoon"
@@ -1010,7 +1010,7 @@ async function confirmUpdate() {
             <button
               class="bbi-icon-mini"
               type="button"
-              :title="loadingModels[editingChannel.id] ? 'Retrieving…' : 'Fetch models'"
+              :title="loadingModels[editingChannel.id] ? 'Fetching…' : 'Fetch models'"
               :disabled="loadingModels[editingChannel.id]"
               @click="pullModels(editingChannel)"
             >
@@ -1048,12 +1048,12 @@ async function confirmUpdate() {
           <input v-model="editingChannel.stream" type="checkbox" class="bbi-checkbox" />
         </label>
         <label class="bbi-modal-field">
-          <span class="bbi-modal-label">Exclude Params</span>
+          <span class="bbi-modal-label">Exclude parameters</span>
           <input
             v-model="excludeParamsText"
             class="bbi-input"
             type="text"
-            placeholder="Comma separated, such as temperature, max_tokens"
+            placeholder="Comma-separated, e.g. temperature, max_tokens"
           />
           <span class="bbi-field-hint">These parameters are removed from the request body before sending, for endpoints that do not accept them. Separate names with commas; leave blank to exclude nothing.</span>
         </label>
@@ -1084,7 +1084,7 @@ async function confirmUpdate() {
           top-layer
           @confirm="confirmRemoveChannel"
         >
-          Confirm to delete channel &quot;{{ editingChannel.name || 'Unnamed channel' }}&quot;? This operation is irreversible, and the tasks assigned to this channel will be cleared.
+          Delete channel &quot;{{ editingChannel.name || 'Unnamed channel' }}&quot;? This cannot be undone, and any task assigned to it is unassigned.
         </ConfirmDialog>
       </div>
     </ModalMask>
@@ -1096,10 +1096,10 @@ async function confirmUpdate() {
         class="bbi-modal bbi-modal-wide"
         role="dialog"
         aria-modal="true"
-        :aria-label="`Edit${editingTagPrompt.label}`"
+        :aria-label="`Edit ${editingTagPrompt.label}`"
       >
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">Edit{{ editingTagPrompt.label }}</span>
+          <span class="bbi-modal-title">Edit {{ editingTagPrompt.label }}</span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="closeTagPrompt"><Icon name="close" /></button>
         </header>
 
@@ -1108,7 +1108,7 @@ async function confirmUpdate() {
         <!-- Available macros: click to insert at the caret (all four specifications and thought chains have natural-language conditional sections; the ComfyUI specification also has {{nl}};
              entries without macros don't show this bar) -->
         <div v-if="editingTagPrompt.macros.length" class="bbi-macro-bar">
-          <span class="bbi-macro-tip">Click to insert macro:</span>
+          <span class="bbi-macro-tip">Click to insert a macro:</span>
           <button
             v-for="mac in editingTagPrompt.macros"
             :key="mac.token"
@@ -1144,13 +1144,13 @@ async function confirmUpdate() {
     <ConfirmDialog
       v-model:open="updateConfirmOpen"
       title="New version found"
-      confirm-text="Update instructions"
+      confirm-text="Update"
       busy-text="Updating…"
       :busy="updateState.updating"
       @confirm="confirmUpdate"
     >
-      Current version v{{ updateState.current || '—' }}, the latest version v{{ updateState.latest }}.<br />
-      Update now? The page will automatically refresh after the update is completed to take effect.
+      Current version v{{ updateState.current || '—' }}, latest version v{{ updateState.latest }}.<br />
+      Update now? The page refreshes automatically when the update finishes.
     </ConfirmDialog>
   </section>
 </template>

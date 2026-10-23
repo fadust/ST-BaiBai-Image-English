@@ -247,7 +247,7 @@ async function requestCompletionAtUrl(
 ): Promise<string> {
   const ctx = getContext();
   if (!ctx) throw new ApiError('SillyTavern context is not available');
-  if (!channel.url || !channel.model) throw new ApiError('The auxiliary API channel is not fully configured (missing url or model)');
+  if (!channel.url || !channel.model) throw new ApiError('The secondary API channel is incomplete (missing url or model)');
 
   const stream = channel.stream ?? false;
   const body = buildRequestBody(channel, messages, reverseProxy, stream);
@@ -276,13 +276,13 @@ async function requestCompletionAtUrl(
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
-        throw new ApiError(`Auxiliary API request failed (${resp.status}): ${text.slice(0, 300)}`, resp.status);
+        throw new ApiError(`Secondary API request failed (${resp.status}): ${text.slice(0, 300)}`, resp.status);
       }
 
       // Streaming: concatenate SSE increments; non-streaming: parse JSON directly.
       if (stream) {
         const streamed = await readSseContent(resp);
-        if (!streamed) throw new ApiError('Auxiliary API returned no content');
+        if (!streamed) throw new ApiError('The secondary API returned no content');
         // Streaming has no usage: ST builds the upstream body from a field allowlist without stream_options,
         // so the upstream can't be asked to send a usage chunk at the end. Only a local estimate afterwards is possible.
         return { content: streamed, usage: { prompt: null, completion: null } };
@@ -290,11 +290,11 @@ async function requestCompletionAtUrl(
 
       const data = await resp.json();
       if (data?.error) {
-        throw new ApiError(data.error.message || 'Auxiliary API returned an error');
+        throw new ApiError(data.error.message || 'The secondary API returned an error');
       }
 
       const parsed = extractContent(data);
-      if (!parsed) throw new ApiError('Auxiliary API returned no content');
+      if (!parsed) throw new ApiError('The secondary API returned no content');
       // ST's proxy non-streaming branch passes through with response.send(json), so usage is the real upstream value.
       return { content: parsed, usage: readUsage(data) };
     });
@@ -356,7 +356,7 @@ export async function readSseContent(resp: Response): Promise<string> {
       if (payload === '[DONE]') continue;
       try {
         const json = JSON.parse(payload);
-        if (json?.error) throw new ApiError(json.error.message || 'Auxiliary API returned an error');
+        if (json?.error) throw new ApiError(json.error.message || 'The secondary API returned an error');
         const choice = json?.choices?.[0];
         const src = choice?.delta ?? choice?.message;
         const piece = textOf(src?.content) || textOf(choice?.text);
@@ -431,7 +431,7 @@ export function mainApiAvailable(): boolean {
 export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOptions = {}): Promise<string> {
   const ctx = getContext();
   if (typeof ctx?.generateRaw !== 'function') {
-    throw new ApiError('The current ST version does not support generateRaw and cannot follow the main API');
+    throw new ApiError('This ST version lacks generateRaw, so it cannot follow the main API');
   }
 
   // History tracking. Following the main API goes through ST's internal black box with no usage available, so tokens are always estimated.
@@ -447,7 +447,7 @@ export async function requestViaMainApi(messages: ChatMsg[], opts: RequestOption
 
   try {
     const content = (await ctx.generateRaw({ prompt: messages, responseLength: MAIN_API_RESPONSE_LENGTH }))?.trim();
-    if (!content) throw new ApiError('Main API returned no content');
+    if (!content) throw new ApiError('The main API returned no content');
     // Same rule as the secondary API: a failed validation is recorded as a failure, not a "success"
     opts.validate?.(content);
     if (historyId !== null) {
@@ -526,7 +526,7 @@ export async function fetchModels(
 ): Promise<string[]> {
   const ctx = getContext();
   if (!ctx) throw new ApiError('SillyTavern context is not available');
-  if (!channel.url) throw new ApiError('Please fill in the API URL first');
+  if (!channel.url) throw new ApiError('Enter the API URL first');
 
   const body = {
     chat_completion_source: 'openai',

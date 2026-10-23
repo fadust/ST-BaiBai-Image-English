@@ -134,11 +134,11 @@ const dirty = computed(() => {
 /** Validation: tag is required + no field may contain sub-tag literals (same rule as the AI side). */
 const error = computed(() => {
   const next = draft.value;
-  if (!next.tag) return 'Screen tag cannot be empty';
+  if (!next.tag) return 'Image tags cannot be empty';
   const fields: Array<[string, string]> = [
-    ['Screen tag', next.tag],
+    ['Image tags', next.tag],
     ['Natural Language', next.nl],
-    ['negative cue words', next.negative],
+    ['Negative prompt', next.negative],
   ];
   for (const character of next.characters) {
     fields.push([`Character "${character.name}"`, `${character.name} ${character.tag} ${character.nl}`]);
@@ -255,17 +255,17 @@ onBeforeUnmount(() => {
           :disabled="busy || !configured"
           :title="
             configured
-              ? 'Let AI reread the text of this article and rewrite the prompt words in this page'
-              : 'Please complete the configuration on the &quot;Backend&quot; page of BaiBai Image first.'
+              ? 'Let AI reread this floor and rewrite this image\'s prompt'
+              : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'
           "
           @click="rewrite"
         >
-          <Icon name="sparkles" /> AI Rewrite prompt word
+          <Icon name="sparkles" /> AI rewrite prompt
         </button>
         <template v-else>
           <span class="bbi-rewrite-busy">
             <span class="bbi-rewrite-spin" />
-            AI is rewriting the prompt word...
+            AI is rewriting the prompt…
           </span>
           <button class="bbi-btn bbi-btn-sm" type="button" @click="emit('cancel-rewrite')">
             Cancel rewrite
@@ -273,17 +273,17 @@ onBeforeUnmount(() => {
         </template>
       </div>
       <p v-if="rewriting" class="bbi-editor-note">
-        After the rewriting is completed, it will be saved directly and the picture will be output according to the new prompt word, and the result will be filled back in the input box below.
-        Closing this window now will not interrupt it, and you can still see the progress when you open it again.
+        When it finishes, the new prompt is saved and an image is generated from it. The result is filled into the boxes below.
+        Closing this window will not stop it. Reopen it to see the progress.
       </p>
       <!-- Saved but the dialog is still open: the inputs below look the same as "something the user half-typed"; without saying which one is in effect,
            users would think they still need to click "Apply" (or, conversely, that the draft was saved too). -->
       <p v-else-if="rewritten" class="bbi-editor-note">
-        AI The rewriting is completed, the new prompt word has been saved and the drawing has started. It is filled in below. If you still want to make adjustments, just make the changes directly and click &quot;Apply&quot; after making the changes.
+        AI rewrite done. The new prompt is saved and generating has started; it is filled in below. To adjust it, edit below and click &quot;Apply&quot;.
       </p>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Screen tag (danbooru short tag, comma separated)</span>
+        <span class="bbi-modal-label">Image tags (short danbooru tags, comma-separated)</span>
         <BbiTextarea
           v-model="tag"
           class="bbi-prompt-area"
@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Natural language (can be left blank; used by some backends/models)</span>
+        <span class="bbi-modal-label">Natural language (optional; used by some backends/models)</span>
         <BbiTextarea
           v-model="nl"
           class="bbi-prompt-area"
@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Negative prompt words on this screen (can be left blank; superimposed with channel-level negative words)</span>
+        <span class="bbi-modal-label">Negative prompt for this image (optional; added to the channel negative prompt)</span>
         <BbiTextarea
           v-model="negative"
           class="bbi-prompt-area"
@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Frame orientation (specific pixels are configured on the &quot;Backend&quot; page)</span>
+        <span class="bbi-modal-label">Frame orientation (pixel sizes are set on the &quot;Backend&quot; page)</span>
         <div class="bbi-segmented" role="tablist" aria-label="Frame direction">
           <button
             class="bbi-seg"
@@ -344,14 +344,14 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <span v-if="lockedSize" class="bbi-field-hint">
-          The current channel is locked{{ lockedSize === 'portrait' ? 'Portrait' : 'Landscape' }}, always follow this direction when drawing;
-          If you want to export each picture in its own direction, go to the &quot;Backend&quot; page size and change it back to &quot;Auto&quot;.
+          The current channel is locked to {{ lockedSize === 'portrait' ? 'portrait' : 'landscape' }}, so every image uses that orientation.
+          To use each image's own orientation, set the size lock on the &quot;Backend&quot; page back to &quot;Auto&quot;.
         </span>
       </div>
 
       <div class="bbi-modal-field">
         <span class="bbi-modal-label">
-          Role prompt words (multiple roles; only sent by NAI backend)
+          Character prompts (multiple characters; sent only by the NAI backend)
         </span>
         <div v-for="(character, index) in characters" :key="index" class="bbi-char-row">
           <input
@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
             v-model="character.tag"
             class="bbi-input bbi-char-tag"
             type="text"
-            placeholder="tag (such as girl, black hair)"
+            placeholder="tags (e.g. girl, black hair)"
           />
           <input
             v-model="character.nl"
@@ -375,7 +375,7 @@ onBeforeUnmount(() => {
           <button
             class="bbi-icon-mini"
             type="button"
-            title="Delete this role"
+            title="Remove this character"
             @click="removeCharacter(index)"
           >
             <Icon name="trash" />
@@ -384,14 +384,14 @@ onBeforeUnmount(() => {
         <button class="bbi-btn bbi-btn-sm bbi-char-add" type="button" @click="addCharacter">
           <Icon name="plus" /> Add role
         </button>
-        <span class="bbi-field-hint">It will take effect only when the character name and tag are both filled in. Blank lines will be automatically discarded when saving.</span>
+        <span class="bbi-field-hint">A row applies only when both the character name and tags are filled in. Blank rows are dropped on save.</span>
       </div>
 
       <!-- Changing the prompt switches the promptHash bucket, and the stale state shows only the newest image with no pager.
            That is the existing storage design, but manual prompt edits turn it from an edge case into an everyday one, so it is stated explicitly. -->
       <p v-if="historyCount > 1" class="bbi-editor-note">
-        There are already items under the current prompt word {{ historyCount }} Picture. After modification, only the latest one will be displayed (the picture has not been deleted,
-        Change the prompt word back to its original form to retrieve them all).
+        The current prompt already has {{ historyCount }} images. After the change only the latest one is shown (no image is deleted;
+        change the prompt back to recover them all).
       </p>
 
       <p v-if="error" class="bbi-editor-error">{{ error }}</p>
@@ -406,7 +406,7 @@ onBeforeUnmount(() => {
           class="bbi-btn bbi-btn-primary"
           type="button"
           :disabled="!canApply || !configured"
-          :title="configured ? 'Save the prompt and generate an image' : 'Please complete the configuration on the &quot;Backend&quot; page of BaiBai Image first.'"
+          :title="configured ? 'Save the prompt and generate an image' : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'"
           @click="apply(true)"
         >
           <Icon name="palette" /> Apply and regenerate

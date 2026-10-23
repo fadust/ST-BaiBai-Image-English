@@ -39,7 +39,7 @@ export async function copyText(text: string, okMessage = 'Copied'): Promise<bool
     toastr.success(okMessage, 'BaiBai Image');
     return true;
   } catch {
-    toastr.error('Copy failed, please select text manually', 'BaiBai Image');
+    toastr.error('Copy failed; select the text by hand', 'BaiBai Image');
     return false;
   }
 }

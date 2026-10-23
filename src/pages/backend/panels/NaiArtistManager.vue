@@ -96,7 +96,7 @@ function toggleSelectAllFiltered() {
 
 /** New: add to the library + set as current + open the editor dialog directly, all in one step. */
 function addArtist() {
-  const preset = newNaiArtist(`Artist Tags ${settings.nai.artistPresets.length + 1}`);
+  const preset = newNaiArtist(`Artist string ${settings.nai.artistPresets.length + 1}`);
   settings.nai.artistPresets.push(preset);
   settings.nai.activeArtistId = preset.id;
   openEdit({ preset, builtin: false });
@@ -116,7 +116,7 @@ function duplicate(item: ManagerItem) {
     negative: src.negative,
   };
   settings.nai.artistPresets.push(preset);
-  toastr.success(`Copied as "${preset.name}"`, 'Artist Tags');
+  toastr.success(`Copied as "${preset.name}"`, 'Artist string');
 }
 
 /* ============ Preview images ============ */
@@ -162,7 +162,7 @@ async function onPreviewFileChange(event: Event) {
     // File name = entry id: changing the image overwrites the same name, so no orphan files pile up
     target.previewPath = await uploadUserImage(ARTIST_PREVIEW_FOLDER, target.id, base64, 'jpg');
     previewVersions.value = new Map(previewVersions.value).set(target.id, Date.now());
-    toastr.success(`Preview for "${target.name || 'Unnamed artist string'}" updated`, 'Artist Tags');
+    toastr.success(`Preview for "${target.name || 'Unnamed artist string'}" updated`, 'Artist string');
   } catch (error) {
     toastr.error(errorMessage(error), 'Preview upload failed');
   } finally {
@@ -178,7 +178,7 @@ async function removePreview(preset: NaiArtistPreset) {
   try {
     await deleteUserImage(path);
   } catch (error) {
-    toastr.warning(`Preview image reference removed, but file cleanup failed: ${errorMessage(error)}`, 'Artist Tags');
+    toastr.warning(`Preview image reference removed, but file cleanup failed: ${errorMessage(error)}`, 'Artist string');
   }
 }
 
@@ -223,11 +223,11 @@ async function confirmDelete() {
   deleting.value = false;
   if (fileFailures) {
     toastr.warning(
-      `Deleted ${plan.removed.length} Article, but ${fileFailures} Cleaning of preview image file failed`,
-      'Artist Tags',
+      `Deleted ${plan.removed.length} entries, but ${fileFailures} preview file(s) could not be removed`,
+      'Artist string',
     );
   } else {
-    toastr.success(`Deleted ${plan.removed.length} strip artist tags`, 'Artist Tags');
+    toastr.success(`Deleted ${plan.removed.length} artist string(s)`, 'Artist string');
   }
 }
 
@@ -266,9 +266,9 @@ function duplicateFromEdit() {
 
 <template>
   <ModalMask :open="open" @close="close">
-    <div class="bbi-modal am-modal" role="dialog" aria-modal="true" aria-label="Painter library">
+    <div class="bbi-modal am-modal" role="dialog" aria-modal="true" aria-label="Artist string library">
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">Painter library</span>
+        <span class="bbi-modal-title">Artist string library</span>
         <button class="bbi-icon-mini" type="button" title="Close" aria-label="Close" @click="close">
           <Icon name="close" />
         </button>
@@ -279,7 +279,7 @@ function duplicateFromEdit() {
           class="bbi-input am-search"
           type="search"
           v-model="search"
-          placeholder="Search name or artist string content..."
+          placeholder="Search names or artist string content…"
           spellcheck="false"
           aria-label="Search artist string"
         />
@@ -292,7 +292,7 @@ function duplicateFromEdit() {
       <div v-if="selected.size" class="am-batch">
         <span class="am-batch-count">Selected {{ selected.size }} entries</span>
         <button class="bbi-btn bbi-btn-sm" type="button" @click="toggleSelectAllFiltered">
-          {{ allFilteredSelected ? 'Deselect all' : `Select all current results (${selectableFiltered.length})` }}
+          {{ allFilteredSelected ? 'Deselect all' : `Select all results (${selectableFiltered.length})` }}
         </button>
         <button class="bbi-btn bbi-btn-sm" type="button" @click="selected = new Set()">Clear</button>
         <span class="am-batch-spacer"></span>
@@ -307,8 +307,8 @@ function duplicateFromEdit() {
 
       <div class="am-scroll">
         <p v-if="!filtered.length" class="am-empty">
-          <template v-if="items.length">No match &quot;{{ search }}&quot;The painter's string.</template>
-          <template v-else>There is no artist string yet, click &quot;New&quot; in the upper right corner to start.</template>
+          <template v-if="items.length">No artist string matches &quot;{{ search }}&quot;.</template>
+          <template v-else>No artist strings yet. Click &quot;New&quot; at the top right to start.</template>
         </p>
 
         <div v-else class="am-grid">
@@ -320,7 +320,7 @@ function duplicateFromEdit() {
               'is-active': item.preset.id === activeId,
               'is-selected': selected.has(item.preset.id),
             }"
-            :title="item.preset.id === activeId ? 'Current artist string, click to deactivate' : 'Click to set as current artist string'"
+            :title="item.preset.id === activeId ? 'Current artist string; click to turn it off' : 'Click to make this the current artist string'"
             @click="toggleActive(item)"
           >
             <div class="am-art">
@@ -350,7 +350,7 @@ function duplicateFromEdit() {
               <label
                 v-if="!item.builtin"
                 class="am-check"
-                title="After checking, you can delete them in batches"
+                title="Tick to delete in bulk"
                 @click.stop
               >
                 <input
@@ -406,8 +406,8 @@ function duplicateFromEdit() {
                 <button
                   class="am-op"
                   type="button"
-                  title="Copy as my artist tags"
-                  aria-label="Copy"
+                  title="Duplicate as my artist string"
+                  aria-label="Duplicate"
                   @click="duplicate(item)"
                 >
                   <Icon name="copy" :size="13" />
@@ -429,7 +429,7 @@ function duplicateFromEdit() {
       </div>
 
       <footer class="bbi-modal-foot am-foot">
-        <span class="am-foot-hint">Click the card or radio button to enable/disable; check the box in the upper left corner to delete in batches.</span>
+        <span class="am-foot-hint">Click a card or its radio button to turn it on/off; tick the box at the top left to delete in bulk.</span>
         <span class="bbi-modal-foot-spacer"></span>
         <button class="bbi-btn" type="button" @click="close">Close</button>
       </footer>
@@ -448,10 +448,10 @@ function duplicateFromEdit() {
     @confirm="confirmDelete"
   >
     <template v-if="deleteList.length === 1">
-      Confirm to delete the artist string &quot;{{ deleteList[0]?.name || 'Unnamed artist string' }}&quot;?It cannot be restored after deletion.
+      Delete the artist string &quot;{{ deleteList[0]?.name || 'Unnamed artist string' }}&quot;? This cannot be undone.
     </template>
     <template v-else>
-      Confirm to delete selected {{ deleteList.length }} The stripe artist string cannot be restored after deletion.
+      Delete the {{ deleteList.length }} selected artist strings? This cannot be undone.
     </template>
   </ConfirmDialog>
 
@@ -462,10 +462,10 @@ function duplicateFromEdit() {
       class="bbi-modal am-edit"
       role="dialog"
       aria-modal="true"
-      :aria-label="editItem.builtin ? 'View artist string' : 'Edit artist tags'"
+      :aria-label="editItem.builtin ? 'View artist string' : 'Edit artist string'"
     >
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">{{ editItem.builtin ? 'View artist string (built-in)' : 'Edit artist tags' }}</span>
+        <span class="bbi-modal-title">{{ editItem.builtin ? 'View artist string (built-in)' : 'Edit artist string' }}</span>
         <button class="bbi-icon-mini" type="button" title="Close" aria-label="Close" @click="closeEdit">
           <Icon name="close" />
         </button>
@@ -507,13 +507,13 @@ function duplicateFromEdit() {
           type="text"
           v-model="editName"
           :readonly="editItem.builtin"
-          placeholder="Artist Tags name"
+          placeholder="Artist string name"
           spellcheck="false"
         />
       </div>
 
       <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Painter string (spelled at the front of the positive prompt word)</span>
+        <span class="bbi-modal-label">Artist string (placed at the front of the positive prompt)</span>
         <BbiTextarea
           v-model="editPrompt"
           :rows="4"
@@ -525,14 +525,14 @@ function duplicateFromEdit() {
       </div>
 
       <p class="bbi-modal-label">
-        Bound positive quality words &quot;{{ editItem.preset.quality.trim() ? 'Already set' : 'not set' }}”, negative prompt words “{{
-          editItem.preset.negative.trim() ? 'Already set' : 'not set'
-        }}&quot;; To change them, first set this as the current artist string in the panel, and then click the corresponding line in the prompt area.
+        Bound quality tags: &quot;{{ editItem.preset.quality.trim() ? 'set' : 'not set' }}&quot;; bound negative prompt: &quot;{{
+          editItem.preset.negative.trim() ? 'set' : 'not set'
+        }}&quot;. To change them, make this the current artist string in the panel, then click the matching row in the prompts area.
       </p>
 
       <footer class="bbi-modal-foot">
         <button class="bbi-btn" type="button" @click="toggleActive(editItem)">
-          {{ editItem.preset.id === activeId ? 'Disable this' : 'Set as current artist tags' }}
+          {{ editItem.preset.id === activeId ? 'Turn this off' : 'Make this the current artist string' }}
         </button>
         <template v-if="editItem.builtin">
           <button class="bbi-btn" type="button" @click="duplicateFromEdit">

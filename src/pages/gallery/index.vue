@@ -427,10 +427,10 @@ async function deleteSelected(): Promise<void> {
   if (!targets.length) return;
 
   const ok = await confirmDialog({
-    title: `Delete ${targets.length} pictures`,
+    title: `Delete ${targets.length} images`,
     text:
-      `This will be deleted from disk ${targets.length} The picture and its prompt word profile file cannot be restored. \n\n` +
-      'The chat history will not be changed: the floor card will display "Image file deleted" and return to a regenerable state.',
+      `This deletes ${targets.length} images and their prompt sidecar files from disk. It cannot be undone.\n\n` +
+      'Chat history is not changed: the floor card shows "Image file deleted" and can be generated again.',
     confirmText: 'Delete',
     tone: 'danger',
   });
@@ -470,8 +470,8 @@ async function deleteSelected(): Promise<void> {
     selected.value = new Set([...selected.value].filter(key => !done.has(key)));
     if (!selected.value.size) selecting.value = false;
 
-    if (failed) toastr.error(`${failed} images deletion failed, see the console for details`, 'BaiBai Image');
-    else toastr.success(`Deleted ${done.size} pictures`, 'BaiBai Image');
+    if (failed) toastr.error(`${failed} images could not be deleted; see the console for details`, 'BaiBai Image');
+    else toastr.success(`Deleted ${done.size} images`, 'BaiBai Image');
   } finally {
     deleting.value = false;
   }
@@ -506,7 +506,7 @@ async function open(image: GalleryImage): Promise<void> {
   <section class="bbi-page">
     <div class="bbi-page-head">
       <h2 class="bbi-title bbi-title-sub">Gallery</h2>
-      <button class="gal-icon-btn" type="button" title="reread" :disabled="loading" @click="load">
+      <button class="gal-icon-btn" type="button" title="Reload" :disabled="loading" @click="load">
         <Icon name="refresh" />
       </button>
     </div>
@@ -520,11 +520,11 @@ async function open(image: GalleryImage): Promise<void> {
         :class="{ 'is-on': selecting }"
         type="button"
         :disabled="!groups.length"
-        :title="selecting ? 'Opt out' : 'Select images to delete in batches'"
+        :title="selecting ? 'Exit selection' : 'Select images to delete in bulk'"
         @click="toggleSelecting"
       >
         <Icon :name="selecting ? 'close' : 'checklist'" />
-        {{ selecting ? 'Opt out' : 'Selected' }}
+        {{ selecting ? 'Done' : 'Select' }}
       </button>
       <span class="gal-count">
         {{ groups.length }} characters · {{ totalImages }} images<template v-if="totalSizeText">
@@ -558,7 +558,7 @@ async function open(image: GalleryImage): Promise<void> {
     </div>
 
     <p v-if="partialFailed" class="gal-warn">
-      Yes {{ partialFailed }} Failed to read character directories and are not listed below (see console for details).
+      {{ partialFailed }} character folders could not be read and are not listed below (see the console for details).
     </p>
 
     <!-- Loading / error / empty / list -->
@@ -569,15 +569,15 @@ async function open(image: GalleryImage): Promise<void> {
 
     <div v-else-if="error" class="gal-state">
       <Icon name="gallery" :size="34" />
-      <p class="gal-state-title">Read failed</p>
+      <p class="gal-state-title">Could not load</p>
       <p class="gal-state-hint">{{ error }}</p>
       <button class="bbi-btn bbi-btn-sm" type="button" @click="load"><Icon name="refresh" /> Try again</button>
     </div>
 
     <div v-else-if="!groups.length" class="gal-state">
       <Icon name="gallery" :size="34" />
-      <p class="gal-state-title">No pictures yet</p>
-      <p class="gal-state-hint">After the pictures are generated in the chat, they will be automatically classified here according to roles.</p>
+      <p class="gal-state-title">No images yet</p>
+      <p class="gal-state-hint">Images generated in chats appear here, grouped by character.</p>
     </div>
 
     <p v-else-if="!filtered.length" class="gal-state-inline">No match &quot;{{ query }}” role.</p>
@@ -593,13 +593,13 @@ async function open(image: GalleryImage): Promise<void> {
              hold the select-all checkbox for the group, and a <button> can't contain a <button>/<input> (invalid HTML, and
              clicks would fire twice). So the collapse trigger is a separate button, with the checkbox beside it. -->
         <div class="gal-fold-head">
-          <label v-if="selecting" class="gal-group-check" :title="`Select all${group.name}`">
+          <label v-if="selecting" class="gal-group-check" :title="`Select all of ${group.name}`">
             <input
               type="checkbox"
               class="bbi-checkbox"
               :checked="groupAllSelected(group)"
               :indeterminate="someSelected(group)"
-              :aria-label="`Select all${group.name}`"
+              :aria-label="`Select all of ${group.name}`"
               @change="toggleGroup(group)"
             />
           </label>
@@ -607,7 +607,7 @@ async function open(image: GalleryImage): Promise<void> {
             class="gal-fold-trigger"
             type="button"
             :aria-expanded="expanded.has(group.folder)"
-            :title="expanded.has(group.folder) ? `Collapse${group.name}` : `Expand${group.name}`"
+            :title="expanded.has(group.folder) ? `Collapse ${group.name}` : `Expand ${group.name}`"
             @click="toggleFold(group.folder)"
           >
             <Icon name="chevron" class="gal-caret" :class="{ 'is-collapsed': !expanded.has(group.folder) }" />
@@ -634,7 +634,7 @@ async function open(image: GalleryImage): Promise<void> {
                       'is-selected': selecting && selected.has(image.key),
                     }"
                     type="button"
-                    :title="selecting ? image.file : `Zoom in ${image.file}`"
+                    :title="selecting ? image.file : `View ${image.file}`"
                     :aria-pressed="selecting ? selected.has(image.key) : undefined"
                     @click="onThumbClick(image)"
                   >
@@ -653,7 +653,7 @@ async function open(image: GalleryImage): Promise<void> {
                 @click="showMore(group)"
               >
                 <Icon name="plus" />
-                Show again {{ Math.min(PREVIEW_COUNT, group.images.length - visibleImages(group).length) }} images
+                Show {{ Math.min(PREVIEW_COUNT, group.images.length - visibleImages(group).length) }} more
               </button>
             </div>
           </div>

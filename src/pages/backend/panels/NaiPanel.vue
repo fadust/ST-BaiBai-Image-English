@@ -108,7 +108,7 @@ const endpoint = computed<NaiEndpoint>(() => activeNaiEndpoint());
 const isOfficialEndpoint = computed(() => isOfficialNaiEndpoint(endpoint.value.id));
 
 const endpointOptions = computed(() =>
-  settings.nai.endpoints.map(e => ({ value: e.id, label: e.name || 'Unnamed access point' })),
+  settings.nai.endpoints.map(e => ({ value: e.id, label: e.name || 'Unnamed endpoint' })),
 );
 
 /** The dropdown takes "the one actually in effect", not the stored id: when dangling, activeNaiEndpoint falls back to the first, and the dropdown must follow. */
@@ -141,7 +141,7 @@ function commitRenameEndpoint() {
 }
 
 function addEndpoint() {
-  const preset = newNaiEndpoint(`access point ${settings.nai.endpoints.length + 1}`);
+  const preset = newNaiEndpoint(`Endpoint ${settings.nai.endpoints.length + 1}`);
   settings.nai.endpoints.push(preset);
   settings.nai.activeEndpointId = preset.id;
 }
@@ -181,7 +181,7 @@ const isV5Model = computed(() => isNai5(settings.nai.model));
 const NO_ARTIST = '';
 
 const artistOptions = computed(() => [
-  { value: NO_ARTIST, label: 'Not used' },
+  { value: NO_ARTIST, label: 'None' },
   // Built-in recipes go before the user library: new users have a built-in entry selected by default, which sits most naturally next to "None";
   // a built-in note in parentheses after the name sets it apart from user-made entries with the same name
   ...BUILTIN_NAI_ARTISTS.map(a => ({ value: a.id, label: `${a.name}(built-in)` })),
@@ -229,7 +229,7 @@ function commitRenameArtist() {
 }
 
 function addArtist() {
-  const preset = newNaiArtist(`Artist Tags ${settings.nai.artistPresets.length + 1}`);
+  const preset = newNaiArtist(`Artist string ${settings.nai.artistPresets.length + 1}`);
   settings.nai.artistPresets.push(preset);
   settings.nai.activeArtistId = preset.id;
 }
@@ -262,7 +262,7 @@ async function confirmRemoveArtist() {
     try {
       await deleteUserImage(previewPath);
     } catch (error) {
-      toastr.warning(`The entry was deleted, but the preview file cleanup failed: ${errorMessage(error)}`, 'Artist Tags');
+      toastr.warning(`The entry was deleted, but its preview file could not be removed: ${errorMessage(error)}`, 'Artist string');
     }
   }
   list.splice(index, 1);
@@ -321,10 +321,10 @@ function runArtistImport() {
     settings.nai.activeArtistId = result.activeArtistId;
   }
   const parts = [`${result.imported} new`];
-  if (result.overwritten) parts.push(`Overwrite updates ${result.overwritten} items`);
-  if (result.duplicates) parts.push(`same skip ${result.duplicates}`);
+  if (result.overwritten) parts.push(`${result.overwritten} updated`);
+  if (result.duplicates) parts.push(`${result.duplicates} unchanged, skipped`);
   if (switchActiveArtist.value && result.activeArtistId) {
-    parts.push('Switched to the default currently used by Tomoehime');
+    parts.push('Switched to the preset Chiehime is using');
   }
   toastr.success(parts.join(', '), 'Imported from Chiehime');
   artistImportResult.value = null;
@@ -357,16 +357,16 @@ interface NaiPromptTarget {
 const CHANNEL_PROMPT_TARGETS: NaiPromptTarget[] = [
   {
     key: 'quality',
-    label: 'positive quality words',
-    hint: 'After the picture tag (the overall sequence: artist string → picture tag → quality word). When the quality word is set in the artist string, the artist string will be used, and the one here will not take effect.',
+    label: 'Quality tags',
+    hint: 'Placed after the image tags (full order: artist string → image tags → quality tags). If the artist string sets its own quality tags, those are used and this one is ignored.',
     fallback: () => naiDefaultQualityTags(settings.nai.model),
     read: () => settings.nai.qualityTags,
     write: v => (settings.nai.qualityTags = v),
   },
   {
     key: 'negative',
-    label: 'negative cue words',
-    hint: 'Leave blank = get the official negative words according to the model; if you want to exclude anything else, add it directly to this one. When negative words are set in the artist string, the artist string will be used, and the one here will not take effect.',
+    label: 'Negative prompt',
+    hint: 'Blank = the model\'s official negative words. To exclude anything else, add it here. If the artist string sets its own negative prompt, that is used and this one is ignored.',
     fallback: () => naiDefaultUndesired(settings.nai.model),
     read: () => settings.nai.undesiredContent,
     write: v => (settings.nai.undesiredContent = v),
@@ -384,22 +384,22 @@ const artistBoundTargets = computed<NaiPromptTarget[]>(() => {
   return [
     {
       key: 'quality',
-      label: 'positive quality words',
+      label: 'Quality tags',
       readonly,
       hint: readonly
-        ? 'The binding bit of the built-in artist tags is updated with the plug-in version and cannot be changed; it can be customized after copying it to my artist tags. Leave it blank = use channel level settings (if the channel level is also left blank, the official word will be taken according to the model).'
-        : 'This quality word switches with the current artist string. Leave it blank = use channel level settings (if the channel level is also left blank, the official word will be taken according to the model).',
+        ? 'Built-in artist strings update with the plugin and cannot be changed here; duplicate one to customise it. Blank = use the channel setting (if that is blank too, the model\'s official words are used).'
+        : 'These quality tags switch with the current artist string. Blank = use the channel setting (if that is blank too, the model\'s official words are used).',
       fallback: () => settings.nai.qualityTags.trim() || naiDefaultQualityTags(settings.nai.model),
       read: () => a.quality,
       write: v => (a.quality = v),
     },
     {
       key: 'negative',
-      label: 'negative cue words',
+      label: 'Negative prompt',
       readonly,
       hint: readonly
-        ? 'The binding bit of the built-in artist tags is updated with the plug-in version and cannot be changed; it can be customized after copying it to my artist tags. Leave blank = use channel level settings (if channel level is also left blank, official negative words will be taken according to the model).'
-        : 'This negative word switches with the current artist string. Leave blank = use channel level settings (if channel level is also left blank, official negative words will be taken according to the model).',
+        ? 'Built-in artist strings update with the plugin and cannot be changed here; duplicate one to customise it. Blank = use the channel setting (if that is blank too, the model\'s official negative words are used).'
+        : 'This negative prompt switches with the current artist string. Blank = use the channel setting (if that is blank too, the model\'s official negative words are used).',
       fallback: () =>
         settings.nai.undesiredContent.trim() || naiDefaultUndesired(settings.nai.model),
       read: () => a.negative,
@@ -529,7 +529,7 @@ async function onVibeFileChange(event: Event) {
         true,
       ),
     );
-    toastr.success(`Pressed ${settings.nai.model} Coding and adding to Vibe library`, 'Vibe');
+    toastr.success(`Encoded for ${settings.nai.model} and added to the vibe library`, 'Vibe');
   } catch (error) {
     toastr.error(errorMessage(error), 'Vibe encoding failed');
   } finally {
@@ -543,7 +543,7 @@ async function reencodeVibe(vibe: NaiVibe) {
   vibeEncoding.value = true;
   try {
     const data = await loadVibeData(vibe);
-    if (!data.image) throw new Error('The Vibe does not refer to the original image');
+    if (!data.image) throw new Error('This vibe has no original image');
     const encoding = await encodeVibeGated(data.image);
     data.encodings[currentVibeKey.value] = { encoding, infoExtracted: 1 };
     const paths = await saveVibeFiles(data, vibe, vibe.id);
@@ -679,7 +679,7 @@ function applyPrefixGroups() {
     vibe.name = plan.name;
   }
   const groups = new Set(plans.map(p => p.group)).size;
-  toastr.success(`Already put ${plans.length} Vibe sorted into ${groups} groups`, 'Vibe');
+  toastr.success(`Sorted ${plans.length} vibes into ${groups} groups`, 'Vibe');
 }
 
 /* ============ Migrate from Chiehime ============ */
@@ -794,7 +794,7 @@ async function removeVibe(vibe: NaiVibe) {
 <template>
   <div class="panel">
     <p class="bbi-page-intro">
-      NovelAI image generation interface. The default address is official. Fill in the third-party compatible site (mirroring/forwarding) and go to the third party. The agreement is consistent.
+      NovelAI image generation API. The default address is the official one. Enter a compatible third-party site (mirror/relay) to route through it; the protocol is the same.
     </p>
 
     <div class="bbi-sections">
@@ -802,16 +802,16 @@ async function removeVibe(vibe: NaiVibe) {
         <!-- Endpoint library: people who rotate community relays have more than one exit, but switching sites only changes address + key;
              image parameters such as model/sampler/size all stay below, shared at channel level, so switching sites needs no reconfiguration -->
         <div class="art-row">
-          <span class="bbi-field-label">access point</span>
+          <span class="bbi-field-label">Endpoint</span>
           <input
             v-if="renamingEndpoint"
             ref="endpointNameInput"
             class="bbi-input"
             type="text"
             v-model="endpointNameDraft"
-            placeholder="access point name"
+            placeholder="Endpoint name"
             spellcheck="false"
-            title="Enter confirmed, Esc canceled"
+            title="Enter to confirm, Esc to cancel"
             @keydown.enter.prevent="commitRenameEndpoint"
             @keydown.esc.stop.prevent="renamingEndpoint = false"
             @blur="commitRenameEndpoint"
@@ -821,15 +821,15 @@ async function removeVibe(vibe: NaiVibe) {
             class="art-select"
             v-model="activeEndpointId"
             :options="endpointOptions"
-            aria-label="Current access point"
+            aria-label="Current endpoint"
           />
           <span v-if="!renamingEndpoint" class="art-ops">
             <button
               class="bbi-icon-btn art-op"
               type="button"
               :disabled="isOfficialEndpoint"
-              :title="isOfficialEndpoint ? 'Official access points cannot be renamed' : 'Rename current access point'"
-              aria-label="Rename current access point"
+              :title="isOfficialEndpoint ? 'The official endpoint cannot be renamed' : 'Rename current endpoint'"
+              aria-label="Rename current endpoint"
               @click="startRenameEndpoint"
             >
               <Icon name="edit" :size="14" />
@@ -837,8 +837,8 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="Create a new empty access point"
-              aria-label="Create a new empty access point"
+              title="Create a new empty endpoint"
+              aria-label="Create a new empty endpoint"
               @click="addEndpoint"
             >
               <Icon name="plus" :size="14" />
@@ -848,10 +848,10 @@ async function removeVibe(vibe: NaiVibe) {
               type="button"
               :title="
                 isOfficialEndpoint
-                  ? 'Copy the official one, and the copied address can be changed.'
-                  : 'Copy the current access point (including address and key)'
+                  ? 'Duplicate the official endpoint; the copy\'s address can be changed.'
+                  : 'Duplicate the current endpoint (including address and key)'
               "
-              aria-label="Copy current access point"
+              aria-label="Duplicate current endpoint"
               @click="duplicateEndpoint"
             >
               <Icon name="copy" :size="14" />
@@ -860,8 +860,8 @@ async function removeVibe(vibe: NaiVibe) {
               class="bbi-icon-btn art-op art-remove"
               type="button"
               :disabled="isOfficialEndpoint"
-              :title="isOfficialEndpoint ? 'Official access points cannot be deleted' : 'Delete current access point'"
-              aria-label="Delete current access point"
+              :title="isOfficialEndpoint ? 'The official endpoint cannot be deleted' : 'Delete current endpoint'"
+              aria-label="Delete current endpoint"
               @click="endpointDeleteOpen = true"
             >
               <Icon name="trash" :size="14" />
@@ -871,7 +871,7 @@ async function removeVibe(vibe: NaiVibe) {
 
         <div class="bbi-field">
           <div class="bbi-field-head">
-            <span class="bbi-field-label">interface address</span>
+            <span class="bbi-field-label">API address</span>
           </div>
           <input
             class="bbi-input"
@@ -880,13 +880,13 @@ async function removeVibe(vibe: NaiVibe) {
             :readonly="isOfficialEndpoint"
             :placeholder="NAI_OFFICIAL_URL"
             spellcheck="false"
-            :title="isOfficialEndpoint ? 'The official access point address is fixed and cannot be modified.' : ''"
+            :title="isOfficialEndpoint ? 'The official endpoint address is fixed.' : ''"
           />
           <p class="bbi-field-hint">
             {{
               isOfficialEndpoint
-                ? 'The official access point has a fixed address; if you want to use a third-party site, please click "+" above to create a new one.'
-                : 'Just fill in the domain name for the third-party website, and the /ai endpoint will be automatically completed.'
+                ? 'The official endpoint has a fixed address. To use a third-party site, click "+" above to add one.'
+                : 'Enter just the domain of the third-party site; the /ai path is added automatically.'
             }}
           </p>
         </div>
@@ -906,7 +906,7 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-btn"
               type="button"
-              :title="showKey ? 'hide' : 'show'"
+              :title="showKey ? 'Hide' : 'Show'"
               @click="showKey = !showKey"
             >
               <Icon :name="showKey ? 'eye-off' : 'eye'" />
@@ -916,8 +916,8 @@ async function removeVibe(vibe: NaiVibe) {
           <p class="bbi-field-hint">
             {{
               isOfficialEndpoint
-                ? 'Generated in NovelAI settings page. Each access point stores its own key.'
-                : 'The station\'s own key; each access point stores its own, and switching back to the official one will not cause confusion.'
+                ? 'Generate it on the NovelAI settings page. Each endpoint stores its own key.'
+                : 'This site\'s own key. Each endpoint stores its own, so switching back to the official one never mixes them up.'
             }}
           </p>
         </div>
@@ -928,10 +928,10 @@ async function removeVibe(vibe: NaiVibe) {
             v-else
             class="bbi-btn conn-use"
             type="button"
-            title="tag writing specification will switch to NAI"
+            title="Tag writing rules will switch to NAI"
             @click="settings.defaultBackend = 'nai'"
           >
-            Use this channel to publish pictures
+            Use this channel for images
           </button>
           <button class="bbi-btn" type="button" :disabled="testing" @click="onTestConnection">
             <Icon name="plug" />
@@ -940,19 +940,19 @@ async function removeVibe(vibe: NaiVibe) {
         </div>
       </Collapsible>
 
-      <Collapsible title="prompt word" :open="false">
+      <Collapsible title="Prompts" :open="false">
         <!-- Artist-string library: same layout as the ComfyUI workflow library, plus a "None" option -->
         <div class="art-row">
-          <span class="bbi-field-label">Artist Tags</span>
+          <span class="bbi-field-label">Artist string</span>
           <input
             v-if="renamingArtist"
             ref="artistNameInput"
             class="bbi-input"
             type="text"
             v-model="artistNameDraft"
-            placeholder="Artist Tags name"
+            placeholder="Artist string name"
             spellcheck="false"
-            title="Enter confirmed, Esc canceled"
+            title="Enter to confirm, Esc to cancel"
             @keydown.enter.prevent="commitRenameArtist"
             @keydown.esc.stop.prevent="renamingArtist = false"
             @blur="commitRenameArtist"
@@ -968,8 +968,8 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="Manage artist string library: search, preview images, batch deletion"
-              aria-label="Manage artist library"
+              title="Manage the artist string library: search, preview images, bulk delete"
+              aria-label="Manage artist string library"
               @click="artistManagerOpen = true"
             >
               <Icon name="grid" :size="14" />
@@ -980,12 +980,12 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist || isBuiltinArtist"
               :title="
                 !hasArtist
-                  ? 'Unselected artist string'
+                  ? 'No artist string selected'
                   : isBuiltinArtist
-                    ? 'The built-in artist string cannot be renamed, click copy to create your own'
-                    : 'Rename the current artist tags'
+                    ? 'Built-in artist strings cannot be renamed; duplicate one to make your own'
+                    : 'Rename the current artist string'
               "
-              aria-label="Rename the current artist tags"
+              aria-label="Rename the current artist string"
               @click="startRenameArtist"
             >
               <Icon name="edit" :size="14" />
@@ -993,8 +993,8 @@ async function removeVibe(vibe: NaiVibe) {
             <button
               class="bbi-icon-btn art-op"
               type="button"
-              title="Create a new empty artist tags"
-              aria-label="Create a new empty artist tags"
+              title="Create a new empty artist string"
+              aria-label="Create a new empty artist string"
               @click="addArtist"
             >
               <Icon name="plus" :size="14" />
@@ -1005,12 +1005,12 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist"
               :title="
                 !hasArtist
-                  ? 'Unselected artist string'
+                  ? 'No artist string selected'
                   : isBuiltinArtist
-                    ? 'Copy it as my artist tags. You can change it as you like.'
-                    : 'Copy current artist tags'
+                    ? 'Duplicate it as my artist string, which you can change freely.'
+                    : 'Duplicate current artist string'
               "
-              aria-label="Copy current artist tags"
+              aria-label="Duplicate current artist string"
               @click="duplicateArtist"
             >
               <Icon name="copy" :size="14" />
@@ -1021,9 +1021,9 @@ async function removeVibe(vibe: NaiVibe) {
               :disabled="!hasArtist || isBuiltinArtist"
               :title="
                 !hasArtist
-                  ? 'Unselected artist string'
+                  ? 'No artist string selected'
                   : isBuiltinArtist
-                    ? 'The built-in artist tags cannot be deleted and will be updated with the plug-in version.'
+                    ? 'Built-in artist strings cannot be deleted; they update with the plugin.'
                     : 'Delete the current artist string'
               "
               aria-label="Delete the current artist string"
@@ -1047,11 +1047,11 @@ async function removeVibe(vibe: NaiVibe) {
             placeholder="artist:xxx, artist:yyy"
           />
           <p v-if="isBuiltinArtist" class="bbi-field-hint art-hint">
-            The built-in artist string is updated with the plug-in version and cannot be modified directly; click the copy button above to create your own string and then modify it.
+            Built-in artist strings update with the plugin and cannot be edited directly. Click the duplicate button above to make your own copy, then edit that.
           </p>
           <!-- Only shown for V5 models: V5 and 4.5 respond to artist strings very differently; 4.5 and below don't need this noise -->
           <p v-if="isV5Model" class="bbi-field-hint art-hint art-hint-warn">
-            The response of NAI 5 to the artist tags is very different from that of 4.5. The effect of direct application of the old artist tags may go wrong. It is recommended to re-debug.
+            NAI 5 responds to artist tags very differently from 4.5. Old artist strings may not work as before, so retune them.
           </p>
 
           <!-- Positive/negative tags that switch together with the artist string: if set, they override the channel level below; if not, the ones below apply -->
@@ -1060,14 +1060,14 @@ async function removeVibe(vibe: NaiVibe) {
               <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
                 <span class="bbi-prompt-name">{{ t.label }}</span>
                 <span class="bbi-prompt-state" :class="{ 'is-custom': isTargetCustom(t) }">
-                  {{ isTargetCustom(t) ? 'Already set' : 'not set' }}
+                  {{ isTargetCustom(t) ? 'Set' : 'Not set' }}
                 </span>
                 <Icon name="edit" class="bbi-prompt-edit" />
               </button>
             </li>
           </ul>
           <p class="bbi-field-hint art-hint">
-            The prompt words set here will overwrite the ones below and switch with the artist string; if there is no setting here, the ones below will be used.
+            Prompts set here override the ones below and switch with the artist string; if none are set here, the ones below are used.
           </p>
         </template>
         <!-- No hint when no artist string is selected: "None" in the dropdown speaks for itself -->
@@ -1080,7 +1080,7 @@ async function removeVibe(vibe: NaiVibe) {
             <button class="bbi-prompt-open" type="button" @click="openNaiPrompt(t)">
               <span class="bbi-prompt-name">{{ t.label }}</span>
               <span v-if="isShadowedByArtist(t.key)" class="bbi-prompt-state is-shadowed">
-                Already covered by artist tags
+                Overridden by the artist string
               </span>
               <span v-else class="bbi-prompt-state" :class="{ 'is-custom': isTargetCustom(t) }">
                 {{ isTargetCustom(t) ? 'Customized' : 'Default' }}
@@ -1090,7 +1090,7 @@ async function removeVibe(vibe: NaiVibe) {
           </li>
         </ul>
         <p class="bbi-field-hint art-hint">
-          When there are no positive/negative words set in the artist string, the ones here will be used; if this is also left blank, the official words will be taken according to the model.
+          Used when the artist string sets no quality tags/negative prompt. If these are blank too, the model's official words are used.
         </p>
       </Collapsible>
 
@@ -1113,10 +1113,10 @@ async function removeVibe(vibe: NaiVibe) {
           <input v-model="settings.nai.naturalLanguage" type="checkbox" class="bbi-checkbox" />
         </label>
         <p class="bbi-field-hint">
-          On: Automatically write an additional English description for the screen and each character; Off: Only write tag. The upper limit of prompt words for 4.5 is approximately 512 token
-          (The screen is shared with all characters). Natural language takes up the most space. If it exceeds the limit, it will be truncated and the screen will be distorted. You can try turning it off.
-          Only the newly written prompt words will be affected: the natural language already in the text will be sent as usual. If you want to compare, click &quot;AI Rewrite Prompt Word&quot; in &quot;Edit Prompt Word&quot;.
-          Multi-character prompts are split by character as usual, except that each character also only writes tag.
+          On: also write an English description for the scene and each character. Off: tags only. The 4.5 prompt limit is about 512 tokens
+          (shared by the scene and all characters). Natural language takes the most room; past the limit the prompt is cut off and the image drifts. Try turning it off.
+          Only newly written prompts are affected; natural language already in the text is still sent. To compare, use &quot;AI rewrite prompt&quot; in &quot;Edit prompt&quot;.
+          Multi-character prompts are still split per character; each character just gets tags only.
         </p>
 
         <div class="be-row">
@@ -1133,9 +1133,9 @@ async function removeVibe(vibe: NaiVibe) {
               spellcheck="false"
             />
             <datalist id="nai-portrait-presets">
-              <option value="832×1216">vertical version</option>
-              <option value="1024×1536">Large vertical version</option>
-              <option value="1024×1024">square diagram</option>
+              <option value="832×1216">Portrait</option>
+              <option value="1024×1536">Large portrait</option>
+              <option value="1024×1024">Square</option>
             </datalist>
           </div>
           <div class="bbi-field">
@@ -1151,15 +1151,15 @@ async function removeVibe(vibe: NaiVibe) {
               spellcheck="false"
             />
             <datalist id="nai-landscape-presets">
-              <option value="1216×832">Horizontal version</option>
-              <option value="1536×1024">Large horizontal version</option>
-              <option value="1024×1024">square diagram</option>
+              <option value="1216×832">Landscape</option>
+              <option value="1536×1024">Large landscape</option>
+              <option value="1024×1024">Square</option>
             </datalist>
           </div>
         </div>
         <div class="bbi-select-row">
-          <span class="bbi-field-label">Frame direction</span>
-          <div class="bbi-segmented" role="tablist" aria-label="NAI frame direction">
+          <span class="bbi-field-label">Size lock</span>
+          <div class="bbi-segmented" role="tablist" aria-label="NAI size lock">
             <button
               v-for="opt in ORIENTATION_LOCKS"
               :key="opt.value"
@@ -1176,30 +1176,30 @@ async function removeVibe(vibe: NaiVibe) {
         </div>
         <p class="bbi-field-hint">
           The vertical screen is used for single people, close-ups, and vertical paintings; the horizontal screen is used for group portraits, distant views, and panoramas. &quot;Auto&quot; is determined by automatic tag according to the screen;
-          After locking, each picture will be taken out in this direction, and the automatic tag will also compose the picture according to this frame. The direction already noted in the text will not be overwritten and will be restored by changing it back to &quot;Auto&quot;.
+          When locked, every image uses that orientation, and auto-tagging composes for that frame. Orientations already written in the text are not overwritten; they apply again when you switch back to &quot;Auto&quot;.
         </p>
 
         <div class="be-row">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">sampler</span>
+              <span class="bbi-field-label">Sampler</span>
             </div>
             <BbiSelect
               class="be-select"
               v-model="settings.nai.sampler"
               :options="samplerOptions"
-              aria-label="sampler"
+              aria-label="Sampler"
             />
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">Noise table</span>
+              <span class="bbi-field-label">Noise schedule</span>
             </div>
             <BbiSelect
               class="be-select"
               v-model="settings.nai.noiseSchedule"
               :options="NAI_NOISE_SCHEDULES"
-              aria-label="Noise table"
+              aria-label="Noise schedule"
             />
           </div>
         </div>
@@ -1207,7 +1207,7 @@ async function removeVibe(vibe: NaiVibe) {
         <div class="be-row be-row--nums">
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">number of steps</span>
+              <span class="bbi-field-label">Steps</span>
             </div>
             <input class="bbi-input" type="number" v-model.number="settings.nai.steps" min="1" max="50" />
           </div>
@@ -1239,20 +1239,20 @@ async function removeVibe(vibe: NaiVibe) {
           </div>
           <div class="bbi-field">
             <div class="bbi-field-head">
-              <span class="bbi-field-label">seeds</span>
+              <span class="bbi-field-label">Seed</span>
             </div>
             <input class="bbi-input" type="number" v-model.number="settings.nai.seed" min="0" />
           </div>
         </div>
-        <p class="bbi-field-hint">Scale = prompt word relevance; Rescale = relevance adjustment; seed 0 = random.</p>
+        <p class="bbi-field-hint">Scale = prompt guidance; Rescale = guidance correction; seed 0 = random.</p>
 
         <label class="bbi-switch-row">
-          <span class="bbi-field-label">Variety Boost (Screen diversity, automatically calculated according to size)</span>
+          <span class="bbi-field-label">Variety Boost (image variety, computed from the size)</span>
           <input v-model="settings.nai.varietyBoost" type="checkbox" class="bbi-checkbox" />
         </label>
 
         <div class="bbi-num-row">
-          <span class="bbi-field-label">Number of images produced simultaneously</span>
+          <span class="bbi-field-label">Concurrent requests</span>
           <input
             class="bbi-input bbi-num"
             type="number"
@@ -1262,14 +1262,14 @@ async function removeVibe(vibe: NaiVibe) {
           />
         </div>
         <p class="bbi-field-hint">
-          NAI server does not queue, and high concurrency is easily limited (429). It is recommended to keep 1; excess requests will be automatically queued and waited.
-          When the current is limited, it will automatically back off and retry (up to 3 times), and let all queued tasks cool down together without running into them.
+          The NAI server does not queue, so high concurrency gets rate-limited (429). Keep this at 1; extra requests wait in a local queue.
+          When rate-limited, it backs off and retries automatically (up to 3 times), and all queued tasks cool down together instead of piling in.
         </p>
       </Collapsible>
 
-      <Collapsible title="Vibe library (ambience transfer)" :open="false">
+      <Collapsible title="Vibe library (Vibe Transfer)" :open="false">
         <p v-if="vibesSupported" class="bbi-field-hint vibe-hint">
-          Upload the reference image and superimpose its style/atmosphere when generating it; coding is performed according to the currently selected model, which will consume one interface call.
+          Upload a reference image to layer its style/mood into generations. It is encoded for the currently selected model, which uses one API call.
         </p>
         <p v-else class="bbi-field-hint vibe-hint">
           Current model does not support Vibe Transfer.
@@ -1278,21 +1278,21 @@ async function removeVibe(vibe: NaiVibe) {
         <div class="vibe-actions">
           <button class="bbi-btn" type="button" :disabled="vibeEncoding || !vibesSupported" @click="vibeFileInput?.click()">
             <Icon name="plus" />
-            {{ vibeEncoding ? 'Encoding…' : 'Upload image encoding' }}
+            {{ vibeEncoding ? 'Encoding…' : 'Upload and encode image' }}
           </button>
           <button class="bbi-btn" type="button" @click="vibeImportInput?.click()">
             <Icon name="download" />
             Import .naiv4vibe
           </button>
           <label class="bbi-switch-row vibe-normalize">
-            <span class="bbi-field-label">intensity normalization</span>
+            <span class="bbi-field-label">Normalise strength</span>
             <input v-model="settings.nai.normalizeRefStrength" type="checkbox" class="bbi-checkbox" :disabled="!vibesSupported" />
           </label>
           <input ref="vibeFileInput" type="file" accept="image/*" hidden @change="onVibeFileChange" />
           <input ref="vibeImportInput" type="file" accept=".naiv4vibe" hidden @change="onVibeImportChange" />
         </div>
 
-        <p v-if="!settings.nai.vibes.length" class="bbi-field-hint">Not yet vibe; upload a reference image to get started.</p>
+        <p v-if="!settings.nai.vibes.length" class="bbi-field-hint">No vibes yet. Upload a reference image to start.</p>
 
         <template v-else>
           <div class="vibe-toolbar">
@@ -1302,7 +1302,7 @@ async function removeVibe(vibe: NaiVibe) {
               v-model="vibeSearch"
               placeholder="Search for a name or group…"
               spellcheck="false"
-              aria-label="Search Vibe"
+              aria-label="Search vibes"
             />
             <span class="vibe-count">
               total {{ settings.nai.vibes.length }} · Enabled {{ enabledCount }}
@@ -1311,11 +1311,11 @@ async function removeVibe(vibe: NaiVibe) {
               v-if="prefixGroupPlans.length"
               class="bbi-btn bbi-btn-sm"
               type="button"
-              title="The old version of migration spelled the group name into the name. Click here to restore it to the real group."
+              title="Old migrations put the group name into the vibe name. Click to restore real groups."
               @click="applyPrefixGroups"
             >
               <Icon name="checklist" :size="12" />
-              Organize into groups by name ({{ prefixGroupPlans.length }})
+              Group by name prefix ({{ prefixGroupPlans.length }})
             </button>
           </div>
 
@@ -1350,15 +1350,15 @@ async function removeVibe(vibe: NaiVibe) {
                 <button
                   class="bbi-btn bbi-btn-sm bbi-btn-primary"
                   type="button"
-                  title="Only superimpose this group: turn off all check boxes outside the group and turn on this group"
+                  title="Use only this group: untick everything outside it and enable this group"
                   @click="soloGroup(group)"
                 >
-                  Only open this group
+                  Only this group
                 </button>
                 <button
                   class="bbi-btn bbi-btn-sm"
                   type="button"
-                  title="Open this group without affecting other groups (used to superimpose multiple groups)"
+                  title="Enable this group without touching others (to stack several groups)"
                   @click="setGroupEnabled(group, true)"
                 >
                   Fully open
@@ -1366,7 +1366,7 @@ async function removeVibe(vibe: NaiVibe) {
                 <button
                   class="bbi-btn bbi-btn-sm"
                   type="button"
-                  title="Close this group"
+                  title="Disable this group"
                   @click="setGroupEnabled(group, false)"
                 >
                   Completely closed
@@ -1385,7 +1385,7 @@ async function removeVibe(vibe: NaiVibe) {
                   v-if="group.name"
                   class="bbi-icon-mini"
                   type="button"
-                  title="Disband the group (only cancel the classification, do not delete Vibe)"
+                  title="Ungroup (removes the grouping only; vibes are kept)"
                   aria-label="Disband group"
                   @click="dissolveGroup(group)"
                 >
@@ -1408,13 +1408,13 @@ async function removeVibe(vibe: NaiVibe) {
                 <div class="vibe-main">
                   <div class="vibe-head">
                     <input class="bbi-input vibe-name" type="text" v-model="vibe.name" spellcheck="false" />
-                    <label class="vibe-enable" title="Overlay this vibe when generated">
+                    <label class="vibe-enable" title="Apply this vibe when generating">
                       <input v-model="vibe.enabled" type="checkbox" class="bbi-checkbox" />
                       Enable
                     </label>
                   </div>
                   <div class="vibe-strength">
-                    <span class="vibe-strength-label">intensity</span>
+                    <span class="vibe-strength-label">Strength</span>
                     <input
                       class="bbi-range"
                       type="range"
@@ -1422,7 +1422,7 @@ async function removeVibe(vibe: NaiVibe) {
                       max="1"
                       step="0.01"
                       :value="vibe.strength"
-                      aria-label="intensity"
+                      aria-label="Strength"
                       @input="setVibeStrength(vibe, ($event.target as HTMLInputElement).value)"
                     />
                     <input
@@ -1441,7 +1441,7 @@ async function removeVibe(vibe: NaiVibe) {
                       class="vibe-group-select"
                       :model-value="groupKey(vibe.group)"
                       :options="groupOptions"
-                      aria-label="Group to which it belongs"
+                      aria-label="Group"
                       @update:model-value="onGroupPick(vibe, $event)"
                     />
                     <button
@@ -1449,16 +1449,16 @@ async function removeVibe(vibe: NaiVibe) {
                       class="bbi-btn bbi-btn-sm"
                       type="button"
                       :disabled="vibeEncoding"
-                      title="The vibe lacks the code of the current model and will be skipped when generating; click to fill in the code according to the current model"
+                      title="This vibe has no encoding for the current model and will be skipped; click to encode it for the current model"
                       @click="reencodeVibe(vibe)"
                     >
                       <Icon name="refresh" :size="12" /> Complement the current model encoding
                     </button>
                     <span v-else-if="!vibesSupported" class="vibe-missing">
-                      The current model does not support Vibe yet
+                      The current model does not support vibes
                     </span>
                     <span v-else-if="!vibe.modelKeys.includes(currentVibeKey)" class="vibe-missing">
-                      The current model code is missing and there is no original image, so it cannot be used.
+                      No encoding for the current model and no original image, so it cannot be used.
                     </span>
                     <button
                       class="bbi-btn bbi-btn-sm"
@@ -1481,13 +1481,13 @@ async function removeVibe(vibe: NaiVibe) {
 
       <Collapsible title="Migrate from Chiehime" :open="false">
         <p class="bbi-field-hint vibe-hint">
-          Copy vibe of Tomoehime (st-chatu8) to this library: only create a copy, do not change the source data, and duplicates will be automatically skipped.
+          Copy vibes from Chiehime (st-chatu8) into this library. Only copies are made; the source data is untouched, and duplicates are skipped.
         </p>
         <p class="bbi-field-hint">
-          <template v-if="!chatu8Detect.found">Chiehime is not detected (plugin is not installed or enabled).</template>
-          <template v-else-if="!chatu8Detect.total">Chie Kiri did not find vibe.</template>
+          <template v-if="!chatu8Detect.found">Chiehime not found (not installed or not enabled).</template>
+          <template v-else-if="!chatu8Detect.total">Chiehime has no vibes.</template>
           <template v-else>
-            Chiehime has been detected {{ chatu8Detect.total }} vibe (default {{ chatu8Detect.presets }} individuals/group
+            Found {{ chatu8Detect.total }} vibes in Chiehime ({{ chatu8Detect.presets }} presets / group
             {{ chatu8Detect.groups }} ).
           </template>
         </p>
@@ -1499,7 +1499,7 @@ async function removeVibe(vibe: NaiVibe) {
             @click="migrateConfirmOpen = true"
           >
             <Icon name="download" />
-            {{ migrating ? 'Migrating…' : 'Migrate Chiehime\'s vibe' }}
+            {{ migrating ? 'Migrating…' : 'Migrate Chiehime vibes' }}
           </button>
         </div>
         <p v-if="migrateMsg" class="bbi-field-hint">{{ migrateMsg }}</p>
@@ -1508,11 +1508,11 @@ async function removeVibe(vibe: NaiVibe) {
 
         <!-- Prompt preset import: same section and level as vibes; whether new presets exist isn't reported here; open the dialog to see the preview -->
         <p class="bbi-field-hint vibe-hint">
-          The prompt word preset is the same: fixed positive in the front → artist tags, fixed positive in the back → positive quality word, fixed negative → negative prompt word (automatically brought with the official baseline of the current model).
+          Prompt presets map the same way: leading fixed positive → artist string, trailing fixed positive → quality tags, fixed negative → negative prompt (prefixed with the current model's official baseline).
         </p>
         <p class="bbi-field-hint">
-          <template v-if="!chatu8ArtistDetect.found">Chiehime is not detected (plugin is not installed or enabled).</template>
-          <template v-else-if="!chatu8ArtistDetect.total">Chie Kiri No prompt word preset found.</template>
+          <template v-if="!chatu8ArtistDetect.found">Chiehime not found (not installed or not enabled).</template>
+          <template v-else-if="!chatu8ArtistDetect.total">Chiehime has no prompt presets.</template>
           <template v-else>Chiehime has been detected {{ chatu8ArtistDetect.total }} prompt word defaults.</template>
         </p>
         <div class="migrate-actions">
@@ -1523,7 +1523,7 @@ async function removeVibe(vibe: NaiVibe) {
             @click="openArtistImport"
           >
             <Icon name="download" />
-            Import Chiehime’s prompt word presets
+            Import Chiehime prompt presets
           </button>
         </div>
       </Collapsible>
@@ -1532,17 +1532,17 @@ async function removeVibe(vibe: NaiVibe) {
     <ModalMask :open="migrateConfirmOpen" @close="migrateConfirmOpen = false">
       <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Migrate from Chiehime">
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">Migrated from Chiehime vibe</span>
+          <span class="bbi-modal-title">Migrate vibes from Chiehime</span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="migrateConfirmOpen = false">
             <Icon name="close" />
           </button>
         </header>
         <p class="bbi-modal-label">
-          I will take Chiehime’s {{ chatu8Detect.total }} vibe copied to BaiBai Image Vibe
-          The library only creates a copy and will not change Chiehime's data. Those with the same content will be automatically skipped, and repeated migration will not produce duplicate entries.
+          Copies Chiehime's {{ chatu8Detect.total }} vibes into the BaiBai Image vibe
+          library. Only copies are made and Chiehime's data is untouched. Identical content is skipped, so migrating again never creates duplicates.
         </p>
         <p class="bbi-modal-label">
-          Note: When Chiehime does not open &quot;Tavern Storage&quot;, vibe is stored in the browser's local storage and can only be read by this device and this browser.
+          Note: if Chiehime does not use &quot;Tavern Storage&quot;, its vibes live in browser storage and can only be read on this device and this browser.
         </p>
         <footer class="bbi-modal-foot">
           <span class="bbi-modal-foot-spacer"></span>
@@ -1554,33 +1554,33 @@ async function removeVibe(vibe: NaiVibe) {
 
     <!-- ===== Import prompt presets from Chiehime: preview + confirm (computed once on open; pure function, nothing saved) ===== -->
     <ModalMask :open="artistImportOpen" @close="artistImportOpen = false">
-      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Import prompt word presets from Tomoehime">
+      <div class="bbi-modal" role="dialog" aria-modal="true" aria-label="Import prompt presets from Chiehime">
         <header class="bbi-modal-head">
-          <span class="bbi-modal-title">Import prompt word presets from Tomoehime</span>
+          <span class="bbi-modal-title">Import prompt presets from Chiehime</span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="artistImportOpen = false">
             <Icon name="close" />
           </button>
         </header>
         <p class="bbi-modal-label">
-          Take all of Chiehime {{ artistImportResult?.plans.length ?? 0 }} The prompt words are copied to BaiBai Image by default. Only a copy is created and Chihuiji's data is not changed.
-          Mapping: front fixed positive direction → artist tags, rear fixed positive direction → positive quality word, fixed negative direction → negative prompt word (the official baseline of the current model is automatically spelled in front).
-          Entries with the same name will be overwritten and updated (previously imported entries can be directly re-imported for repair), and entries with identical content will be automatically skipped.
+          Copies all {{ artistImportResult?.plans.length ?? 0 }} Chiehime prompt presets into BaiBai Image as artist strings. Only copies are made; Chiehime's data is untouched.
+          Mapping: leading fixed positive → artist string, trailing fixed positive → quality tags, fixed negative → negative prompt (the current model's official baseline is added in front).
+          Entries with the same name are updated (re-import to repair earlier imports), and identical entries are skipped.
         </p>
         <ul class="art-import-list">
           <li v-for="(plan, i) in artistImportResult?.plans ?? []" :key="i" class="art-import-item">
             <div class="art-import-head">
               <span class="art-import-name" :title="plan.source">{{ plan.source || '(unnamed)' }}</span>
               <span class="art-import-badge" :class="`is-${plan.state}`">
-                {{ plan.state === 'import' ? 'will import' : plan.state === 'overwrite' ? 'will overwrite' : 'Already exists' }}
+                {{ plan.state === 'import' ? 'Will import' : plan.state === 'overwrite' ? 'Will update' : 'Already exists' }}
               </span>
               <span v-if="plan.active" class="art-import-badge is-active">Currently in use</span>
             </div>
             <div class="art-import-fields">
               <code class="art-import-line" :title="plan.prompt"
-                ><span class="art-import-key">Artist Tags</span>{{ plan.prompt || '(empty)' }}</code
+                ><span class="art-import-key">Artist string</span>{{ plan.prompt || '(empty)' }}</code
               >
               <code class="art-import-line" :title="plan.quality"
-                ><span class="art-import-key">forward</span>{{ plan.quality || '(empty)' }}</code
+                ><span class="art-import-key">Quality</span>{{ plan.quality || '(empty)' }}</code
               >
               <code class="art-import-line" :title="plan.negative"
                 ><span class="art-import-key">Negative</span>{{ plan.negative || '(empty)' }}</code
@@ -1591,7 +1591,7 @@ async function removeVibe(vibe: NaiVibe) {
         <label v-if="chatu8ActiveRef" class="art-import-switch">
           <input type="checkbox" v-model="switchActiveArtist" />
           <span>
-            After importing, switch to the preset currently used by Tomoehime.
+            After importing, switch to the preset Chiehime is using.
             <code>{{ chatu8ActiveRef.source }}</code>
           </span>
         </label>
@@ -1604,7 +1604,7 @@ async function removeVibe(vibe: NaiVibe) {
             :disabled="!artistImportResult || artistImportResult.imported + artistImportResult.overwritten === 0"
             @click="runArtistImport"
           >
-            {{ artistImportResult && artistImportResult.imported + artistImportResult.overwritten === 0 ? 'all the same' : 'Start importing' }}
+            {{ artistImportResult && artistImportResult.imported + artistImportResult.overwritten === 0 ? 'Nothing new' : 'Start import' }}
           </button>
         </footer>
       </div>
@@ -1615,13 +1615,13 @@ async function removeVibe(vibe: NaiVibe) {
 
     <ConfirmDialog
       v-model:open="endpointDeleteOpen"
-      title="Delete access point"
+      title="Delete endpoint"
       confirm-text="Delete"
       confirm-icon="trash"
       tone="danger"
       @confirm="confirmRemoveEndpoint"
     >
-      Confirm to delete access point&quot;{{ endpoint.name || 'Unnamed access point' }}”? The address and API Key will be deleted together.
+      Delete endpoint &quot;{{ endpoint.name || 'Unnamed endpoint' }}&quot;? Its address and API key are deleted with it.
     </ConfirmDialog>
 
     <ConfirmDialog
@@ -1632,7 +1632,7 @@ async function removeVibe(vibe: NaiVibe) {
       tone="danger"
       @confirm="confirmRemoveArtist"
     >
-      Confirm to delete the artist string &quot;{{ artist?.name || 'Unnamed artist string' }}”? It cannot be restored after deletion.
+      Delete the artist string &quot;{{ artist?.name || 'Unnamed artist string' }}&quot;? This cannot be undone.
     </ConfirmDialog>
 
     <!-- ===== Quality/negative tag editor dialog (same as custom prompts on the settings page) ===== -->
@@ -1642,11 +1642,11 @@ async function removeVibe(vibe: NaiVibe) {
         class="bbi-modal bbi-modal-wide"
         role="dialog"
         aria-modal="true"
-        :aria-label="`Edit${editingNaiPrompt.label}`"
+        :aria-label="`Edit ${editingNaiPrompt.label}`"
       >
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">
-            {{ editingNaiPrompt.readonly ? 'View' : 'Edit' }}{{ editingNaiPrompt.label }}
+            {{ editingNaiPrompt.readonly ? 'View' : 'Edit' }} {{ editingNaiPrompt.label }}
           </span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="closeNaiPrompt">
             <Icon name="close" />

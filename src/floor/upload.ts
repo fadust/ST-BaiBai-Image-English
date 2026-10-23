@@ -40,7 +40,7 @@ export async function uploadBase64File(name: string, base64: string): Promise<st
   } catch {
     /* Response is not JSON; falls through to the shared error below */
   }
-  if (!path) throw new FileStoreError('File upload failed: The server did not return the path');
+  if (!path) throw new FileStoreError('File upload failed: the server returned no path');
   return path;
 }
 

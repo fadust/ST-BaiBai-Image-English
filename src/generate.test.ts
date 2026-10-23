@@ -69,13 +69,13 @@ describe('backendStatus', () => {
     activeNaiEndpoint().key = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "Current NAI access point is not filled in API Key",
+      reason: "The current NAI endpoint has no API key",
     });
 
     activeNaiEndpoint().url = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current NAI access point has no service address filled in",
+      reason: "The current NAI endpoint has no API address",
     });
   });
 
@@ -99,7 +99,7 @@ describe('backendStatus', () => {
     settings.nai.activeEndpointId = blank.id;
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current NAI access point has no service address filled in",
+      reason: "The current NAI endpoint has no API address",
     });
   });
 
@@ -137,7 +137,7 @@ describe('backendStatus', () => {
     settings.comfyui.workflows[0].workflow = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current workflow preset does not fill in the workflow JSON",
+      reason: "The current workflow preset has no workflow JSON",
     });
   });
 });
@@ -213,7 +213,7 @@ describe('generateImage', () => {
   it('refuses to fire a doomed request when the backend is not configured', async () => {
     naiReady();
     activeNaiEndpoint().key = '';
-    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow('API Key');
+    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow("API key");
     expect(vi.mocked(generateNaiImage)).not.toHaveBeenCalled();
   });
 

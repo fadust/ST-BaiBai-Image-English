@@ -39,7 +39,7 @@ describe('formatGenerationMeta', () => {
       }),
     );
 
-    expect(text).toContain("Artist Tags: 厚涂 · artist:wlop, artist:foo");
+    expect(text).toContain("Artist string: 厚涂 · artist:wlop, artist:foo");
     // Quality tags and the resolved negative are not in the tag text, so each gets its own line
     expect(text).toContain('Quality word: masterpiece, best quality');
     expect(text).toContain('Negative: lowres');

@@ -230,30 +230,30 @@ const filesGone = computed(
 const statusLabel = computed(() => {
   // Backoff first: the request already failed and is waiting to retry, so it must not keep claiming "Generating"
   const retry = retryInfo.value;
-  if (retry) return `Request is restricted, see later ${retry.attempt}/${retry.max} retries…`;
-  if (phase.value === 'queued') return 'Queuing up…';
+  if (retry) return `Rate limited, retry ${retry.attempt}/${retry.max} shortly…`;
+  if (phase.value === 'queued') return 'Queued…';
   const ahead = queueAhead.value;
-  if (phase.value === 'generating' && ahead !== null && ahead > 0) return `Queuing (front ${ahead} )`;
-  return 'Generating...';
+  if (phase.value === 'generating' && ahead !== null && ahead > 0) return `Queued (${ahead} ahead)`;
+  return 'Generating…';
 });
 
 /** Main text of the collapsed bar: progress while generating; the reason on error; a prompt summary when there is an image (telling apart several images on one floor); pending for an empty slot. */
 const barText = computed(() => {
-  if (planning.value) return 'AI Rewrite prompt word…';
+  if (planning.value) return 'AI rewriting prompt…';
   if (busy.value) return statusLabel.value;
-  if (phase.value === 'error') return error.value || 'Build failed';
-  if (shownEntry.value) return props.prompt || props.nl || 'pictures';
+  if (phase.value === 'error') return error.value || 'Generation failed';
+  if (shownEntry.value) return props.prompt || props.nl || 'Image';
   if (filesGone.value) return 'Image file deleted';
-  return 'To be generated';
+  return 'Not generated yet';
 });
 
 /** Configuration guide in the middle of the placeholder area when there is no image and the backend isn't ready. */
 const pendingHint = computed(() => {
   if (!comfyActive.value && !naiActive.value)
-    return 'The image rendering backend is not selected. Please go to the "Backend" page of BaiBai Image to select the image rendering channel.';
+    return 'No image backend is selected. Choose one on the "Backend" page of BaiBai Image.';
   return naiActive.value
-    ? 'NAI is not configured, please go to BaiBai Image\'s "Backend" page to fill in API Key'
-    : 'ComfyUI is not configured, please go to BaiBai Image\'s "Backend" page to fill in the workflow';
+    ? 'NAI is not configured. Enter an API key on the "Backend" page of BaiBai Image.'
+    : 'ComfyUI is not configured. Add a workflow on the "Backend" page of BaiBai Image.';
 });
 
 async function generate(): Promise<void> {
@@ -407,8 +407,8 @@ async function removeEntry(
   at: { messageId: number; swipeId: number },
 ): Promise<void> {
   const ok = await confirmDialog({
-    title: 'Delete this picture',
-    text: 'The chat history of this picture will be deleted and cannot be restored; the files in images will be deleted together, and the old pictures in files will be retained. Other historical results for the same prompt word will not be affected.',
+    title: 'Delete this image',
+    text: 'This image is removed from the chat history and cannot be restored. Its file in images is deleted too; older images stored in files are kept. Other results for the same prompt are not affected.',
     confirmText: 'Delete',
     tone: 'danger',
   });
@@ -422,7 +422,7 @@ async function removeEntry(
     target.generationId,
   );
   if (!removed) {
-    toastr.error('Deletion failed, chat history could not be saved', 'BaiBai Image');
+    toastr.error('Delete failed: the chat history could not be saved', 'BaiBai Image');
     return;
   }
   const ctx = getContext();
@@ -430,7 +430,7 @@ async function removeEntry(
 }
 
 async function copyPrompt(): Promise<void> {
-  await copyText(promptText.value, 'Prompt word has been copied');
+  await copyText(promptText.value, 'Prompt copied');
 }
 
 /** Saves the image currently shown (shares download.ts with the lightbox, so the two logics can't drift apart). */
@@ -517,7 +517,7 @@ onMounted(() => {
            mutually exclusive with the generating overlay (replan/generate guards ensure they are never in flight together) -->
       <div v-else-if="planning" class="bbi-figure__busy">
         <span class="bbi-figure__spin" />
-        <span class="bbi-figure__busy-text">AI Rewrite prompt word…</span>
+        <span class="bbi-figure__busy-text">AI rewriting prompt…</span>
         <button class="bbi-figure__cancel" type="button" @click="cancelReplan">Cancel</button>
       </div>
 
@@ -531,7 +531,7 @@ onMounted(() => {
       </div>
 
       <!-- Prompt changed: a corner badge, no longer darkening the whole image -->
-      <span v-if="isStale && !busy && !planning" class="bbi-figure__badge">old prompt words</span>
+      <span v-if="isStale && !busy && !planning" class="bbi-figure__badge">Old prompt</span>
 
       <!-- Floating action group: the ⋯ overflow button is pinned top right, always faintly visible; on desktop hover or touch tap, the menu lays out horizontally to its left
            (wrapping if the image is narrow) and collapses automatically after any action (normally the image only shows a small dot) -->
@@ -559,7 +559,7 @@ onMounted(() => {
             class="bbi-fab"
             type="button"
             :disabled="!configured"
-            :title="configured ? 'Redraw' : 'Please complete the configuration on the &quot;Backend&quot; page of BaiBai Image first.'"
+            :title="configured ? 'Redraw' : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'"
             @click="menuOpen = false; generate()"
           >
             <Icon name="refresh" :size="15" />
@@ -577,7 +577,7 @@ onMounted(() => {
             v-if="shownEntry"
             class="bbi-fab bbi-fab--danger"
             type="button"
-            title="Delete this picture"
+            title="Delete this image"
             @click="menuOpen = false; removeCurrent()"
           >
             <Icon name="trash" :size="15" />
@@ -627,17 +627,17 @@ onMounted(() => {
       </button>
     </p>
     <p v-else-if="isStale && !busy && !planning" class="bbi-figure__status bbi-figure__status--warn">
-      The prompt word has been modified, and the picture above was generated by the old prompt word; click Redraw in the upper right corner and press the new prompt word to produce the picture.
+      The prompt has changed. The image above comes from the old prompt; click Redraw at the top right to generate one from the new prompt.
     </p>
     <!-- Files deleted (usually from the gallery): records remain but the images are gone; say so plainly so it doesn't look like images vanished for no reason -->
     <p v-else-if="filesGone" class="bbi-figure__status bbi-figure__status--warn">
-      The picture file has been deleted (deleted in the gallery); you can click above to regenerate it.
+      The image file was deleted in the gallery. Click above to generate it again.
     </p>
 
     <!-- Prompt panel: opened by the floating text button; the copy button travels with the panel -->
     <div v-if="promptOpen && promptText" class="bbi-figure__prompt-box">
       <pre class="bbi-figure__prompt">{{ promptText }}</pre>
-      <button class="bbi-figure__prompt-copy" type="button" title="copy prompt word" @click="copyPrompt">
+      <button class="bbi-figure__prompt-copy" type="button" title="Copy prompt" @click="copyPrompt">
         <Icon name="copy" :size="14" />
       </button>
     </div>

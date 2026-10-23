@@ -115,19 +115,19 @@ interface RunOptions {
 
 /** User-readable reason for abandoning the write. Text changes are no longer among them; that is normal and gets rebased and written as usual. */
 const ABANDON_REASON: Partial<Record<ApplyMessageResult, string>> = {
-  'chat-changed': 'Chat has been switched, no pictures were written this time tag',
-  'floor-changed': 'This floor has been deleted or replaced, and no raw map is written this time tag',
-  'swipe-changed': 'swipe has been switched, and the raw image tag has not been written this time.',
-  'build-failed': 'The text of the floor has been greatly rewritten or the existing drawing tag has not been written this time.',
-  unavailable: 'The current chat cannot be written, no pictures are written this time tag',
+  'chat-changed': 'The chat was switched, so no image tags were written',
+  'floor-changed': 'This floor was deleted or replaced, so no image tags were written',
+  'swipe-changed': 'The swipe changed, so no image tags were written',
+  'build-failed': 'The floor text was heavily rewritten or already has image tags, so none were written',
+  unavailable: 'The current chat cannot be written to, so no image tags were written',
 };
 
 /** One-line summary of the relocation result; empty string when everything hit in place (nothing to log). */
 function describeRebase(report: RebaseReport): string {
   if (!report.remapped && !report.drifted) return '';
-  const parts = [`in situ ${report.anchored}`];
-  if (report.remapped) parts.push(`Follow the paraphrased sentence ${report.remapped}`);
-  if (report.drifted) parts.push(`Postponed to the previous paragraph ${report.drifted}`);
+  const parts = [`in place ${report.anchored}`];
+  if (report.remapped) parts.push(`followed reworded sentence ${report.remapped}`);
+  if (report.drifted) parts.push(`moved to previous paragraph ${report.drifted}`);
   return parts.join(' · ');
 }
 
@@ -187,11 +187,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     autoTagEnabled: settings.autoTag.enabled,
   });
   if (!context) {
-    abort(floor, 'missing-context', opts.manual, 'SillyTavern is not ready yet, please try again later.');
+    abort(floor, 'missing-context', opts.manual, 'SillyTavern is not ready yet. Try again shortly.');
     return;
   }
   if (!settings.enabled) {
-    abort(floor, 'extension-disabled', opts.manual, 'BaiBai Image has been disabled. Please enable it in the plug-in settings first.');
+    abort(floor, 'extension-disabled', opts.manual, 'BaiBai Image is turned off. Turn it on in the plugin settings first.');
     return;
   }
   if (!opts.manual && !settings.autoTag.enabled) {
@@ -230,7 +230,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'slot-missing',
       true,
-      `No. ${slot.seq + 1} The prompt word of this picture no longer exists (it may have been changed to swipe or edited), and it has not been rewritten this time.`,
+      `The prompt for image ${slot.seq + 1} no longer exists (the swipe may have changed or the text was edited), so it was not rewritten.`,
     );
     return;
   }
@@ -242,7 +242,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'already-has-image-tag',
       opts.manual,
-      'There is already a picture of tag in this building. There is no confirmation to regenerate it. It has not been changed this time.',
+      'This floor already has image tags and regeneration was not confirmed, so nothing changed.',
     );
     if (!opts.manual) console.debug(`[BaiBai Image] No. ${floor} Floor already contains bbi_image tag, skip automatic analysis`);
     return;
@@ -251,7 +251,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
   // slot replaces in place by seq, and other tags stay intact in the write-back base.
   const source = opts.replace || slot ? stripImageTags(rawSource) : rawSource;
   if (!source.trim()) {
-    abort(floor, 'empty-source', opts.manual, 'The text of this page is empty (or only the raw picture tag is left), and there is no content that can be analyzed.');
+    abort(floor, 'empty-source', opts.manual, 'This floor has no text (or only image tags), so there is nothing to analyse.');
     return;
   }
   const preparedTarget = prepareTargetText(source, settings.excludes.customStripTags);
@@ -260,7 +260,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       'no-target-segments',
       opts.manual,
-      'There is no narrative content left after cleaning the main text of this article (it may have been completely deleted by the "elimination tag" list or thought chain/annotation rules), and there are no paragraphs that can be analyzed.',
+      'No story text is left after cleaning this floor (the cleanup tag list or the reasoning/annotation rules may have removed all of it), so there is nothing to analyse.',
       { sourceLength: source.length },
     );
     return;
@@ -268,7 +268,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
 
   const chatId = context.getCurrentChatId?.() ?? '';
   if (!chatId) {
-    abort(floor, 'missing-chat-id', opts.manual, 'There is currently no open chat, and no pictures are generated this time tag');
+    abort(floor, 'missing-chat-id', opts.manual, 'No chat is open, so no image tags were generated');
     return;
   }
   const swipeId = activeSwipeId(message);
@@ -353,7 +353,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
             profile.nl &&
             candidate.changes.some(change => change.field === 'new' && !change.nl?.trim())
           ) {
-            throw new Error('NAI 4.5/V5 file must be accompanied by nl appearance description');
+            throw new Error('NAI 4.5/V5 profiles must include an nl appearance description');
           }
           parsed.plan = candidate;
         };
@@ -395,7 +395,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       processed.delete(identity);
       toastr.error(
         `${lastError}${retries > 0 ? `(Automatically retried ${retries} times)` : ''}`,
-        'BaiBai Image automatic tag failed',
+        'BaiBai Image auto-tagging failed',
       );
       return;
     }
@@ -479,7 +479,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
 
     // The single-slot rewrite returned no new prompt: keep the original prompt and image, replace nothing (empty images is not an error).
     if (slot && !plan.images.length) {
-      toastr.info('The model does not give new prompt words, and this picture remains as it is.', 'BaiBai Image');
+      toastr.info('The model gave no new prompt, so this image stays as it is.', 'BaiBai Image');
       return;
     }
     // With no images, no character changes and no old floor changes to clean up, keep the original early exit without writing.
@@ -569,7 +569,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     if (slot && result === 'build-failed') {
       toastr.warning('This image prompt changed during generation, so it was not overwritten.', 'BaiBai Image');
     } else {
-      toastr.warning(ABANDON_REASON[result] ?? 'There is no raw picture tag written this time', 'BaiBai Image');
+      toastr.warning(ABANDON_REASON[result] ?? 'No image tags were written this time', 'BaiBai Image');
     }
   } catch (error) {
     // When the request fails or is cancelled by a chat switch, allow the same text to be retried after a later re-render.
@@ -581,7 +581,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     if (controller.signal.aborted) return;
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[BaiBai Image] No. ${floor} Floor automatic generation tag failed`, error);
-    toastr.error(message, 'BaiBai Image automatic tag failed');
+    toastr.error(message, 'BaiBai Image auto-tagging failed');
   } finally {
     if (running.get(runKey) === controller) running.delete(runKey);
   }

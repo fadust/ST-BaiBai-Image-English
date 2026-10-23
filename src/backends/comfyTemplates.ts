@@ -100,12 +100,12 @@ export interface ComfyTemplateMeta {
 export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> = {
   checkpoint: {
     id: 'checkpoint',
-    label: 'Checkpoint series (SD1.5/SDXL/Pony/Illustrious)',
+    label: 'Checkpoint family (SD1.5/SDXL/Pony/Illustrious)',
     modelKind: 'checkpoint',
     modelLabel: 'Model',
     vaeRequired: false,
     vaeLabel: 'VAE',
-    vaePlaceholder: 'Can be left blank to use model built-in',
+    vaePlaceholder: 'Optional; blank uses the model\'s built-in VAE',
     clips: [],
     supportsNegative: true,
     portraitSize: '832×1216',
@@ -114,7 +114,7 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
   },
   flux: {
     id: 'flux',
-    label: 'Flux series',
+    label: 'Flux family',
     modelKind: 'unet',
     modelLabel: 'Model',
     vaeRequired: true,
@@ -131,7 +131,7 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
   },
   anima: {
     id: 'anima',
-    label: 'Anima series (Qwen link)',
+    label: 'Anima family (Qwen chain)',
     modelKind: 'unet',
     modelLabel: 'Model',
     vaeRequired: true,
@@ -224,7 +224,7 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
  */
 export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   const meta = COMFY_TEMPLATES[simple.template] ?? COMFY_TEMPLATES.checkpoint;
-  if (!simple.model.trim()) return `Please select${meta.modelLabel}`;
+  if (!simple.model.trim()) return `Please select ${meta.modelLabel}`;
   if (meta.vaeRequired && !simple.vae.trim()) return `Please select ${meta.vaeLabel}`;
   for (const clip of meta.clips) {
     if (!simple[clip.key].trim()) return `Please select ${clip.label}`;
@@ -485,7 +485,7 @@ export function buildSimpleWorkflow(simple: ComfySimpleConfig, values: SimpleGen
   const invalid = validateSimpleConfig(simple);
   if (invalid) throw new Error(invalid);
   if (!(values.width > 0) || !(values.height > 0)) {
-    throw new Error('Please fill in the vertical and horizontal screen dimensions on the ComfyUI channel page (such as 832×1216)');
+    throw new Error('Fill in the portrait and landscape sizes on the ComfyUI channel page (e.g. 832×1216)');
   }
   switch (simple.template) {
     case 'flux':

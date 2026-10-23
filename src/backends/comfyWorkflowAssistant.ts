@@ -159,7 +159,7 @@ export function parseWorkflowBindings(raw: string): WorkflowBinding[] {
     }
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('AI No resolvable workflow location was returned JSON');
+    throw new Error('The AI returned no parsable workflow-location JSON');
   }
   const bindings = (parsed as Record<string, unknown>).bindings;
   if (!Array.isArray(bindings)) throw new Error('The AI response is missing the bindings array');
@@ -198,7 +198,7 @@ export function parseWorkflowBindings(raw: string): WorkflowBinding[] {
       });
       continue;
     }
-    throw new Error(`AI is the node ${node}.${input} Returned conflicting uses`);
+    throw new Error(`The AI returned conflicting uses for node ${node}.${input}`);
   }
   return [...byPath.values()];
 }
@@ -244,18 +244,18 @@ function renderTextBinding(value: string, binding: WorkflowBinding): string {
 function editableInput(workflow: ComfyWorkflow, binding: WorkflowBinding): string | number {
   const node = workflow[binding.node];
   if (!node || typeof node !== 'object' || Array.isArray(node)) {
-    throw new Error(`AI returned node ${binding.node} does not exist`);
+    throw new Error(`The AI returned node ${binding.node}, which does not exist`);
   }
   const inputs = node.inputs;
   if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) {
-    throw new Error(`node ${binding.node} No editable inputs`);
+    throw new Error(`Node ${binding.node} has no editable inputs`);
   }
   if (!Object.hasOwn(inputs, binding.input)) {
-    throw new Error(`node ${binding.node} No input exists ${binding.input}`);
+    throw new Error(`Node ${binding.node} has no input ${binding.input}`);
   }
   const value = (inputs as Record<string, unknown>)[binding.input];
   if (typeof value !== 'string' && typeof value !== 'number') {
-    throw new Error(`node ${binding.node}.${binding.input} Not a directly replaceable text or numeric input`);
+    throw new Error(`Node ${binding.node}.${binding.input} is Not a directly replaceable text or numeric input`);
   }
   return value;
 }
@@ -284,7 +284,7 @@ export function applyWorkflowBindings(template: string, bindings: WorkflowBindin
   }
 
   if (!hasPositive && !getWorkflowPlaceholders(template).includes('prompt')) {
-    throw new Error('AI No positive prompt word input found');
+    throw new Error('The AI found No positive prompt input');
   }
   const rendered = JSON.stringify(workflow, null, 2);
   if (!getWorkflowPlaceholders(rendered).includes('prompt')) {

@@ -265,12 +265,12 @@ function blobToBase64(blob: Blob): Promise<string> {
       const dataUrl = String(buffer.result ?? '');
       const comma = dataUrl.indexOf(',');
       if (comma < 0) {
-        reject(new Error('The image format is invalid after transcoding'));
+        reject(new Error('The image format is invalid after conversion'));
         return;
       }
       resolve(dataUrl.slice(comma + 1));
     };
-    buffer.onerror = () => reject(new Error('Image reading failed after transcoding'));
+    buffer.onerror = () => reject(new Error('Could not read the image after conversion'));
     buffer.readAsDataURL(blob);
   });
 }
@@ -451,7 +451,7 @@ export async function saveImageResult(
   const saved = await mutateStore(ctx, messageId, store => appendEntry(store, swipeId, hash, entry));
   if (!saved) {
     console.warn('[BaiBai Image] The picture has been uploaded but extra failed to write, and the file is left as an orphan.', path);
-    throw new Error('The picture has been uploaded, but the chat history failed to be saved.');
+    throw new Error('The image was uploaded, but the chat history could not be saved.');
   }
   return entry;
 }

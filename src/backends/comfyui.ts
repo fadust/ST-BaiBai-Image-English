@@ -54,7 +54,7 @@ function isObject(value: unknown): value is JsonObject {
 
 /** Parses and does minimal structural validation of an API workflow. */
 export function parseWorkflowTemplate(template: string): ComfyWorkflow {
-  if (!template.trim()) throw new ComfyUIError('Please paste ComfyUI API format workflow first');
+  if (!template.trim()) throw new ComfyUIError('Paste a ComfyUI API-format workflow first');
 
   let parsed: unknown;
   try {
@@ -76,7 +76,7 @@ export function parseWorkflowTemplate(template: string): ComfyWorkflow {
     node => isObject(node) && typeof node.class_type === 'string' && isObject(node.inputs),
   );
   if (!hasApiNode) {
-    throw new ComfyUIError('API format node not found, please use "Save (API Format)" to export in ComfyUI');
+    throw new ComfyUIError('No API-format nodes found; export with "Save (API Format)" in ComfyUI');
   }
 
   return parsed as ComfyWorkflow;
@@ -136,7 +136,7 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
 
   const needsSize = found.has('width') || found.has('height');
   if (needsSize && !(values.width && values.height)) {
-    throw new ComfyUIError('The workflow uses %width%/%height%. Please fill in the vertical and horizontal screen sizes (such as 832×1216) on the ComfyUI channel page first.');
+    throw new ComfyUIError('The workflow uses %width%/%height%. Fill in the portrait and landscape sizes (e.g. 832×1216) on the ComfyUI channel page first.');
   }
 
   const seed = values.seed ?? randomSeed();
@@ -185,7 +185,7 @@ export interface ComfyTestResult {
 }
 
 export async function testComfyConnection(conn: ComfyRunConn, signal?: AbortSignal): Promise<ComfyTestResult> {
-  if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
+  if (!conn.url.trim()) throw new ComfyUIError('Enter the ComfyUI address first');
 
   // Direct browser connection first; only network-level failures (CORS/connection refused) fall back to forwarding via the ST backend
   try {
@@ -288,7 +288,7 @@ async function generateViaServer(
   if (!response.ok) throw await responseError(response, 'ComfyUI Picture generation failed');
 
   const data = (await response.json()) as { format?: unknown; data?: unknown };
-  if (typeof data.data !== 'string' || !data.data) throw new ComfyUIError('ST The backend did not return image data');
+  if (typeof data.data !== 'string' || !data.data) throw new ComfyUIError('The ST backend returned no image data');
   const format = typeof data.format === 'string' && data.format ? data.format.toLowerCase() : 'png';
   return {
     url: `data:image/${format === 'jpg' ? 'jpeg' : format};base64,${data.data}`,
@@ -444,7 +444,7 @@ async function pollDirectResult(
       if (error) throw new ComfyUIError(error);
       file = findOutputFile(item);
       if (!file && executionCompleted(item)) {
-        throw new ComfyUIError('The workflow has been executed, but no image output was found; please confirm that the workflow contains the SaveImage or PreviewImage node');
+        throw new ComfyUIError('The workflow ran but produced no image; make sure it has a SaveImage or PreviewImage node');
       }
       if (file) break;
       if (watchQueue) {
@@ -481,8 +481,8 @@ export async function generateComfyImage(
   signal?: AbortSignal,
   hooks?: ComfyProgressHooks,
 ): Promise<ComfyImageResult> {
-  if (!conn.url.trim()) throw new ComfyUIError('Please fill in the ComfyUI service address first');
-  if (!values.prompt.trim()) throw new ComfyUIError('Positive prompt word cannot be empty');
+  if (!conn.url.trim()) throw new ComfyUIError('Enter the ComfyUI address first');
+  if (!values.prompt.trim()) throw new ComfyUIError('The positive prompt cannot be empty');
   // Take the size for the orientation from the channel config; if it can't be parsed pass empty, and renderWorkflowTemplate decides between an error and ignoring it
   // (when the workflow doesn't use %width%/%height%, a misconfigured size shouldn't stop generation)
   const size = values.width && values.height

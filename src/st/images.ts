@@ -70,7 +70,7 @@ export async function uploadUserImage(
   } catch {
     /* Response is not JSON; falls through to the shared error below */
   }
-  if (!path) throw new ImageStoreError('Image upload failed: The server did not return the path.');
+  if (!path) throw new ImageStoreError('Image upload failed: the server returned no path.');
   return path;
 }
 

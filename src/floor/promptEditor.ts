@@ -68,15 +68,15 @@ const LATE_HYDRATION_MS = 100;
 function failureReason(result: Exclude<ApplyMessageResult, 'saved'>): string {
   switch (result) {
     case 'chat-changed':
-      return 'The chat has been switched and the prompt words have not been saved.';
+      return 'The chat was switched, so the prompt was not saved.';
     case 'floor-changed':
-      return 'The floor has changed and the prompt word has not been saved.';
+      return 'The floor changed, so the prompt was not saved.';
     case 'swipe-changed':
-      return 'Switched to another swipe, prompt word not saved';
+      return 'Switched to another swipe, so the prompt was not saved.';
     case 'build-failed':
-      return 'This article tag in the text has been changed, please close the pop-up window and edit it again';
+      return 'This tag was changed in the text. Close the dialog and edit it again.';
     case 'unavailable':
-      return 'SillyTavern The context is not available and the prompt word is not saved.';
+      return 'The SillyTavern context is unavailable, so the prompt was not saved.';
   }
 }
 
@@ -98,7 +98,7 @@ async function writeBack(
   }
   const message = context.chat?.[at.messageId];
   if (!message) {
-    toastr.error('The floor no longer exists and the prompt word is not saved.', 'BaiBai Image');
+    toastr.error('The floor no longer exists, so the prompt was not saved.', 'BaiBai Image');
     return false;
   }
 
@@ -283,8 +283,8 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     }
     asking = true;
     void confirmDialog({
-      title: 'AI Rewrite prompt word',
-      text: 'The content you modified manually has not been applied yet. AI will be saved directly after rewriting and these changes will be pushed out.',
+      title: 'AI rewrite prompt',
+      text: 'Your manual edits are not applied yet. The AI rewrite saves directly and will replace them.',
       confirmText: 'rewrite',
     }).then(ok => {
       asking = false;
@@ -313,8 +313,8 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     }
     asking = true;
     void confirmDialog({
-      title: 'Abandon changes',
-      text: 'The changes to the prompt word have not been applied and will be lost after closing.',
+      title: 'Discard changes',
+      text: 'Your prompt changes are not applied and will be lost when you close.',
       confirmText: 'give up',
       cancelText: 'Continue editing',
       tone: 'danger',

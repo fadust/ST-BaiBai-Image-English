@@ -39,8 +39,8 @@ const viewing = ref<{ title: string; segment: Segment } | null>(null);
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'llm', label: 'Auxiliary API' },
-  { value: 'image', label: 'Image Generation' },
+  { value: 'llm', label: 'Secondary API' },
+  { value: 'image', label: 'Image generation' },
 ];
 
 const shown = computed(() =>
@@ -64,7 +64,7 @@ function statusLabel(record: HistoryRecord): string {
 }
 
 function title(record: HistoryRecord): string {
-  return record.kind === 'llm' ? record.source : `No. ${record.floor} Floor · No. ${record.seq + 1} image`;
+  return record.kind === 'llm' ? record.source : `Floor ${record.floor} · image ${record.seq + 1}`;
 }
 
 function subtitle(record: HistoryRecord): string {
@@ -85,19 +85,19 @@ function tokenLabel(record: LlmRecord): string {
 
 function tokenTitle(record: LlmRecord): string {
   return record.tokensEstimated
-    ? 'Local estimation: The word segmenter of the current model of the ST main interface is used, which may not be consistent with the model of this channel and is for reference only.'
-    : 'Real usage returned by upstream (usage)';
+    ? 'Local estimate: uses the tokenizer of ST\'s current main model, which may differ from this channel\'s model. For reference only.'
+    : 'Real usage returned upstream (usage)';
 }
 
 /** Spreads one record into "several segments in order"; the expanded area renders in exactly this order. */
 function segments(record: HistoryRecord): Segment[] {
   if (record.kind === 'llm') {
     const out: Segment[] = record.messages.map(m => ({ label: m.role, text: m.content }));
-    if (record.response) out.push({ label: 'Return', text: record.response });
+    if (record.response) out.push({ label: 'Response', text: record.response });
     return out;
   }
   const out: Segment[] = [{ label: 'positive cue words', text: record.prompt }];
-  if (record.nl) out.push({ label: 'Natural Language', text: record.nl });
+  if (record.nl) out.push({ label: 'Natural language', text: record.nl });
   for (const character of record.characters ?? []) {
     out.push({
       label: `Role: ${character.name}`,
@@ -154,7 +154,7 @@ function copyAll(record: HistoryRecord): void {
 
     <div class="bbi-hist-bar">
       <div class="bbi-segmented-wrap">
-        <div class="bbi-segmented" role="tablist" aria-label="record type">
+        <div class="bbi-segmented" role="tablist" aria-label="Record type">
           <button
             v-for="f in FILTERS"
             :key="f.value"
@@ -209,8 +209,8 @@ function copyAll(record: HistoryRecord): void {
           v-if="record.kind === 'llm' && record.tokensEstimated && record.promptTokens !== null"
           class="bbi-field-hint"
         >
-          The token number with ≈ is a local estimate: streaming and &quot;follow the main API&quot; cannot get the upstream usage.
-          This is estimated using the word segmenter of the current model of the ST main interface, which may not be consistent with the model of this channel.
+          Token counts marked ≈ are local estimates: streaming and &quot;follow the main API&quot; get no upstream usage.
+          They use the tokenizer of ST's current main model, which may differ from this channel's model.
         </p>
 
         <!-- Prompt list in order: same row style as "Custom prompts" on the settings page -->
@@ -225,7 +225,7 @@ function copyAll(record: HistoryRecord): void {
               <span class="bbi-prompt-preview">{{ inline(seg.text) }}</span>
               <span
                 class="bbi-prompt-len"
-                title="Rough estimate of token for this paragraph (local estimate by character, only for comparison between paragraphs, different from the actual usage caliber of the title line)"
+                title="Rough token estimate for this segment (local, by character count; for comparing segments only, and measured differently from the real usage on the title row)"
               >≈{{ roughTokens(seg.text).toLocaleString() }}</span>
               <Icon name="eye" class="bbi-prompt-edit" />
             </button>
@@ -239,14 +239,14 @@ function copyAll(record: HistoryRecord): void {
         </div>
       </Collapsible>
     </div>
-    <p v-else-if="records.length" class="bbi-field-hint">There are no records under the current filter.</p>
+    <p v-else-if="records.length" class="bbi-field-hint">No records match the current filter.</p>
     <p v-else class="bbi-field-hint">
-      No records have been requested for this session. Trigger an automatic tag or generate a picture, and entries will appear here (refreshing the page will clear them).
+      No requests recorded in this session yet. Run auto-tagging or generate an image and entries appear here (refreshing the page clears them).
     </p>
 
     <!-- ===== Single-segment full-text dialog ===== -->
     <ModalMask :open="!!viewing" @close="viewing = null">
-      <div v-if="viewing" class="bbi-modal bbi-modal-wide" role="dialog" aria-modal="true" aria-label="Full text of prompt words">
+      <div v-if="viewing" class="bbi-modal bbi-modal-wide" role="dialog" aria-modal="true" aria-label="Full prompt text">
         <header class="bbi-modal-head">
           <span class="bbi-modal-title">{{ viewing.title }}</span>
           <button class="bbi-icon-mini" type="button" title="Close" @click="viewing = null">

@@ -110,7 +110,7 @@ async function fetchViaBrowser(url: string, signal?: AbortSignal): Promise<Comfy
   const response = await fetch(endpoint(url, 'object_info'), { signal });
   if (!response.ok) throw await responseError(response, 'Failed to read ComfyUI model list');
   const info = (await response.json()) as JsonObject;
-  if (!isObject(info)) throw new ComfyUIError('object_info format returned by ComfyUI is abnormal');
+  if (!isObject(info)) throw new ComfyUIError('ComfyUI returned object_info in an unexpected format');
   return { ...parseObjectInfo(info), mode: 'browser', fetchedAt: Date.now() };
 }
 
@@ -153,7 +153,7 @@ export async function fetchComfyModelLists(
   options?: { force?: boolean; signal?: AbortSignal },
 ): Promise<ComfyModelLists> {
   const key = url.trim();
-  if (!key) throw new ComfyUIError('Please fill in the ComfyUI service address first');
+  if (!key) throw new ComfyUIError('Enter the ComfyUI address first');
   if (!options?.force && cache.has(key)) return cache.get(key)!;
 
   let lists: ComfyModelLists;

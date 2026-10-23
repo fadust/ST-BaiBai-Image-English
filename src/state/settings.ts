@@ -360,10 +360,10 @@ export type ImageDisplaySize = 'small' | 'medium' | 'large' | 'full';
  * and never exceeds the floor width; on narrow screens (phone portrait) portrait images are already shorter than 600px, so the default step is barely noticeable.
  */
 export const IMAGE_DISPLAY_SIZES: { value: ImageDisplaySize; label: string; maxHeight: number | null }[] = [
-  { value: 'small', label: 'Small (no more than 400px in height)', maxHeight: 400 },
-  { value: 'medium', label: 'Medium (no more than 600px in height)', maxHeight: 600 },
-  { value: 'large', label: 'Large (no more than 800px in height)', maxHeight: 800 },
-  { value: 'full', label: 'Cover the entire floor width (no height limit)', maxHeight: null },
+  { value: 'small', label: 'Small (up to 400px tall)', maxHeight: 400 },
+  { value: 'medium', label: 'Medium (up to 600px tall)', maxHeight: 600 },
+  { value: 'large', label: 'Large (up to 800px tall)', maxHeight: 800 },
+  { value: 'full', label: 'Fill the floor width (no height limit)', maxHeight: null },
 ];
 
 /** Display size → maximum image display height (px); null = no cap, filling the floor width (how it looked in 0.3.0 and earlier). */
@@ -1152,7 +1152,7 @@ function officialNaiEndpoint(key = ''): NaiEndpoint {
 let naiEpSeq = 0;
 
 /** Creates one empty endpoint (id prefix nep_, not colliding with the art_/wf_/ch_ id spaces). */
-export function newNaiEndpoint(name = 'new access point'): NaiEndpoint {
+export function newNaiEndpoint(name = 'New endpoint'): NaiEndpoint {
   naiEpSeq += 1;
   return { id: `nep_${Date.now()}_${naiEpSeq}`, name, url: '', key: '' };
 }
@@ -1300,8 +1300,8 @@ export function activeComfyPreset(): ComfyWorkflowPreset {
 /** Frame-lock options (order = segmented button order); the NAI channel and every ComfyUI workflow's panel share this one. */
 export const ORIENTATION_LOCKS: { value: OrientationLock; label: string }[] = [
   { value: 'auto', label: 'Auto' },
-  { value: 'portrait', label: 'Vertical screen' },
-  { value: 'landscape', label: 'Horizontal screen' },
+  { value: 'portrait', label: 'Portrait' },
+  { value: 'landscape', label: 'Landscape' },
 ];
 
 /**
@@ -1537,7 +1537,7 @@ async function migrateLegacyVibesInPlace(
   const total = vibes.reduce((count, vibe) => count + (readLegacyVibeData(vibe) ? 1 : 0), 0);
   if (!total) return { migrated: 0, error: null };
 
-  toastr.info(`detected ${total} Gejiu version Vibe, automatically migrating large files...`, 'BaiBai Image');
+  toastr.info(`Found ${total} old-format vibes; moving their large data to files…`, 'BaiBai Image');
   let migrated = 0;
   let firstError: unknown = null;
   for (let index = 0; index < vibes.length; index++) {
@@ -1566,10 +1566,10 @@ async function migrateLegacyVibesInPlace(
     }
   }
   if (firstError) {
-    toastr.error('The relocation of some old versions of Vibe failed and the original data has been retained; it will automatically retry after refreshing.', 'BaiBai Image');
+    toastr.error('Some old vibes could not be moved; their original data is kept, and it retries after a refresh.', 'BaiBai Image');
     return { migrated, error: firstError };
   }
-  toastr.success(`Automatically repaired ${migrated} After removing the old version Vibe, subsequent loading will return to normal.`, 'BaiBai Image');
+  toastr.success(`Repaired ${migrated} old vibes; loading is back to normal.`, 'BaiBai Image');
   return { migrated, error: null };
 }
 
@@ -1590,7 +1590,7 @@ function normalizeArtistPreset(raw: unknown, seq: number): NaiArtistPreset {
   const o = (raw ?? {}) as Partial<NaiArtistPreset>;
   return {
     id: typeof o.id === 'string' && o.id ? o.id : `art_${Date.now()}_${seq}`,
-    name: typeof o.name === 'string' && o.name ? o.name : `Artist Tags ${seq + 1}`,
+    name: typeof o.name === 'string' && o.name ? o.name : `Artist string ${seq + 1}`,
     prompt: typeof o.prompt === 'string' ? o.prompt : '',
     // Existing entries lack these two keys: filling empty strings = follow the channel level, so prompt output is unchanged after upgrading
     quality: typeof o.quality === 'string' ? o.quality : '',
@@ -1612,7 +1612,7 @@ function normalizeNaiEndpoint(raw: unknown, seq: number): NaiEndpoint {
   if (isOfficialNaiEndpoint(id)) return officialNaiEndpoint(typeof o.key === 'string' ? o.key : '');
   return {
     id,
-    name: typeof o.name === 'string' && o.name ? o.name : `access point ${seq + 1}`,
+    name: typeof o.name === 'string' && o.name ? o.name : `Endpoint ${seq + 1}`,
     url: typeof o.url === 'string' ? o.url : '',
     key: typeof o.key === 'string' ? o.key : '',
   };
@@ -1634,7 +1634,7 @@ function migrateNaiEndpoints(o: Partial<NaiSettings>): NaiEndpoint[] {
     const url = typeof o.url === 'string' ? o.url.trim() : '';
     const key = typeof o.key === 'string' ? o.key : '';
     if (!url || url.replace(/\/+$/, '') === NAI_OFFICIAL_URL) return [officialNaiEndpoint(key)];
-    return [{ id: `nep_legacy`, name: 'my access point', url, key }, officialNaiEndpoint()];
+    return [{ id: `nep_legacy`, name: 'My endpoint', url, key }, officialNaiEndpoint()];
   }
 
   // The official entry was deleted (hand-edited settings.json, or a round trip of rolling back versions later): add it back, without taking the current one's place

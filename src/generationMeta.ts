@@ -119,7 +119,7 @@ export function formatGenerationMeta(meta: GenerationMeta): string {
   const lines: string[] = [];
 
   if (meta.artist) {
-    lines.push(`Artist Tags: ${meta.artist.name}${meta.artist.prompt ? ` · ${meta.artist.prompt}` : ''}`);
+    lines.push(`Artist string: ${meta.artist.name}${meta.artist.prompt ? ` · ${meta.artist.prompt}` : ''}`);
   }
   if (meta.params.quality) {
     lines.push(`Quality word: ${meta.params.quality}`);

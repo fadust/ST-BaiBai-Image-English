@@ -125,7 +125,7 @@ onBeforeUnmount(() => {
 });
 
 async function copyPrompt(): Promise<void> {
-  await copyText(props.prompt ?? '', 'Prompt word has been copied');
+  await copyText(props.prompt ?? '', 'Prompt copied');
 }
 
 function save(): void {
@@ -150,7 +150,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
           v-if="promptText"
           class="bbi-lb-btn"
           type="button"
-          title="copy prompt word"
+          title="Copy prompt"
           @click="copyPrompt"
         >
           <Icon name="copy" :size="18" />
@@ -159,7 +159,7 @@ const promptText = computed(() => (props.prompt ?? '').trim());
           v-if="deletable"
           class="bbi-lb-btn bbi-lb-btn--danger"
           type="button"
-          title="Delete this picture"
+          title="Delete this image"
           @click="emit('delete')"
         >
           <Icon name="trash" :size="18" />

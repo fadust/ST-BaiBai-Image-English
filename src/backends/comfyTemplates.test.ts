@@ -165,8 +165,8 @@ describe('buildSimpleWorkflow - anima', () => {
 describe('buildSimpleWorkflow - size', () => {
   it('errors on invalid size (the simple-mode canvas node is always built, with no exemption for a workflow with hardcoded size)', () => {
     const simple = config({ model: 'm.safetensors' });
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('dimensions');
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('dimensions');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('landscape sizes');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('landscape sizes');
   });
 });
 

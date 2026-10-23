@@ -27,14 +27,14 @@ export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
 ];
 
 export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
-  fandom: 'Fandom Identity Tag',
+  fandom: 'Fan-work identity tag',
   sex: 'Gender',
   hair: 'Hair',
   eyes: 'Eyes',
   skin: 'Skin',
   body: 'Build',
-  extra: 'Distinctive Features',
-  outfit: 'Permanent Outfit',
+  extra: 'Distinctive features',
+  outfit: 'Signature outfit',
 };
 
 export type CharTagSource = 'book' | 'manual' | 'ai';

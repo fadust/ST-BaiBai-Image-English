@@ -46,19 +46,19 @@ async function onActivate(button: HTMLElement): Promise<void> {
   // A click must lead somewhere: a silent return is, to the user, "clicked the button, nothing happened", without even a log
   if (!context || !message) {
     console.warn('[BaiBai Image] The corresponding message cannot be found for the floor button', { mesid: button.closest('.mes')?.getAttribute('mesid') });
-    toastr.warning('No news found on this floor, please refresh the page and try again', 'BaiBai Image');
+    toastr.warning('No message found on this floor. Refresh the page and try again', 'BaiBai Image');
     return;
   }
   if (!settings.enabled) {
-    toastr.warning('BaiBai Image has been disabled. Please enable it in the plug-in settings first.', 'BaiBai Image');
+    toastr.warning('BaiBai Image is turned off. Turn it on in the plugin settings first.', 'BaiBai Image');
     return;
   }
 
   const hasTags = hasImageTagTrace(message.mes ?? '');
   if (hasTags) {
     const ok = await confirmDialog({
-      title: 'Rebuild tag',
-      text: 'This building already has a picture of tag. Regeneration will first delete the original tag and then write the new one; the generated pictures will be retained in the card history and will not be lost.',
+      title: 'Regenerate tags',
+      text: 'This floor already has image tags. Regenerating deletes the old tags and writes new ones; images already generated stay in the card history and are not lost.',
       confirmText: 'Regenerate',
     });
     if (!ok) return;
@@ -77,7 +77,7 @@ function createButton(): HTMLDivElement {
   const button = document.createElement('div');
   // mes_button matches ST's native extension buttons in .extraMesButtons (menu_button is the generic menu button, styled differently)
   button.className = `mes_button fa-solid ${ICON_CLASS} ${BUTTON_CLASS}`;
-  button.title = 'Generate raw image tag (regenerate if tag already exists)';
+  button.title = 'Generate image tags (regenerates if tags already exist)';
   button.setAttribute('role', 'button');
   button.setAttribute('tabindex', '0');
 

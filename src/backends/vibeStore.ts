@@ -20,8 +20,8 @@ function openLocalDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(LOCAL_STORE_NAME)) db.createObjectStore(LOCAL_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Opening Vibe local storage failed'));
-    request.onblocked = () => reject(new Error('Vibe local storage is occupied by other pages'));
+    request.onerror = () => reject(request.error ?? new Error('Could not open local vibe storage'));
+    request.onblocked = () => reject(new Error('Local vibe storage is blocked by another page'));
   });
   return localDbPromise;
 }
@@ -31,7 +31,7 @@ async function writeLocalData(key: string, data: NaiVibeData): Promise<string> {
   await new Promise<void>((resolve, reject) => {
     const request = db.transaction(LOCAL_STORE_NAME, 'readwrite').objectStore(LOCAL_STORE_NAME).put(data, key);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('Writing to Vibe local storage failed'));
+    request.onerror = () => reject(request.error ?? new Error('Could not write to local vibe storage'));
   });
   return `${LOCAL_PATH_PREFIX}${key}`;
 }
@@ -44,9 +44,9 @@ async function readLocalData(path: string): Promise<NaiVibeData> {
     request.onsuccess = () => {
       const data = request.result as NaiVibeData | undefined;
       if (data) resolve(data);
-      else reject(new Error('Vibe local data does not exist'));
+      else reject(new Error('Local vibe data does not exist'));
     };
-    request.onerror = () => reject(request.error ?? new Error('Failed to read Vibe local storage'));
+    request.onerror = () => reject(request.error ?? new Error('Could not read local vibe storage'));
   });
 }
 
@@ -56,7 +56,7 @@ async function deleteLocalData(path: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const request = db.transaction(LOCAL_STORE_NAME, 'readwrite').objectStore(LOCAL_STORE_NAME).delete(key);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('Failed to delete Vibe local data'));
+    request.onerror = () => reject(request.error ?? new Error('Could not delete local vibe data'));
   });
 }
 

@@ -179,7 +179,7 @@ export function skipCfgAboveSigma(width: number, height: number, model: string, 
  */
 export function naiEndpoint(url: string, path: string): string {
   const base = url.trim().replace(/\/+$/, '');
-  if (!base) throw new NaiError('Please fill in the NAI interface address first');
+  if (!base) throw new NaiError('Enter the NAI API address first');
   const seg = path.replace(/^\/+/, '');
   if (base.endsWith(`/ai/${seg}`) || base.endsWith(`/${seg}`)) return base;
   return `${base}/ai/${seg}`;
@@ -196,10 +196,10 @@ export function parseResolution(text: string): NaiSize {
   if (!size) throw new NaiError(`Invalid resolution format: ${text || '(empty)'}; it should look like 832×1216`);
   const { width, height } = size;
   if (width % 64 !== 0 || height % 64 !== 0) {
-    throw new NaiError(`resolution ${width}×${height} Not a multiple of 64, NAI requires both width and height to be multiples of 64`);
+    throw new NaiError(`Resolution ${width}×${height} is not a multiple of 64; NAI needs both width and height to be multiples of 64`);
   }
   if (width < 256 || height < 256 || width > 2048 || height > 2048) {
-    throw new NaiError(`resolution ${width}×${height} Out of NAI allowable range (256–2048)`);
+    throw new NaiError(`Resolution ${width}×${height} is outside NAI's allowed range (256–2048)`);
   }
   return { width, height };
 }
@@ -575,7 +575,7 @@ export async function testNaiConnection(
   nai: Pick<NaiSettings, 'url' | 'key'>,
   signal?: AbortSignal,
 ): Promise<{ message: string }> {
-  if (!nai.key.trim()) throw new NaiError('Please fill in API Key first');
+  if (!nai.key.trim()) throw new NaiError('Enter an API key first');
   const resp = await fetch(naiEndpoint(nai.url, 'user/subscription'), {
     headers: { Authorization: `Bearer ${nai.key.trim()}` },
     signal,
@@ -603,10 +603,10 @@ export function unzipNaiImage(buffer: ArrayBuffer): { base64: string; filename: 
   try {
     files = unzipSync(new Uint8Array(buffer));
   } catch {
-    throw new NaiError('The response is not a valid zip packet (the third party site may have returned a different format)');
+    throw new NaiError('The response is not a valid zip (a third-party site may return a different format)');
   }
   const name = Object.keys(files).find(n => /\.(png|jpe?g|webp)$/i.test(n)) ?? Object.keys(files)[0];
-  if (!name) throw new NaiError('zip There is no image file in the package');
+  if (!name) throw new NaiError('The zip contains no image file');
   return { base64: uint8ToBase64(files[name]), filename: name };
 }
 
@@ -630,8 +630,8 @@ export async function generateNaiImage(
   signal?: AbortSignal,
   opts: { onRetry?: (info: NaiRetryInfo) => void } = {},
 ): Promise<NaiImageOutput> {
-  if (!nai.key.trim()) throw new NaiError('Please fill in first NAI API Key');
-  if (!values.prompt.trim()) throw new NaiError('Positive prompt word cannot be empty');
+  if (!nai.key.trim()) throw new NaiError('Enter an NAI API key first');
+  if (!values.prompt.trim()) throw new NaiError('The positive prompt cannot be empty');
 
   // The artist string is resolved once when the request is sent and snapshotted to be saved with the image: if the recipe is later deleted/renamed it isn't lost.
   const artist = naiArtistUsage(nai);
@@ -657,7 +657,7 @@ export async function generateNaiImage(
   }
   const { applied, skipped } = applyVibes(params, nai, loaded);
   if (skipped.length) {
-    const reason = naiSupportsVibes(nai.model) ? 'Missing current model encoding' : 'Current model does not support Vibe Transfer';
+    const reason = naiSupportsVibes(nai.model) ? 'no encoding for the current model' : 'the current model does not support Vibe Transfer';
     console.warn(`[BaiBai Image] The following vibes were skipped (${reason}):`, skipped);
     toastr.warning(`Vibe "${skipped.join(', ')}": ${reason}, skipped`, 'BaiBai Image');
   }
@@ -745,7 +745,7 @@ export async function encodeVibeImage(
   signal?: AbortSignal,
   opts: { onRetry?: (info: NaiRetryInfo) => void } = {},
 ): Promise<string> {
-  if (!nai.key.trim()) throw new NaiError('Please fill in first NAI API Key');
+  if (!nai.key.trim()) throw new NaiError('Enter an NAI API key first');
   return runNaiWithRetry(
     async () => {
       const resp = await fetch(naiEndpoint(nai.url, 'encode-vibe'), {
@@ -760,7 +760,7 @@ export async function encodeVibeImage(
       if (!resp.ok) throw await naiHttpError(resp, 'vibe encoding failed');
       const bytes = new Uint8Array(await resp.arrayBuffer());
       if (bytes.length < 100) {
-        throw new NaiError(`vibe encoding data abnormality (only ${bytes.length} bytes), the interface may have returned an error response`);
+        throw new NaiError(`Vibe encoding data looks wrong (only ${bytes.length} bytes); the API may have returned an error`);
       }
       return uint8ToBase64(bytes);
     },
@@ -800,7 +800,7 @@ export function parseNaiv4vibe(text: string): ImportedVibe {
       };
     }
   }
-  if (!Object.keys(encodings).length) throw new NaiError('vibe No encoding data available in file');
+  if (!Object.keys(encodings).length) throw new NaiError('The vibe file has no usable encoding data');
   return {
     name: typeof json.name === 'string' && json.name ? json.name : 'Imported Vibe',
     image: typeof json.image === 'string' ? json.image : '',
