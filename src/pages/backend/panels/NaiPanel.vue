@@ -320,7 +320,7 @@ function runArtistImport() {
   if (switchActiveArtist.value && result.activeArtistId) {
     settings.nai.activeArtistId = result.activeArtistId;
   }
-  const parts = [`New ${result.imported} items`];
+  const parts = [`${result.imported} new`];
   if (result.overwritten) parts.push(`Overwrite updates ${result.overwritten} items`);
   if (result.duplicates) parts.push(`same skip ${result.duplicates}`);
   if (switchActiveArtist.value && result.activeArtistId) {
@@ -710,12 +710,12 @@ async function runMigrate() {
       },
     });
     settings.nai.vibes.push(...result.vibes);
-    const parts = [`New ${result.imported} items`];
-    if (result.duplicates) parts.push(`Repeat skip ${result.duplicates}`);
-    if (result.failed) parts.push(`Failed ${result.failed}`);
+    const parts = [`${result.imported} new`];
+    if (result.duplicates) parts.push(`${result.duplicates} duplicates skipped`);
+    if (result.failed) parts.push(`${result.failed} failed`);
     migrateMsg.value = `Migration completed: ${parts.join(' / ')}. `;
-    if (result.imported) migrateMsg.value += 'The newly migrated Vibe is not enabled by default, please enable it as needed.';
-    if (result.failed) migrateMsg.value += 'The failed item may not be in the native browser, or there may be an error while saving the file.';
+    if (result.imported) migrateMsg.value += 'Newly migrated vibes are disabled by default; enable them as needed. ';
+    if (result.failed) migrateMsg.value += 'Failed items may not be in this browser, or saving the file failed.';
     toastr.success(migrateMsg.value, 'Migrate from Chiehime');
   } catch (error) {
     migrateMsg.value = `Migration failed: ${errorMessage(error)}`;

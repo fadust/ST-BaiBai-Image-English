@@ -484,8 +484,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     }
     // With no images, no character changes and no old floor changes to clean up, keep the original early exit without writing.
     if (!plan.images.length && !floorOps.length && !previousDelta) {
-      if (opts.manual) toastr.info('The model believes that this building has no scenes worthy of illustration.', 'BaiBai Image');
-      else console.debug(`[BaiBai Image] No. ${floor} No illustration required`);
+      if (opts.manual) toastr.info('The model found no scene worth illustrating on this floor.', 'BaiBai Image');
+      else console.debug(`[BaiBai Image] Floor ${floor}: no illustration needed`);
       return;
     }
 
@@ -545,17 +545,17 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     );
     if (result === 'saved') {
       if (slot) {
-        toastr.success(`rewritten ${slot.seq + 1} image’s prompt word, the picture is being produced according to the new prompt word`, 'BaiBai Image');
+        toastr.success(`Rewrote the prompt for image ${slot.seq + 1}; generating with the new prompt`, 'BaiBai Image');
         return;
       }
       recomputeCharTags();
       if (rebaseNote) console.info(`[BaiBai Image] Floor ${floor} tag relocation: ${rebaseNote}`);
       if (plan.images.length) {
-        toastr.success(`Already in the ${floor} floor insert ${plan.images.length} Personality chart tag`, 'BaiBai Image');
+        toastr.success(`Inserted ${plan.images.length} image tag(s) into floor ${floor}`, 'BaiBai Image');
       } else if (opts.manual) {
-        toastr.info('The model believes that this building has no scenes worthy of illustration.', 'BaiBai Image');
+        toastr.info('The model found no scene worth illustrating on this floor.', 'BaiBai Image');
       } else {
-        console.debug(`[BaiBai Image] No. ${floor} No illustration required`);
+        console.debug(`[BaiBai Image] Floor ${floor}: no illustration needed`);
       }
       return;
     }
@@ -567,7 +567,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     console.info(`[BaiBai Image] Floor ${floor} gave up writing image tags: ${result}`);
     // A single-slot rewrite abandons for a different reason than the full run: whether other parts of the text changed doesn't matter; what matters is that this one tag was changed
     if (slot && result === 'build-failed') {
-      toastr.warning('The prompt word of this picture has been changed during generation, and it has not been overwritten this time.', 'BaiBai Image');
+      toastr.warning('This image prompt changed during generation, so it was not overwritten.', 'BaiBai Image');
     } else {
       toastr.warning(ABANDON_REASON[result] ?? 'There is no raw picture tag written this time', 'BaiBai Image');
     }
