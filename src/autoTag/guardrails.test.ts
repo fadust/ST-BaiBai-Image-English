@@ -149,3 +149,16 @@ describe('content boundaries', () => {
     }),
   );
 });
+
+describe('MOSS-tuned natural-language rules (ComfyUI)', () => {
+  it('keeps the sentence pattern, the no-invented-contact rule and the content tie-in', async () => {
+    const { DEFAULT_COMFY_NL_SPEC } = await import('@/state/settings');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('[Name] from [Source] is [age] [race] [gender] with [full appearance');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('Age, race and gender open every appearance sentence');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('Name the character in every sentence');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('Never invent contact the story does not support');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('the appearance sentence states adulthood plainly');
+    expect(DEFAULT_COMFY_NL_SPEC).toContain('The consolation image keeps its fixed one-sentence nl');
+    expect(DEFAULT_COMFY_NL_SPEC).not.toMatch(/\d+\s*-\s*\d+ words/);
+  });
+});

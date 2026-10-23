@@ -581,17 +581,29 @@ General requirements:
 - Always use English.`;
 
 /** Expansion of the {{nl}} macro (when "Generate Natural Language" is on); when off the macro expands to an empty string. */
-export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): Natural language - one coherent English paragraph of about 80-150 words describing the same picture (multi-person scenes follow the structure below). Image models with large text encoders were trained on dense captions: a one-sentence nl leaves camera, light, materials and background to the model's defaults.
-Write in this order: subject and count → appearance and visible outfit → core action, expression and gaze → relations between characters → setting and key props → light and time → camera distance and angle → medium and style. Describe only what is visible: no feelings, backstory, intentions or narrative commentary.
-Single-person example:
-A woman with long black hair tied in a low ponytail sits at a wooden reading table in a quiet library, wearing a cream knit sweater with the sleeves pushed up. She rests her chin on one hand and smiles faintly while looking down at an open book. A brass desk lamp and a short stack of old hardcovers stand beside her. Warm evening lamplight falls across the table and her face, with cool blue dusk visible through the tall window behind her. Medium shot from a slight side angle, shallow depth of field, the shelves softly blurred. Clean anime illustration with soft cel shading and warm, muted colours.
-nl and tag describe the same scene: tag covers entity and attribute keywords, and nl writes the coherent caption in the order above.
-The core movements should be written down to the specificity of "whose body part + contact point" (such as her knee pressing against the tented blanket). The posture words (kneeling, sitting) are only auxiliary, and postures are not allowed to replace the core movements.
-The multi-person scene is organized into three paragraphs: start with a summary sentence (number of people + as the main focus + composition, lock the subject on the character) → then describe each person in one sentence, first active and then passive → the last sentence of environmental atmosphere, ending with blurred in the background.
-Each sentence segment must carry the **distinguishing title** of the character (the green-haired girl with green eyes...) - the model does not memorize across sentences, and using such references as she/they will lose the pairing; the binding writing in tag (who is wearing what color, who is doing what action) is written again in a complete sentence here, even if tag can still be saved even if it is rearranged.
-Distinguishing title = the shortest statement that distinguishes this person from others in the same group (hair color + eye color is usually enough), rather than re-reading the whole list of his fixed appearance: write the black-haired girl with blue eyes, don't write 1girl, long black hair, blue eyes, petite, white dress This way of inserting the tag string into a sentence will make the model think that there are multiple identical people in the picture.
-Multiplayer nl example (same screen as the tag example above):
-Two girls as the main focus, medium shot, in a park at sunset. The black-haired girl with blue eyes wears a white dress and waves at the viewer. The silver-haired girl with red eyes wears a red dress and eats a skewer of dango. Warm sunset light across the park, the trees softly blurred in the background.`;
+export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): natural language - an English caption of the same image, written as connected prose for image models with large text encoders (such as MOSS-Image). No word count: keep a simple scene short and add detail only where it makes the image more specific. No quality words, no tag lists inside sentences, and nothing the image does not show (no feelings, backstory, intentions or narrative commentary).
+Sentence pattern (one sentence per line of the pattern, in this order):
+- [Name] from [Source] is [age] [race] [gender] with [full appearance: face, hair, skin, body, outfit, accessories]. Write one such sentence per character in frame, early, before any action.
+- [Name] [body action or posture] while [specific physical interaction with the other character(s)].
+- [Name] [secondary weight, contact or movement that responds to the other character's position].
+- Both / All characters from [Source] [shared environment, lighting and background that contains them together].
+Rules:
+- Name the character in every sentence, using the exact name from the profile/story (Chinese names stay in Chinese). Never use he/she/they in place of a name; a possessive (her, his) is fine only inside a sentence that already names that character. Otherwise the model loses who is who.
+- Source: for a fan-work character, the work's English title (Rin from Fate/stay night); otherwise the medium: Anime, Cartoon, Comic, Movie or Original (Lin from Original).
+- Appearance is stated once per character, in that character's first sentence, and not repeated later. Say it in words (long black hair tied in a low ponytail), never as a tag string.
+- Age, race and gender open every appearance sentence. Age: the stated age, or the age the character clearly looks ("an adult woman in her late twenties", "a middle-aged man"). Race: the ethnicity, or the species for non-humans (elf, demon, catgirl), as given by the profile, card, lorebook or story; when none is given, choose one that fits the world and keep it the same in every image of the floor. Gender: woman, man, girl, boy, or as the story states.
+- Interaction must be physical and mutual whenever the story shows the characters together: leaning on each other, supporting weight, arms overlapping, hips touching, hair or fabric crossing between them. Avoid side-by-side posing with only a glance. Never invent contact the story does not support; when the story keeps them apart, describe the real distance and what each body does toward the other.
+- The final sentence carries environment, lighting and background, and treats the characters as one group. Camera distance/angle and the medium/style go in this sentence too.
+- Single-person image: the appearance sentence, then one or two sentences of action and pose with the setting and props touched, then the final environment sentence with that one character.
+- Visible text in the image (signs, letters, screens) is quoted exactly, in its original language.
+- The content boundaries still apply: when the content gate requires it, the appearance sentence states adulthood plainly ("an adult woman in her thirties"). The consolation image keeps its fixed one-sentence nl.
+- nl and tag describe the same scene: tag holds entity and attribute keywords, and nl writes the caption above.
+Two-person example:
+Mei from Original is an adult East Asian woman in her mid-twenties with a round face, brown eyes, shoulder-length black hair with blunt bangs, fair skin and a slender build, wearing a cream knit sweater, a pleated navy skirt and a thin silver bracelet.
+Aiko from Original is an adult European woman in her early thirties with a narrow face, green eyes, long wavy auburn hair, light skin and a tall build, wearing a dark green trench coat over a white blouse and black boots.
+Mei sits on a park bench and leans her shoulder into Aiko's side while both hands hold a paper cup of tea.
+Aiko wraps her right arm around Mei's back, her coat sleeve draped over Mei's sweater and a strand of auburn hair falling across Mei's shoulder.
+Both characters from Original sit together under a maple tree at sunset, warm orange light across them, falling leaves and a softly blurred lamp-lit path behind, medium shot from a low front angle, clean anime illustration with soft cel shading.`;
 
 /**
  * Built-in default NAI specification: same shape as the ComfyUI one, short danbooru tags; quality tags are appended by the backend per model, so writing them is forbidden.
