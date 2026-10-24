@@ -83,21 +83,21 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes("Having two people in the same frame does not mean that the screen must be horizontal. The direction must be consistent with the lens word in tag (wide, shot usually matches landscape, close-up / upper, body usually matches portrait)."))).toBe(true);
     expect(messages.some(m => m.content.includes('"field":"new"'))).toBe(true);
     expect(messages.some(m => m.content.includes('"hair":"long black hair","eyes":"blue eyes"'))).toBe(true);
-    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- Priority of file creation: current appearance specified in the target text > current character status in BaiBai Book > character card/World Info specified > reasonable completion. When the color is clearly written in the character design, it must be converted as it is and cannot be tampered with; hair and eyes are required, hair contains at least hair color and length/hair style, eyes must contain eye color, if any of the items is missing, the file will be discarded."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Profile before drawing**: read the target text and find every named character not yet in the 【 character fixed appearance library 】. If the card, World Info, BaiBai Book or ongoing story gives that character a setting, or the character keeps taking part in the plot, create a profile at their first appearance, whether or not they are drawn this time. Judge from all the setting content you were given. One-time nameless passers-by get no profile."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Profile before drawing**: read the target text and find every named character not yet in the 【 character fixed appearance library 】. If the card, World Info, BaiBai Book or ongoing story gives that character a setting, or the character keeps taking part in the plot, create a profile at their first appearance, whether or not they are drawn this time. Judge from all the setting content you were given. One-time nameless passers-by get no profile."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- Source priority: current appearance in the target text > current state in BaiBai Book > card or World Info > reasonable completion. Copy colours stated in the setting exactly. hair and eyes are required: hair has colour and length or style, eyes has colour. A profile missing either is discarded."))).toBe(true);
     expect(messages.some(m => m.content.includes('"position":"P2"'))).toBe(true);
-    expect(messages.some(m => m.content.includes("- If the setting does not include hair color, hairstyle or eye color, make up a concise, coordinated, long-term reusable color and hairstyle based on the world view, race, identity, personality and other character settings; this is a one-time file creation decision and cannot be re-randomized in the future."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- If the setting gives no hair colour, hairstyle or eye colour, choose a simple, coherent look that fits the world, race, role and personality. This is decided once and never re-rolled."))).toBe(true);
     // Profile creation is unaffected by selection and not gated by position: these two are the core of the fix, and the wording must be in the protocol
-    expect(messages.some(m => m.content.includes("- **Create a profile before drawing**: Read through the text of the target first and find out every official character with a name and surname that is not in the 【 character fixed appearance library 】 - as long as the character card, World Info, BaiBai Book or continuous plot has given a setting for him, or he is a character who continues to participate in the plot, he must create a profile for his first appearance, regardless of whether he is selected for this picture. The basis for judgment is all the setting content sent to you, and it is up to you to read through it and make your own judgment. One-time unknown passers-by do not build."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **Profile before drawing**: read the target text and find every named character not yet in the 【 character fixed appearance library 】. If the card, World Info, BaiBai Book or ongoing story gives that character a setting, or the character keeps taking part in the plot, create a profile at their first appearance, whether or not they are drawn this time. Judge from all the setting content you were given. One-time nameless passers-by get no profile."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- Profile format: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"first appearance\"}. position is where the character first appears and is for the record only; the profile applies to the whole floor at once."))).toBe(true);
     // The withdrawn characters audit must not flow back into the protocol
     expect(messages.some(m => m.content.includes("\"characters\""))).toBe(false);
     expect(messages.some(m => m.content.includes('"tag":"@小雪'))).toBe(false);
     const user = messages[messages.length - 1];
     expect(user.role).toBe('user');
     expect(user.content).toContain("[system-maintained; currently empty]");
-    expect(user.content).toContain("【 character fixed appearance library 】[system-maintained; currently empty]\n (Currently empty, no character has been profiled. The World Info, character card, BaiBai Book and text only provide the basis for creation; official characters not listed in this block must be profiled through field:\"new\".)");
+    expect(user.content).toContain("【 character fixed appearance library 】[system-maintained; currently empty]\n(No character is profiled yet. World Info, the character card, BaiBai Book and the text are only evidence for new profiles; every named character not listed in this block must be profiled with field:\"new\".)");
     expect(user.content).not.toContain("The upper layer to be hung does not exist, or that layer is not a collection.");
     expect(user.content).toContain('目标第一行 ⟦P1⟧\n\n目标第三行 ⟦P2⟧');
     expect(user.content).not.toContain('[L0001]');
@@ -233,15 +233,15 @@ describe('auto tag prompt', () => {
     expect(thinking).toContain("Count before writing the P list and cut to the maximum here");
 
     // Told once: the thought chain no longer restates specification or protocol rules.
-    for (const restated of ['pale skin', 'pantyhose', 'muddy', 'looking at viewer', 'File writing method', 'school uniform']) {
+    for (const restated of ['pale skin', 'pantyhose', 'muddy', 'looking at viewer', 'Profile format', 'school uniform']) {
       expect(thinking).not.toContain(restated);
     }
     // Each rule still exists exactly once in the message set.
     for (const once of [
       'The expressions are selected from the actual existing tag',
       "- None of the skin color words are written by default",
-      '- File writing method:',
-      'navy school blazer, white collared shirt, red ribbon',
+      '- Profile format:',
+      'navy blazer, white collared shirt, red tie',
       'Write landscape for group portraits',
     ]) {
       expect(text.split(once).length - 1).toBe(1);
@@ -250,14 +250,14 @@ describe('auto tag prompt', () => {
     expect(thinkingMsg?.content).not.toContain('双人近距离可 portrait');
     expect(thinkingMsg?.content).not.toContain('hair 与 eyes 都不得留空');
     expect(messages.some(m => m.content.includes("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- File writing method: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"First Appearance File\"}; position fill in the location where he first appeared, for record only - the file is valid throughout this building, and pictures anywhere in this building can use this appearance immediately."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- The permanently changed position is the position where the new status takes effect: the pictures before this position use the old file, and the position and after use the new file; multiple changes are reported separately in the text."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- Profile format: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"first appearance\"}. position is where the character first appears and is for the record only; the profile applies to the whole floor at once."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- A permanent change takes effect at its position: images before it use the old profile, and images at or after it use the new one. Report several changes separately."))).toBe(true);
     expect(messages.some(m => m.content.includes("When there is a clear setting, strictly follow it; when there is no clear setting, you must also take the initiative to choose the most reasonable, specific and self-consistent era, civilization or original visual system based on the existing clues and plot temperament. When there is less evidence, the style of the era, clothing styles, materials, accessories, light and tone can be reasonably supplemented, but this is limited to \"how to draw\" and cannot be used to make up \"what is in the picture\"."))).toBe(true);
     expect(messages.some(m => m.content.includes("Just write outdoors when the text only confirms \"wild\", write forest when only confirm \"forest\"; only write muddy, ground, dirt, path, puddles, etc. corresponding to tag when the text, context or world settings clearly support the facts such as rain, mud, dirt road, etc."))).toBe(true);
     expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
-    expect(messages.some(m => m.content.includes('navy school blazer, white collared shirt, red ribbon'))).toBe(true);
-    expect(messages.some(m => m.content.includes("- \"File has been created\" can only be judged by the entry with the same name in the 】 block of the 【 character fixed appearance library: only the name is actually listed in the block is considered to be a file; the detailed settings in the World Info, character card, BaiBai Book or text are only the basis for the creation of the file, and do not mean that it is already in the library. Each official character present must choose one of two options: point to an entry with the same name in the library, or type field:\"new\" in changes. The one-time nameless character is not included in this alternative: he neither files nor writes changes, does not need to specify any library entries, and missing files is normal and not an omission."))).toBe(true);
-    expect(messages.some(m => m.content.includes("- In the multiplayer screen, each character's hair color, eye color, body shape, clothing, objects, and personal actions must be bound adjacently using the character's distinctive title. It is prohibited to scatter the appearance characteristics of two people into a string of public tag that cannot be attributed."))).toBe(true);
+    expect(messages.some(m => m.content.includes("navy blazer, white collared shirt, red tie"))).toBe(true);
+    expect(messages.some(m => m.content.includes("- **What counts as profiled**: only a name actually listed in the 【 character fixed appearance library 】 block."))).toBe(true);
+    expect(messages.some(m => m.content.includes("- In a multi-character image, bind each character's hair colour, eye colour, build, outfit, objects and own actions next to that character's distinctive reference. Never scatter two people's traits in a shared tag string that cannot be attributed."))).toBe(true);
     expect(messages.some(m => m.content.includes("2. The era and world view (clothing system, architecture, utensils, environmental style) - **must be judged first and actively embodied**."))).toBe(true);
     expect(messages.some(m => m.content.includes("In a word: lens, composition, light, tone, etc. ** how to shoot ** can be actively specified; ** characters, actions, terrain, ground materials, weather traces and environmental conditions, etc. ** what is in the picture must be based on the text and settings. Being specific does not mean making it up."))).toBe(true);
     expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
@@ -460,7 +460,7 @@ describe('auto tag prompt', () => {
       // C keeps no outfit ledger for one-time characters.
       expect(text).toContain('One line per 【existing profile】 and 【new profile】 character');
       // Profile eligibility is not image eligibility: stated once, in the task protocol.
-      expect(once('The qualifications for setting up a profile and the qualifications for drawing are two different things')).toBe(1);
+      expect(once('Profiling and drawing are separate decisions')).toBe(1);
       // One-off characters, crowds and invented names: stated once, in the specification.
       expect(once('Never invent a personal name for them')).toBe(1);
       expect(text).toContain('People the story treats as a mass rather than as individuals');
@@ -502,7 +502,7 @@ describe('auto tag prompt', () => {
         const selection = thinking.split('E. Scene selection\n')[1].split('Layer two')[0];
 
         expect(contract).toContain('Priority should be given to showing the expressions, status, actions, and relationships of the player protagonist');
-        expect(contract).toContain('If the unnamed character is a participant in the core interaction');
+        expect(contract).toContain('A character without a profile can still be drawn');
         expect(selection).toContain('settle the subject and core interaction first, then who is in frame');
         expect(thinking).not.toContain('Character rows (one row per character present)');
         expect(spec).toContain('Only include them when the chosen frame needs the crowd');
@@ -615,8 +615,8 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes('@小雪'))).toBe(false);
     expect(messages.some(m => m.content.includes('系统会替换成库中最新 tag'))).toBe(false);
     // Copying the library fields + writing them only once per image are the two core wordings of this rollback
-    expect(messages.some(m => m.content.includes("tag and nl must copy the field values in the library/newly created file"))).toBe(true);
-    expect(messages.some(m => m.content.includes("The fixed appearance of the same character is only written once in a picture"))).toBe(true);
+    expect(messages.some(m => m.content.includes("copy the field values into tag word for word"))).toBe(true);
+    expect(messages.some(m => m.content.includes("Write each character's fixed appearance once per image"))).toBe(true);
     expect(messages[messages.length - 1].content).toContain(library);
     expect(messages[messages.length - 1].content).not.toContain('currently empty');
   });
@@ -635,7 +635,7 @@ describe('auto tag prompt', () => {
 
     // Profiles get copied into every later image, so pose/scene mixed into fields would keep the character in that pose forever
     expect(messages.some(m => m.content.includes('lying on carpet'))).toBe(true);
-    expect(messages.some(m => m.content.includes("long-term unchanged physical characteristics"))).toBe(true);
+    expect(messages.some(m => m.content.includes("fixed physical traits only"))).toBe(true);
   });
 
   it('keeps first-appearance profiling enabled when BaiBai Book memory exists', async () => {
@@ -659,7 +659,7 @@ describe('auto tag prompt', () => {
       },
     );
 
-    expect(messages.some(message => message.content.includes("he must create a profile for his first appearance"))).toBe(true);
+    expect(messages.some(message => message.content.includes("create a profile at their first appearance"))).toBe(true);
     expect(messages.some(message => message.content.includes("Character reference: BaiBai Book is not provided this time."))).toBe(false);
   });
 
