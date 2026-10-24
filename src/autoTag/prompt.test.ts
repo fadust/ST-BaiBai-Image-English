@@ -615,7 +615,7 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes('@小雪'))).toBe(false);
     expect(messages.some(m => m.content.includes('系统会替换成库中最新 tag'))).toBe(false);
     // Copying the library fields + writing them only once per image are the two core wordings of this rollback
-    expect(messages.some(m => m.content.includes("copy the field values into tag word for word"))).toBe(true);
+    expect(messages.some(m => m.content.includes("copy the field values into tag word for word, except that the sex count tag takes the noun the character's age gives"))).toBe(true);
     expect(messages.some(m => m.content.includes("Write each character's fixed appearance once per image"))).toBe(true);
     expect(messages[messages.length - 1].content).toContain(library);
     expect(messages[messages.length - 1].content).not.toContain('currently empty');
@@ -749,21 +749,23 @@ describe('auto tag prompt', () => {
       const spec = messages.find(m => m.content.includes('The model pairs words by adjacency'));
       expect(spec?.content).toContain('- Expression and gaze are bound per person, even when they match.');
       expect(spec?.content).toContain('A bare trait lands on one person at random or spreads to everyone.');
-      expect(spec?.content).toContain('"black hair girl smiling, silver hair girl looking at another"');
+      expect(spec?.content).toContain('"black hair adult_woman smiling, silver hair adult_woman looking at another"');
       // Build words are not anchors; the example binds them so the model has the form to copy.
-      expect(spec?.content).toContain('"muscular on black hair man"');
-      expect(spec?.content).toContain('tall on silver hair girl');
+      expect(spec?.content).toContain('"muscular on black hair adult_man"');
+      expect(spec?.content).toContain('tall on silver hair adult_woman');
       expect(spec?.content).not.toContain('petite');
       // Hair and eye colours are the anchors and stand bare; they must not turn into black hair on black hair girl.
       expect(spec?.content).toContain('- Hair colour and eye colour are the anchors. Write them bare');
       // Same-type outfits in different styles: bind each part, or the model swaps parts between people.
       expect(spec?.content).toContain('- When two outfits share a type but differ in style, bind each part');
-      expect(spec?.content).toContain('pencil skirt on green hair girl');
-      expect(spec?.content).toContain('white shirt on black hair man');
+      expect(spec?.content).toContain('pencil skirt on green hair adult_woman');
+      expect(spec?.content).toContain('white shirt on black hair adult_man');
       expect(spec?.content).toContain('A bare general name lets the model swap parts between people.');
       // The example string must really demonstrate the binding form, otherwise the model copies bare tags from the old example.
-      expect(spec?.content).toContain('black hair girl smile, black hair girl looking at viewer');
-      expect(spec?.content).toContain('silver hair girl blush, silver hair girl looking away');
+      expect(spec?.content).toContain('black hair adult_woman smile, black hair adult_woman looking at viewer');
+      expect(spec?.content).toContain('silver hair adult_woman blush, silver hair adult_woman looking away');
+      // Your MOSS test: girl and boy read as young and outweigh every age word after them.
+      expect(spec?.content).toContain('an adult is 1adult_woman or 1adult_man, anchored as dark hair adult_man');
     } finally {
       settings.defaultBackend = oldBackend;
     }

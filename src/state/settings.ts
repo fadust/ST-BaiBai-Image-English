@@ -503,11 +503,12 @@ export const DEFAULT_COMFY_SPEC = `【ComfyUI prompt specification】
 Your prompts go straight into the ComfyUI workflow.
 
 tag (the JSON tag key): Danbooru tags in lowercase English, comma-separated, with spaces between words (no underscores). For example:
-1girl, long hair, sitting by window, library, warm sunlight
+1adult_woman, long hair, sitting by window, library, warm sunlight
 Order from most to least important: headcount → shot → identity and appearance → outfit → action and pose → expression and gaze → setting → light. Keep one image within 40 tags.
 In the action part, the core action (who does what, which body parts touch) comes first as its own tag; supporting poses (sitting, standing, kneeling) follow. Write each action once.
 
 Read every trait from the source. Hair, eyes, skin, build, age look, outfit and signature features come from the library, card, persona, lorebook and story text; keep the source's own words wherever a Danbooru tag exists for them. Tag skin tone when the source makes it distinct (tan, dark skin); the model's default already covers fair skin. Tag an older look when the source gives one (mature female, mature male, old man).
+Headcount and anchor nouns carry the age the source states: an adult is 1adult_woman or 1adult_man, anchored as dark hair adult_man; 1girl, 1boy, girl and boy are for characters the source makes young. These nouns keep their underscore. The model reads girl and boy as young, and that outweighs every age word after it.
 
 Expression and gaze go in every image, as real Danbooru tags. Read them from the scene; when the text gives none, infer one, and write expressionless when the face is blank.
 - Expressions (one or two): smile, grin, laughing, blush, embarrassed, frown, pout, puffy cheeks, surprised, crying, tears, angry, serious, sad, worried, scared, smug, seductive smile, expressionless, half-closed eyes, open mouth, clenched teeth.
@@ -521,16 +522,16 @@ Fan-work identity tag:
 
 Two or more people:
 The model pairs words by adjacency, so each person's traits sit next to an anchor that names that person.
-- State the headcount (2girls, 1boy 1girl); without it the model drops or doubles people. One shot word follows it.
+- State the headcount (2adult_women, 1adult_woman 1adult_man); without it the model drops or doubles people. One shot word follows it.
 - Hair colour and eye colour are the anchors. Write them bare, and never number people (the model does not know girl1, girl2).
-- Bind everything else to an anchor: outfit and its parts, objects, build, actions, expression and gaze. Write "white dress on green hair girl, black dress on blue hair girl", "muscular on black hair man", "black hair girl waving, silver hair girl eating dango", "black hair girl smiling, silver hair girl looking at another". A bare trait lands on one person at random or spreads to everyone.
-- When two outfits share a type but differ in style, bind each part: "white blouse on green hair girl, pencil skirt on green hair girl, white shirt on black hair man, dark trousers on black hair man". A bare general name lets the model swap parts between people.
+- Bind everything else to an anchor: outfit and its parts, objects, build, actions, expression and gaze. Write "white dress on green hair adult_woman, black dress on blue hair adult_woman", "muscular on black hair adult_man", "black hair adult_woman waving, silver hair adult_woman eating dango", "black hair adult_woman smiling, silver hair adult_woman looking at another". A bare trait lands on one person at random or spreads to everyone.
+- When two outfits share a type but differ in style, bind each part: "white blouse on green hair adult_woman, pencil skirt on green hair adult_woman, white shirt on black hair adult_man, dark trousers on black hair adult_man". A bare general name lets the model swap parts between people.
 - Expression and gaze are bound per person, even when they match. Shared appearance traits (both have long hair) are written once. Interactions (holding hands, hug) are written as they are.
 - One or two setting tags are enough; more pull focus off the people. When the background does not matter, blurred background keeps it quiet.
 
 Two-person example:
-2girls, medium shot, long hair, black hair, blue eyes, silver hair, red eyes, tall on silver hair girl, white dress on black hair girl, red dress on silver hair girl, black hair girl waving, black hair girl smile, black hair girl looking at viewer, silver hair girl eating dango, silver hair girl blush, silver hair girl looking away, park, sunset
-(The shot follows the headcount and there is one setting word. Long hair is shared, so it is written once. Hair and eye colours stand bare as anchors. White dress, waving, smile and looking at viewer belong to the black-haired girl; tall, red dress, eating dango, blush and looking away belong to the silver-haired girl.)
+2adult_women, medium shot, long hair, black hair, blue eyes, silver hair, red eyes, tall on silver hair adult_woman, white dress on black hair adult_woman, red dress on silver hair adult_woman, black hair adult_woman waving, black hair adult_woman smile, black hair adult_woman looking at viewer, silver hair adult_woman eating dango, silver hair adult_woman blush, silver hair adult_woman looking away, park, sunset
+(The shot follows the headcount and there is one setting word. Long hair is shared, so it is written once. Hair and eye colours stand bare as anchors. White dress, waving, smile and looking at viewer belong to the black-haired woman; tall, red dress, eating dango, blush and looking away belong to the silver-haired woman.)
 
 {{nl}}
 

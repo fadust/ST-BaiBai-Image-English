@@ -272,7 +272,7 @@ export async function buildAutoTagMessages(
 
   const libraryReferenceRule = naiCharPromptsOn
     ? '- Library and newly profiled characters are copied as the NAI specification (rule 7) says.'
-    : '- For a character in the 【 character fixed appearance library 】 or profiled in this changes, copy the field values into tag word for word, and state the same traits in nl. Do not rewrite, add to or drop the fixed appearance. The fandom field is for the record only; ComfyUI does not copy it, and the fan identity tag is written as the ComfyUI specification says.\n   - Write each character\'s fixed appearance once per image; later mentions in the same image use a short reference, as the specification says. A repeated full appearance makes the model draw duplicates or split one person into pieces.';
+    : '- For a character in the 【 character fixed appearance library 】 or profiled in this changes, copy the field values into tag word for word, except that the sex count tag takes the noun the character\'s age gives, as the specification says; state the same traits in nl. Do not rewrite, add to or drop the fixed appearance. The fandom field is for the record only; ComfyUI does not copy it, and the fan identity tag is written as the ComfyUI specification says.\n   - Write each character\'s fixed appearance once per image; later mentions in the same image use a short reference, as the specification says. A repeated full appearance makes the model draw duplicates or split one person into pieces.';
   // Profile nl is only required when the protocol includes nl (the runner's validation follows the same rule; see autoTagProfile)
   const newCharacterNlRule =
     naiCharPromptsOn && nlOn
