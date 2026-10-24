@@ -508,7 +508,7 @@ Order from most to least important: headcount → shot → identity and appearan
 In the action part, the core action (who does what, which body parts touch) comes first as its own tag; supporting poses (sitting, standing, kneeling) follow. Write each action once.
 
 Read every trait from the source. Hair, eyes, skin, build, age look, outfit and signature features come from the library, card, persona, lorebook and story text; keep the source's own words wherever a Danbooru tag exists for them. Tag skin tone when the source makes it distinct (tan, dark skin); the model's default already covers fair skin. Tag an older look when the source gives one (mature female, mature male, old man).
-Headcount and anchor nouns carry the age the source states: an adult is 1adult_woman or 1adult_man, anchored as dark hair adult_man; 1girl, 1boy, girl and boy are for characters the source makes young. These nouns keep their underscore. The model reads girl and boy as young, and that outweighs every age word after it.
+Headcount and anchor nouns carry the age the source states. An adult with a stated age is written with it: 20yo_woman 41yo_man, anchored as dark hair 41yo_man. With no stated age, use the age the source implies: adult_woman, adult_man, old_woman, old_man. Characters under 18 are girl and boy, with no number. These nouns keep their underscore. The model reads the noun as the age, and it outweighs every age word after it.
 
 Expression and gaze go in every image, as real Danbooru tags. Read them from the scene; when the text gives none, infer one, and write expressionless when the face is blank.
 - Expressions (one or two): smile, grin, laughing, blush, embarrassed, frown, pout, puffy cheeks, surprised, crying, tears, angry, serious, sad, worried, scared, smug, seductive smile, expressionless, half-closed eyes, open mouth, clenched teeth.
@@ -522,7 +522,7 @@ Fan-work identity tag:
 
 Two or more people:
 The model pairs words by adjacency, so each person's traits sit next to an anchor that names that person.
-- State the headcount (2adult_women, 1adult_woman 1adult_man); without it the model drops or doubles people. One shot word follows it.
+- State the headcount (20yo_woman 41yo_man; 2adult_women when no ages are given); without it the model drops or doubles people. One shot word follows it.
 - Hair colour and eye colour are the anchors. Write them bare, and never number people (the model does not know girl1, girl2).
 - Bind everything else to an anchor: outfit and its parts, objects, build, actions, expression and gaze. Write "white dress on green hair adult_woman, black dress on blue hair adult_woman", "muscular on black hair adult_man", "black hair adult_woman waving, silver hair adult_woman eating dango", "black hair adult_woman smiling, silver hair adult_woman looking at another". A bare trait lands on one person at random or spreads to everyone.
 - When two outfits share a type but differ in style, bind each part: "white blouse on green hair adult_woman, pencil skirt on green hair adult_woman, white shirt on black hair adult_man, dark trousers on black hair adult_man". A bare general name lets the model swap parts between people.

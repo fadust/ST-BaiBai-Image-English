@@ -764,8 +764,9 @@ describe('auto tag prompt', () => {
       // The example string must really demonstrate the binding form, otherwise the model copies bare tags from the old example.
       expect(spec?.content).toContain('black hair adult_woman smile, black hair adult_woman looking at viewer');
       expect(spec?.content).toContain('silver hair adult_woman blush, silver hair adult_woman looking away');
-      // Your MOSS test: girl and boy read as young and outweigh every age word after them.
-      expect(spec?.content).toContain('an adult is 1adult_woman or 1adult_man, anchored as dark hair adult_man');
+      // MOSS tests: the noun is read as the age; the stated age written into it (41yo_man) lands closest.
+      expect(spec?.content).toContain('An adult with a stated age is written with it: 20yo_woman 41yo_man, anchored as dark hair 41yo_man.');
+      expect(spec?.content).toContain('Characters under 18 are girl and boy, with no number.');
     } finally {
       settings.defaultBackend = oldBackend;
     }
