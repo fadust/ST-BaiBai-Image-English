@@ -80,7 +80,7 @@ describe('auto tag prompt', () => {
     expect(messages.some(m => m.content.includes("cannot contain quality words"))).toBe(true);
     expect(messages.some(m => m.content.includes("1. Complete the character profile and change check first, and then select pictures; you cannot skip the changes check because there are no pictures or the number of pictures is small. If there are no changes, changes returns an empty array."))).toBe(true);
     expect(messages.some(m => m.content.includes("Multiple images must be of a single moment with significantly different plot or visual status, and do not return to adjacent action or shot-change versions of the same event."))).toBe(true);
-    expect(messages.some(m => m.content.includes("Having two people in the same frame does not mean that the screen must be horizontal. The direction must be consistent with the lens word in tag (wide, shot usually matches landscape, close-up / upper, body usually matches portrait)."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Two people in frame do not force landscape. Match the shot tag: wide shots usually suit landscape; close-up and upper body usually suit portrait."))).toBe(true);
     expect(messages.some(m => m.content.includes('"field":"new"'))).toBe(true);
     expect(messages.some(m => m.content.includes('"hair":"long black hair","eyes":"blue eyes"'))).toBe(true);
     expect(messages.some(m => m.content.includes("- **Profile before drawing**: read the target text and find every named character not yet in the 【 character fixed appearance library 】. If the card, World Info, BaiBai Book or ongoing story gives that character a setting, or the character keeps taking part in the plot, create a profile at their first appearance, whether or not they are drawn this time. Judge from all the setting content you were given. One-time nameless passers-by get no profile."))).toBe(true);
@@ -238,29 +238,29 @@ describe('auto tag prompt', () => {
     }
     // Each rule still exists exactly once in the message set.
     for (const once of [
-      'The expressions are selected from the actual existing tag',
-      "- None of the skin color words are written by default",
+      '- Expressions (one or two):',
+      "Tag skin tone when the source makes it distinct",
       '- Profile format:',
       'navy blazer, white collared shirt, red tie',
-      'Write landscape for group portraits',
+      'Write landscape for group shots',
     ]) {
       expect(text.split(once).length - 1).toBe(1);
     }
-    expect(messages.some(m => m.content.includes("Write landscape for group portraits, long-range panoramas, wide scenes, and horizontally unfolding interactions; write portrait for single people, vertical stances, close-ups, and close-up compositions of two people."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Write landscape for group shots, distant panoramas, wide scenes and interactions that spread sideways; write portrait for single figures, standing poses, close-ups and close two-person shots."))).toBe(true);
     expect(thinkingMsg?.content).not.toContain('双人近距离可 portrait');
     expect(thinkingMsg?.content).not.toContain('hair 与 eyes 都不得留空');
-    expect(messages.some(m => m.content.includes("- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Tag skin tone when the source makes it distinct (tan, dark skin); the model's default already covers fair skin."))).toBe(true);
     expect(messages.some(m => m.content.includes("- Profile format: {\"name\":\"Character name\",\"field\":\"new\",\"fields\":{\"sex\":\"1girl\",\"hair\":\"long black hair\",\"eyes\":\"blue eyes\"},\"position\":\"P2\",\"reason\":\"first appearance\"}. position is where the character first appears and is for the record only; the profile applies to the whole floor at once."))).toBe(true);
     expect(messages.some(m => m.content.includes("- A permanent change takes effect at its position: images before it use the old profile, and images at or after it use the new one. Report several changes separately."))).toBe(true);
-    expect(messages.some(m => m.content.includes("When there is a clear setting, strictly follow it; when there is no clear setting, you must also take the initiative to choose the most reasonable, specific and self-consistent era, civilization or original visual system based on the existing clues and plot temperament. When there is less evidence, the style of the era, clothing styles, materials, accessories, light and tone can be reasonably supplemented, but this is limited to \"how to draw\" and cannot be used to make up \"what is in the picture\"."))).toBe(true);
-    expect(messages.some(m => m.content.includes("Just write outdoors when the text only confirms \"wild\", write forest when only confirm \"forest\"; only write muddy, ground, dirt, path, puddles, etc. corresponding to tag when the text, context or world settings clearly support the facts such as rain, mud, dirt road, etc."))).toBe(true);
-    expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
+    expect(messages.some(m => m.content.includes("When the setting is clear, follow it. When it is not, pick the most plausible specific era or visual system the clues support."))).toBe(true);
+    expect(messages.some(m => m.content.includes("write outdoors when the text only says outdoors, forest when it says forest, and muddy, dirt path or puddles only when the text, context or world supports them."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Put that reading into visible detail: for visible people, outfit cut, materials and accessories; for a visible background, only buildings, furniture and objects the setting or text supports."))).toBe(true);
     expect(messages.some(m => m.content.includes("navy blazer, white collared shirt, red tie"))).toBe(true);
     expect(messages.some(m => m.content.includes("- **What counts as profiled**: only a name actually listed in the 【 character fixed appearance library 】 block."))).toBe(true);
     expect(messages.some(m => m.content.includes("- In a multi-character image, bind each character's hair colour, eye colour, build, outfit, objects and own actions next to that character's distinctive reference. Never scatter two people's traits in a shared tag string that cannot be attributed."))).toBe(true);
-    expect(messages.some(m => m.content.includes("2. The era and world view (clothing system, architecture, utensils, environmental style) - **must be judged first and actively embodied**."))).toBe(true);
-    expect(messages.some(m => m.content.includes("In a word: lens, composition, light, tone, etc. ** how to shoot ** can be actively specified; ** characters, actions, terrain, ground materials, weather traces and environmental conditions, etc. ** what is in the picture must be based on the text and settings. Being specific does not mean making it up."))).toBe(true);
-    expect(messages.some(m => m.content.includes("Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture."))).toBe(true);
+    expect(messages.some(m => m.content.includes("2. Era and world (dress, architecture, objects, environment style): **read it first, then show it**."))).toBe(true);
+    expect(messages.some(m => m.content.includes("In short: how to shoot (shot, composition, light, colour) is yours to choose; what is in the picture (people, actions, terrain, ground, weather, conditions) comes from the text and settings. Being specific is not inventing."))).toBe(true);
+    expect(messages.some(m => m.content.includes("Put that reading into visible detail: for visible people, outfit cut, materials and accessories; for a visible background, only buildings, furniture and objects the setting or text supports."))).toBe(true);
     expect(messages.some(m => m.content.includes('允许为了完成画面作合理猜测'))).toBe(false);
     const last = messages[messages.length - 1];
     expect(last.role).toBe('user');
@@ -356,11 +356,11 @@ describe('auto tag prompt', () => {
       let text = (await buildAutoTagMessages(context(), 1, options, null))
         .map(m => m.content)
         .join('\n');
-      expect(once(text, 'Fan character identity tag:')).toBe(1);
+      expect(once(text, 'Fan-work identity tag:')).toBe(1);
       // The spec's escaping guidance must reach the model as-is: in a template string \( gets cooked into (.
-      expect(text).toContain("The actual prompt word form is character name");
+      expect(text).toContain("ComfyUI reads bare parentheses as weight syntax, so escape them. The prompt needs character name");
       expect(text).toContain('"character name \\\\(copyright name\\\\)"');
-      expect(once(text, "- None of the skin color words are written by default")).toBe(1);
+      expect(once(text, "Tag skin tone when the source makes it distinct")).toBe(1);
       expect(text).not.toContain('4. For an explicit NSFW scene.');
 
       // NAI 4.5 and V5: unescaped identity tag first in characters[].tag; the explicit-scene rules live once, in the specification.
@@ -375,7 +375,7 @@ describe('auto tag prompt', () => {
         expect(once(text, '4. For an explicit NSFW scene.')).toBe(1);
         expect(text).not.toContain('If the text is clearly an explicit NSFW scene');
         expect(text).not.toContain('After writing negative, look back word by word');
-        expect(text).not.toContain('- None of the skin color words are written by default');
+        expect(text).not.toContain('Tag skin tone when the source makes it distinct');
       }
     } finally {
       settings.defaultBackend = oldBackend;
@@ -714,14 +714,14 @@ describe('auto tag prompt', () => {
         settings.defaultBackend = backend;
         if (backend === 'nai') settings.nai.model = 'nai-diffusion-4-full';
         const messages = await buildAutoTagMessages(context(), 1, options, null);
-        const spec = messages.find(m => m.content.includes("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag."));
-        expect(spec?.content).toContain("Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.");
-        expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
-        expect(spec?.content).toContain("- The absence of facial expressions in the text is not a reason not to write them - infer one; when it is judged that the face is expressionless, expressionless must also be written explicitly.");
+        const comfy = backend === 'comfyui';
+        const order = comfy ? 'Order from most to least important: headcount → shot → identity and appearance → outfit → action and pose → expression and gaze → setting → light. Keep one image within 40 tags.' : "Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.";
+        const spec = messages.find(m => m.content.includes(order));
+        expect(spec?.content).toContain(comfy ? 'Expression and gaze go in every image, as real Danbooru tags.' : "Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
+        expect(spec?.content).toContain(comfy ? 'when the text gives none, infer one, and write expressionless when the face is blank.' : "- The absence of facial expressions in the text is not a reason not to write them - infer one; when it is judged that the face is expressionless, expressionless must also be written explicitly.");
         // The first real run leaked gentle smile / shy expression / neutral curious expression,
         // non-danbooru phrases like these: the slot was filled correctly, then translated literally into tags. The specification must give a restricted vocabulary.
-        expect(spec?.content).toContain("Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:");
-        expect(spec?.content).toContain("- It is forbidden to literally translate the Chinese description in thinking into tag: gentle smile writes smile, shy expression writes blush, neutral curious expression This phrase model is completely unfamiliar and will only waste token and dilute the rest. tag. The natural language feeling with adjectives is left to nl, and tag only puts standard words.");
+        expect(spec?.content).toContain(comfy ? 'Tags are fixed words, so map a feeling to the nearest one: gentle smile becomes smile, shy becomes blush.' : "- It is forbidden to literally translate the Chinese description in thinking into tag: gentle smile writes smile, shy expression writes blush, neutral curious expression This phrase model is completely unfamiliar and will only waste token and dilute the rest. tag. The natural language feeling with adjectives is left to nl, and tag only puts standard words.");
         expect(spec?.content).toContain('puffy cheeks');
       }
     } finally {
@@ -746,21 +746,21 @@ describe('auto tag prompt', () => {
     try {
       settings.defaultBackend = 'comfyui';
       const messages = await buildAutoTagMessages(context(), 1, options, null);
-      const spec = messages.find(m => m.content.includes("Additional rules for multiplayer (two or more people):"));
-      expect(spec?.content).toContain("- Expression and gaze are also **one copy for each person and must be bound** features: write \"black hair girl smiling, silver hair girl looking at another\", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. \"Write shared characteristics only once\" does not apply.");
-      expect(spec?.content).toContain("the other person will become the default wooden face");
-      expect(spec?.content).toContain("- Expression and gaze are also **one copy for each person and must be bound** features: write \"black hair girl smiling, silver hair girl looking at another\", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. \"Write shared characteristics only once\" does not apply.");
-      expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
-      // A rule without an example behind it is empty talk: in a real run the model copied the structure from the example string, and petite/loli were still written bare.
-      expect(spec?.content).toContain('petite on silver hair girl');
-      // Hair and eye colours are binding anchors and listing them bare is correct; the previous rule must not wrongly turn them into black hair on black hair girl.
-      expect(spec?.content).toContain("- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write \"petite on silver hair girl\" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.");
-      // Deleting "don't fall back to generic words" while slimming relapsed in the very same round: the tag wrote bare school uniform +
-      // black opaque pantyhose, and the boy's white shirt/dark pants never made it into the tag at all.
-      expect(spec?.content).toContain("- Clothes of the same type and different styles must be bound together, and cannot be lumped together with a general name: when two people wear school uniforms but the male and female styles are different, write \"dark pleated skirt on green hair girl, black opaque pantyhose on green hair girl, white shirt on black hair boy, dark trousers on black hair boy\", you must not just write one bare school uniform - That would let the model put the skirt on the boy, or simply design a random suit for each of them. In the same way, parts such as pantyhose and blazer that can only be worn by one person must also be brought with the owner.");
-      expect(spec?.content).toContain('dark pleated skirt on green hair girl');
-      expect(spec?.content).toContain('white shirt on black hair boy');
-      expect(spec?.content).toContain("let the model put the skirt on the boy");
+      const spec = messages.find(m => m.content.includes('The model pairs words by adjacency'));
+      expect(spec?.content).toContain('- Expression and gaze are bound per person, even when they match.');
+      expect(spec?.content).toContain('A bare trait lands on one person at random or spreads to everyone.');
+      expect(spec?.content).toContain('"black hair girl smiling, silver hair girl looking at another"');
+      // Build words are not anchors; the example binds them so the model has the form to copy.
+      expect(spec?.content).toContain('"muscular on black hair man"');
+      expect(spec?.content).toContain('tall on silver hair girl');
+      expect(spec?.content).not.toContain('petite');
+      // Hair and eye colours are the anchors and stand bare; they must not turn into black hair on black hair girl.
+      expect(spec?.content).toContain('- Hair colour and eye colour are the anchors. Write them bare');
+      // Same-type outfits in different styles: bind each part, or the model swaps parts between people.
+      expect(spec?.content).toContain('- When two outfits share a type but differ in style, bind each part');
+      expect(spec?.content).toContain('pencil skirt on green hair girl');
+      expect(spec?.content).toContain('white shirt on black hair man');
+      expect(spec?.content).toContain('A bare general name lets the model swap parts between people.');
       // The example string must really demonstrate the binding form, otherwise the model copies bare tags from the old example.
       expect(spec?.content).toContain('black hair girl smile, black hair girl looking at viewer');
       expect(spec?.content).toContain('silver hair girl blush, silver hair girl looking away');
@@ -784,7 +784,7 @@ describe('auto tag prompt', () => {
     const thinking = messages.find(m => m.content.includes("Pre-output checklist"))?.content ?? '';
     const text = messages.map(m => m.content).join('\n');
     // The expression vocabulary lives once, in the specification; the slot rows ask for it.
-    expect(text.split('The expressions are selected from the actual existing tag').length - 1).toBe(1);
+    expect(text.split('- Expressions (one or two):').length - 1).toBe(1);
     expect(thinking).toContain('｜expression｜gaze｜');
     // Anti-wavering: decide once, no self-questions, candidate lists or reversals.
     expect(thinking).toContain('Decide each field once: a field holds one value in the whole <thinking>. No self-questions, no candidate lists, no reversals');

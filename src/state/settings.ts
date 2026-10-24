@@ -499,76 +499,64 @@ export interface ExcludesSettings {
  * The multi-person part distils the general rules from a local practice document (comfyui docs/多人tag标准格式.md):
  * numbering doesn't work, bind features, write shared features once, don't let the scene steal the subject; these are the main reasons local models mix up traits in multi-person images.
  */
-export const DEFAULT_COMFY_SPEC = `【ComfyUI Prompt word specification 】
-The screen prompt words you output will be directly filled in the ComfyUI workflow.
+export const DEFAULT_COMFY_SPEC = `【ComfyUI prompt specification】
+Your prompts go straight into the ComfyUI workflow.
 
-tag (tag key of JSON): danbooru short tag - English lowercase, comma-separated keyword string, multiple words are connected with spaces (do not use underscores), for example:
-1girl, long hair, school uniform, sitting by window, classroom, warm sunlight
-Arranged from most important to less important: Number of people/subjects → Shot composition → Appearance → Clothing → Action posture → Expression and sight → Scene → Light atmosphere; a single picture is controlled within 40 and tag.
-Internal rearrangement of action postures: The core action of this picture (who did what, what body parts touched) must be the first independent short tag in the action area; the auxiliary postures (sitting, standing, kneeling, etc.) are arranged behind. The same action word cannot be written twice.
-Expressions and gaze must be written in every picture and cannot be omitted, and must use standard danbooru words recognized by the model. No self-created descriptive phrases are allowed:
-- The expressions are selected from the actual existing tag (can be superimposed 1~2): smile, grin, laughing, blush, embarrassed, frown, pout, puffy cheeks, surprised, crying, tears, angry, serious, sad, worried, scared, smug, seductive smile, expressionless, half-closed eyes, open mouth, clenched teeth.
-- Choose one by sight: looking at viewer, looking at another, looking away, looking down, looking up, looking back, closed Do not make another one other than eyes.
-- It is forbidden to literally translate the Chinese description in thinking into tag: gentle smile writes smile, shy expression writes blush, neutral curious expression This phrase model is completely unfamiliar and will only waste token and dilute the rest. tag. The natural language feeling with adjectives is left to nl, and tag only puts standard words.
-- The absence of facial expressions in the text is not a reason not to write them - infer one; when it is judged that the face is expressionless, expressionless must also be written explicitly.
+tag (the JSON tag key): Danbooru tags in lowercase English, comma-separated, with spaces between words (no underscores). For example:
+1girl, long hair, sitting by window, library, warm sunlight
+Order from most to least important: headcount → shot → identity and appearance → outfit → action and pose → expression and gaze → setting → light. Keep one image within 40 tags.
+In the action part, the core action (who does what, which body parts touch) comes first as its own tag; supporting poses (sitting, standing, kneeling) follow. Write each action once.
 
-Fan character identity tag:
-- If the character clearly comes from existing animations, games, novels, etc., the English Danbooru identity tag that can be recognized by the model must be written after the number of people/composition and before the ordinary appearance. The format is character name \\ (copyright name\\). The character name and work name should use the popular English tag. Literal translation into Chinese, abbreviation of the work name, or just the character name is not allowed.
-- ComfyUI treats unescaped parentheses as weight syntax, so parentheses with identity tag must be escaped. The actual prompt word form is character name \\(copyright name\\); since the final output is JSON, the tag string must be written as "character name \\\\(copyright name\\\\)", the single backslash will be retained after JSON is parsed.
-- Do not write the identity of the original character tag; when the work cannot be reliably determined from the character card, World Info or text, the name of the work must not be guessed, and it will be treated as an original character.
+Read every trait from the source. Hair, eyes, skin, build, age look, outfit and signature features come from the library, card, persona, lorebook and story text; keep the source's own words wherever a Danbooru tag exists for them. Tag skin tone when the source makes it distinct (tan, dark skin); the model's default already covers fair skin. Tag an older look when the source gives one (mature female, mature male, old man).
 
-Additional rules for multiplayer (two or more people):
-- The number of people tag must be clear (2girls, 1boy 1girl, etc.); if the model is missing, the drawing will be missed or overdrawn.
-- Composition words (medium shot, full body, etc., write only one) follow the number of people, write tag in front, and lock the main body of the picture on the character.
-- Write the hard characteristics (hair color/eye color/body type) of each character side by side without numbers (girl1/girl2 model does not recognize it).
-- The characters' respective colors/clothes/objects must be bound to the character's characteristic words - models are paired by adjacency: write "white dress on green hair girl, black dress on blue hair girl", do not write "a white dress and a black dress" is a bunch that cannot be allocated.
-- Clothes of the same type and different styles must be bound together, and cannot be lumped together with a general name: when two people wear school uniforms but the male and female styles are different, write "dark pleated skirt on green hair girl, black opaque pantyhose on green hair girl, white shirt on black hair boy, dark trousers on black hair boy", you must not just write one bare school uniform - That would let the model put the skirt on the boy, or simply design a random suit for each of them. In the same way, parts such as pantyhose and blazer that can only be worn by one person must also be brought with the owner.
-- Only write the characteristics shared by multiple people once (if they all have long hair: one long hair is enough, do not copy it for each person).
-- Different actions/poses are also written into tag using the same binding method: write "black hair girl waving, silver hair girl eating dango", do not write "waving, eating" dango" This kind of naked action cannot be assigned (the model will be randomly placed on the person's head); the interaction involving multiple people (holding hands, hug, etc.) is written directly.
-- Expression and gaze are also **one copy for each person and must be bound** features: write "black hair girl smiling, silver hair girl looking at another", do not put smile, looking at another Naked writing in the string - when two people are in the same frame, the expression/eyesight of the naked writing will only fall on one of them, and the other person will become the default wooden face. If two people have exactly the same expression or gaze, each should write one with a title. "Write shared characteristics only once" does not apply.
-- Body shape words (petite, tall, muscular, etc.) are not anchors and must be bound to specific characters. Do not write them naked: write "petite on silver hair girl" and do not let petite float in the string - the floating body shape words will be spread by the model to everyone in the same frame. Hair color and eye color themselves are the anchor points used to identify the character. They can be displayed naked as usual and do not need (and cannot) be bound to themselves.
-- None of the skin color words are written by default: the model's default skin color is already white enough. Fair words such as pale skin, white skin, fair skin are all prohibited - adding another layer will make it look gray and distorted like a zombie. Only write words like tan, dark and skin when the character is obviously tanned or dark-skinned (also bound to the specific character); when copying fields from the character library, words with fair skin color are also skipped.
-- Only 1~2 scene words are enough. If there are too many, it will take away the main character. When the background is not important, use words like blurred and background to suppress it.
+Expression and gaze go in every image, as real Danbooru tags. Read them from the scene; when the text gives none, infer one, and write expressionless when the face is blank.
+- Expressions (one or two): smile, grin, laughing, blush, embarrassed, frown, pout, puffy cheeks, surprised, crying, tears, angry, serious, sad, worried, scared, smug, seductive smile, expressionless, half-closed eyes, open mouth, clenched teeth.
+- Gaze (one): looking at viewer, looking at another, looking away, looking down, looking up, looking back, closed eyes.
+- Tags are fixed words, so map a feeling to the nearest one: gentle smile becomes smile, shy becomes blush. Phrases like neutral curious expression are not tags and only dilute the prompt; that nuance belongs in nl.
 
-Multiplayer tag example (see the writing method according to the above rules):
-2girls, medium shot, long hair, black hair, blue eyes, silver hair, red eyes, petite on silver hair girl, white dress on black hair girl, red dress on silver hair girl, black hair girl waving, black hair girl smile, black hair girl looking at viewer, silver hair girl eating dango, silver hair girl blush, silver hair girl looking away, park, sunset
-(The composition follows the number of people, and only one scene word is written; long hair is a shared feature and is written only once; hair color, eye color, and nude columns serve as anchors; body shape, skirt, movement, expression, and sight are all bound to the color words - white dress, waving, smile, looking at viewer belongs to black hair, petite, red dress, eating dango, blush, looking away belongs to silver hair)
+Fan-work identity tag:
+- For a character who clearly comes from an existing anime, game or novel, write the model-recognised English Danbooru identity tag right after headcount and shot, before ordinary appearance: character name (copyright name), with the popular English names. No translated, shortened or name-only forms.
+- ComfyUI reads bare parentheses as weight syntax, so escape them. The prompt needs character name \\(copyright name\\); because the output is JSON, the tag string holds "character name \\\\(copyright name\\\\)", and one backslash survives parsing.
+- Original characters get no identity tag. When the source does not settle the work, do not guess; treat the character as original.
+
+Two or more people:
+The model pairs words by adjacency, so each person's traits sit next to an anchor that names that person.
+- State the headcount (2girls, 1boy 1girl); without it the model drops or doubles people. One shot word follows it.
+- Hair colour and eye colour are the anchors. Write them bare, and never number people (the model does not know girl1, girl2).
+- Bind everything else to an anchor: outfit and its parts, objects, build, actions, expression and gaze. Write "white dress on green hair girl, black dress on blue hair girl", "muscular on black hair man", "black hair girl waving, silver hair girl eating dango", "black hair girl smiling, silver hair girl looking at another". A bare trait lands on one person at random or spreads to everyone.
+- When two outfits share a type but differ in style, bind each part: "white blouse on green hair girl, pencil skirt on green hair girl, white shirt on black hair man, dark trousers on black hair man". A bare general name lets the model swap parts between people.
+- Expression and gaze are bound per person, even when they match. Shared appearance traits (both have long hair) are written once. Interactions (holding hands, hug) are written as they are.
+- One or two setting tags are enough; more pull focus off the people. When the background does not matter, blurred background keeps it quiet.
+
+Two-person example:
+2girls, medium shot, long hair, black hair, blue eyes, silver hair, red eyes, tall on silver hair girl, white dress on black hair girl, red dress on silver hair girl, black hair girl waving, black hair girl smile, black hair girl looking at viewer, silver hair girl eating dango, silver hair girl blush, silver hair girl looking away, park, sunset
+(The shot follows the headcount and there is one setting word. Long hair is shared, so it is written once. Hair and eye colours stand bare as anchors. White dress, waving, smile and looking at viewer belong to the black-haired girl; tall, red dress, eating dango, blush and looking away belong to the silver-haired girl.)
 
 {{nl}}
 
-Screen completion (important):
-The text is a novel, not a storyboard - it will never describe things like lens, lighting, and period costumes that "exist only after they are drawn."
-Your job is not to transcribe the text, but to complete the text into a complete picture. The following four categories of content are treated separately:
+Completing the picture:
+The story is prose, not a storyboard. It rarely states shot, light or period detail, because those exist only once drawn. Your job is to turn the text into a complete picture, reading four kinds of content differently:
 
-1. Picture language (lens, composition, light, tone, depth of field, atmosphere) - **must be completed actively**.
-   I won’t write this in the text, and without the picture, it will just be a mediocre headshot. Each screen should be given:
-   Lens distance (close-up / upper body / medium shot / full body / wide shot),
-   Light and time (soft sunlight, candlelight, moonlight, backlighting, golden hour, etc.),
-   Ambient shades (warm colors, cold colors, muted colors, high contrast, etc.).
-   These are up to you to decide based on your mood and scene. Not writing the main text is not a reason not to write it.
-   ⚠ You can only write one scene: close-up / upper body / medium shot / full body / wide shot conflict with each other, write two at the same time (such as medium shot, upper body) will make the model not know where to draw, and the person will be cut off or misspelled.
-   ⚠ The scene must be able to accommodate the core action/contact point of this scene: when the core occurs below the torso (knee pressing, foot stepping, sitting on the leg, lower limb contact on the bed, etc.), it is forbidden to use close-up / upper body, which cuts the contact point out of the scene, use medium shot / full instead body, or switch to a partial close-up with the contact point completely framed in the screen.
-   ⚠ The scene and body tag should be consistent: if you select upper body / close-up, don’t write tag that is invisible outside the screen, such as shoes and socks, skirt length, legs, and body posture. tag is written for parts that are not in the screen, and the model will be forced into it.
+1. Picture language (shot, composition, light, colour, depth of field, mood): **you supply it**. Every image gets a shot distance (close-up / upper body / medium shot / full body / wide shot), light and time (soft sunlight, candlelight, moonlight, backlight, golden hour) and a colour mood (warm, cool, muted, high contrast), chosen from the mood and the scene.
+   - Use one shot word. Two (medium shot, upper body) leave the model unsure where to frame, and people get cropped or warped.
+   - The shot must hold the core action. When it happens below the torso (a knee pressed down, a foot planted, sitting on a lap), use medium shot or full body, or a close-up framed on the contact point, not upper body.
+   - Tag only what the shot shows. With upper body or close-up, leave out shoes, socks, skirt length and leg pose, or the model forces them into frame.
 
-2. The era and world view (clothing system, architecture, utensils, environmental style) - **must be judged first and actively embodied**.
-   Based on priority: World Setting (World Info) > Character Setting/Protagonist Setting > Title, identity, artifacts and environment in the text and context.
-   When there is a clear setting, strictly follow it; when there is no clear setting, you must also take the initiative to choose the most reasonable, specific and self-consistent era, civilization or original visual system based on the existing clues and plot temperament. When there is less evidence, the style of the era, clothing styles, materials, accessories, light and tone can be reasonably supplemented, but this is limited to "how to draw" and cannot be used to make up "what is in the picture".
-   Implement judgment into the details that are actually visible in the picture: when the characters are visible, priority is given to improving clothing styles, materials, and accessories; when the background is visible, only the buildings, furniture, environments, and utensils that can be supported by the setting or text are added. Terrain, ground or road materials, weather traces and environmental conditions are all scene facts. Keep it simple if there is no basis for it. You are not allowed to add mud, dirt roads, wetlands, stagnant water, snow, dust or slippery ground in order to enrich the picture.
-   Just write outdoors when the text only confirms "wild", write forest when only confirm "forest"; only write muddy, ground, dirt, path, puddles, etc. corresponding to tag when the text, context or world settings clearly support the facts such as rain, mud, dirt road, etc.
-   The imaginary world can adopt original or mixed styles, but it must be internally unified, and conflicting civilization elements must not be randomly stacked; the same set of visual judgments must be maintained in consecutive scenes. Enriching the picture prioritizes relying on lens, composition, light, tone and well-founded specific details, rather than mechanically piling related words such as hanfu, wuxia, ancient chinese architecture into each picture.
+2. Era and world (dress, architecture, objects, environment style): **read it first, then show it**. Sources, by authority: World Info > character and persona settings > titles, roles, objects and places in the text and context.
+   When the setting is clear, follow it. When it is not, pick the most plausible specific era or visual system the clues support. With little evidence you may fill in style, cut, materials, accessories, light and colour: how things look, never what is there.
+   Put that reading into visible detail: for visible people, outfit cut, materials and accessories; for a visible background, only buildings, furniture and objects the setting or text supports. Terrain, ground, weather and conditions are scene facts: write outdoors when the text only says outdoors, forest when it says forest, and muddy, dirt path or puddles only when the text, context or world supports them.
+   An invented world may mix styles, but it stays consistent within itself and across consecutive images. Enrich with shot, light, colour and grounded detail, not by piling genre words (hanfu, wuxia, ancient chinese architecture) into every image.
 
-3. Fixed facts about the character (gender, hair color, eye color, body shape, iconic features) - **Strictly follow the given information and do not play**.
-   Library characters follow the task protocol (rule 7); characters without a profile follow the character reference and settings, adding only minimal basics when nothing is given.
+3. Fixed character facts (gender, hair, eyes, build, age look, signature features): **as the source gives them**. Library characters follow task protocol rule 7; characters without a profile follow the character reference and settings, with only minimal basics when nothing is given.
 
-4. Plot facts (characters present, actions, events, key props) - **Strictly based on the text, no fabrication allowed**.
-   It is not allowed to include characters, actions or plots that did not happen in the main text; the number of people must be consistent with the main text.
+4. Plot facts (who is present, actions, events, key props): **only what the text states**. No characters, actions or events the text does not contain; the headcount matches the text.
 
-In a word: lens, composition, light, tone, etc. ** how to shoot ** can be actively specified; ** characters, actions, terrain, ground materials, weather traces and environmental conditions, etc. ** what is in the picture must be based on the text and settings. Being specific does not mean making it up.
+In short: how to shoot (shot, composition, light, colour) is yours to choose; what is in the picture (people, actions, terrain, ground, weather, conditions) comes from the text and settings. Being specific is not inventing.
 
 Frame orientation (size key):
-First determine the final scene and the spatial distribution of the subject in the picture, and then decide the direction; the number of people is just a reference, not a hard rule.
-Write landscape for group portraits, long-range panoramas, wide scenes, and horizontally unfolding interactions; write portrait for single people, vertical stances, close-ups, and close-up compositions of two people.
-Having two people in the same frame does not mean that the screen must be horizontal. The direction must be consistent with the lens word in tag (wide, shot usually matches landscape, close-up / upper, body usually matches portrait).
+Settle the shot and where the subjects sit first, then choose the orientation; headcount is a hint, not a rule.
+Write landscape for group shots, distant panoramas, wide scenes and interactions that spread sideways; write portrait for single figures, standing poses, close-ups and close two-person shots.
+Two people in frame do not force landscape. Match the shot tag: wide shots usually suit landscape; close-up and upper body usually suit portrait.
 
 `;
 
