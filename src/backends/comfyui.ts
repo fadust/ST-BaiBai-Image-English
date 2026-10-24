@@ -10,7 +10,7 @@ export interface ComfyTemplateValues {
   prompt: string;
   negative_prompt?: string;
   seed?: number;
-  /** Natural-language part; only written into workflows that explicitly contain %nl%, never merged into %prompt% automatically. Where one input holds both, the nl replaces the tags. */
+  /** Natural-language part; only written into workflows that explicitly contain %nl%, never merged into %prompt% automatically. */
   nl?: string;
   /** Image width/height; only written into workflows that explicitly contain %width%/%height%; otherwise the sizes hard-coded in the workflow apply. */
   width?: number;
@@ -118,23 +118,6 @@ function replacePlaceholders(value: unknown, replacements: Record<string, string
 }
 
 /**
- * When one text input holds both %prompt% and %nl% and an nl exists, that input gets the nl alone, as simple mode does.
- * Tags placed before prose prime a natural-language encoder: "1girl 1boy" reads as a young girl and boy and outweighs the ages the nl states.
- * Separate inputs are untouched, so a workflow that sends tags and prose to different encoders still gets both.
- */
-function dropTagsBesideNl(value: unknown): unknown {
-  if (typeof value === 'string') {
-    if (!value.includes('%prompt%') || !value.includes('%nl%')) return value;
-    return value
-      .replace(/(,\s*)?%prompt%(\s*,\s*)?/g, (_m, before?: string, after?: string) => (before && after ? ', ' : ''))
-      .replace(/^\s+/, '');
-  }
-  if (Array.isArray(value)) return value.map(dropTagsBesideNl);
-  if (isObject(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, dropTagsBesideNl(item)]));
-  return value;
-}
-
-/**
  * Renders a template into a submittable workflow. Parses first, then replaces recursively, so quotes and newlines in prompts can't break the JSON;
  * strings exactly equal to %seed% / %width% / %height% are replaced with numbers, not strings
  * (EmptyLatentImage's width/height must be numbers).
@@ -157,8 +140,7 @@ export function renderWorkflowTemplate(template: string, values: ComfyTemplateVa
   }
 
   const seed = values.seed ?? randomSeed();
-  const nlText = values.nl?.trim() ?? '';
-  return replacePlaceholders(nlText ? dropTagsBesideNl(workflow) : workflow, {
+  return replacePlaceholders(workflow, {
     prompt: values.prompt,
     negative_prompt: values.negative_prompt ?? '',
     nl: values.nl?.trim() || (!found.has('prompt') ? values.prompt : ''),

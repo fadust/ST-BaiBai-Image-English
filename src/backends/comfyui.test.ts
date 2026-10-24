@@ -118,25 +118,6 @@ describe('renderWorkflowTemplate with %nl%', () => {
     expect((workflow['5'] as { inputs: { text: unknown } }).inputs.text).toBe('A girl.');
   });
 
-  it('gives a shared input the nl alone, keeping its fixed text', () => {
-    const template = JSON.stringify({
-      '3': { class_type: 'CLIPTextEncode', inputs: { text: 'painterly, %prompt%\n%nl%' } },
-      '4': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%\n%nl%' } },
-      '5': { class_type: 'CLIPTextEncode', inputs: { text: 'a, %prompt%, b %nl%' } },
-    });
-    const workflow = renderWorkflowTemplate(template, { prompt: '1girl 1boy, gold eyes', nl: 'Max is a 41-year-old man.' });
-    const text = (id: string) => (workflow[id] as { inputs: { text: unknown } }).inputs.text;
-    expect(text('3')).toBe('painterly\nMax is a 41-year-old man.');
-    expect(text('4')).toBe('Max is a 41-year-old man.');
-    expect(text('5')).toBe('a, b Max is a 41-year-old man.');
-  });
-
-  it('keeps tags in a shared input when there is no nl', () => {
-    const template = JSON.stringify({ '3': { class_type: 'CLIPTextEncode', inputs: { text: 'painterly, %prompt%\n%nl%' } } });
-    const workflow = renderWorkflowTemplate(template, { prompt: '1girl', nl: '' });
-    expect((workflow['3'] as { inputs: { text: unknown } }).inputs.text).toBe('painterly, 1girl\n');
-  });
-
   it('substitutes an empty string for %nl% when nl is absent', () => {
     const template = JSON.stringify({
       '5': { class_type: 'CLIPTextEncode', inputs: { text: 'caption: %nl%', prompt: '%prompt%' } },
