@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSimpleWorkflow,
+  COMFY_TEMPLATES,
+  MOSS_DEFAULT_NEGATIVE,
   normalizeSimpleConfig,
   simpleDefaults,
   templateSupportsNegative,
@@ -203,5 +205,101 @@ describe('templateSupportsNegative', () => {
     expect(templateSupportsNegative('flux')).toBe(false);
     expect(templateSupportsNegative('checkpoint')).toBe(true);
     expect(templateSupportsNegative('anima')).toBe(true);
+    // MOSS 有真实负面通道,且该通道被 negativeRequired 要求必须有内容(两件事正交)
+    expect(templateSupportsNegative('moss')).toBe(true);
+  });
+});
+
+describe('buildSimpleWorkflow - moss(写实线)', () => {
+  // 必须用 moss 自己的默认值打底:config() 展开的是 checkpoint 默认值(28 步 / cfg 5),
+  // 拿它去断言 MOSS 的 30 步 / cfg 3.5 只会测到「我传进去的 28」。
+  const simple: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    positive: 'photorealistic, high detail',
+  };
+
+  it('加载链:UNET 直载 + CLIPLoader 用 moss_image 类型 + flux2 VAE', () => {
+    const wf = buildSimpleWorkflow(simple, VALUES);
+    expect(node(wf, '1').class_type).toBe('UNETLoader');
+    expect(node(wf, '1').inputs.unet_name).toBe('moss_image_sft_int8_convrot.safetensors');
+    expect(node(wf, '2').class_type).toBe('CLIPLoader');
+    // type 必须是 moss_image:按 flux 的 qwen_image 加载会类型不匹配
+    expect(node(wf, '2').inputs).toMatchObject({
+      clip_name: 'qwen3.5_9b_int8_convrot.safetensors',
+      type: 'moss_image',
+    });
+    expect(node(wf, '3').inputs.vae_name).toBe('flux2-vae_small.safetensors');
+  });
+
+  it('latent 用 EmptyFlux2LatentImage(flux2 VAE 是 128 通道,SD3/latent 会通道不匹配)', () => {
+    const wf = buildSimpleWorkflow(simple, VALUES);
+    expect(node(wf, '6').class_type).toBe('EmptyFlux2LatentImage');
+    expect(node(wf, '6').inputs).toMatchObject({ width: 832, height: 1216, batch_size: 1 });
+  });
+
+  it('采样参数走 MOSS 官方口径,正负面按「固定+生成」拼接', () => {
+    const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'extra people' });
+    expect(node(wf, '7').inputs).toMatchObject({
+      seed: 42,
+      steps: 30,
+      cfg: 3.5,
+      sampler_name: 'euler',
+      scheduler: 'sgm_uniform',
+      latent_image: ['6', 0],
+    });
+    expect(node(wf, '4').inputs.text).toBe('photorealistic, high detail, 1girl, silver hair');
+    expect(node(wf, '5').inputs.text).toBe(MOSS_DEFAULT_NEGATIVE + ', extra people');
+    expect(node(wf, '9').class_type).toBe('SaveImage');
+  });
+
+  it('LoRA 只挂 UNet(LoraLoaderModelOnly),不接 clip', () => {
+    const wf = buildSimpleWorkflow(
+      { ...simple, loras: [{ name: 'moss_pussy_lora_v2.0_face_pussy.safetensors', strength: 0.8 }] },
+      VALUES,
+    );
+    expect(node(wf, '300').class_type).toBe('LoraLoaderModelOnly');
+    expect(node(wf, '300').inputs).toMatchObject({
+      lora_name: 'moss_pussy_lora_v2.0_face_pussy.safetensors',
+      strength_model: 0.8,
+    });
+    expect(node(wf, '7').inputs.model).toEqual(['300', 0]);
+  });
+
+  it('simpleDefaults 预填 MOSS 默认负面(negativeRequired 的必填项不能空着出生)', () => {
+    expect(simpleDefaults('moss').negative).toBe(MOSS_DEFAULT_NEGATIVE);
+    expect(simpleDefaults('checkpoint').negative).toBe('');
+    expect(normalizeSimpleConfig({ template: 'moss' }).negative).toBe(MOSS_DEFAULT_NEGATIVE);
+  });
+});
+
+describe('moss 模板的元数据', () => {
+  it('固定负面必填、采样器锁 euler、尺寸按官方口径', () => {
+    expect(COMFY_TEMPLATES.moss.negativeRequired).toBe(true);
+    expect(COMFY_TEMPLATES.moss.samplerFixed).toBe('euler');
+    expect(COMFY_TEMPLATES.moss.defaults).toMatchObject({
+      steps: 30,
+      cfg: 3.5,
+      sampler: 'euler',
+      scheduler: 'sgm_uniform',
+    });
+    expect(COMFY_TEMPLATES.moss.portraitSize).toBe('832×1216');
+    // 其余模板不锁采样器、不强制负面
+    expect(COMFY_TEMPLATES.checkpoint.samplerFixed).toBeNull();
+    expect(COMFY_TEMPLATES.flux.negativeRequired).toBe(false);
+  });
+
+  it('固定负面留空时 validateSimpleConfig 拦下并提示填默认负面', () => {
+    const moss = {
+      ...simpleDefaults('moss'),
+      model: 'moss_image_sft_int8_convrot.safetensors',
+      vae: 'flux2-vae_small.safetensors',
+      clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    };
+    expect(validateSimpleConfig({ ...moss, negative: '' })).toContain('固定负面');
+    expect(validateSimpleConfig({ ...moss, negative: '' })).toContain('填入默认负面');
+    expect(validateSimpleConfig(moss)).toBeNull();
   });
 });

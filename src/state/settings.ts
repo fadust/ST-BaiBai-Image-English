@@ -62,6 +62,19 @@ export interface BackendConn {
  * 留在渠道级的话,每次切工作流都得再手改两处,「切换」这件事就只做了一半。
  * url 反过来仍是渠道级(一台 ComfyUI 服务器跑所有工作流)。
  */
+/**
+ * 提示词规范方言:同一套 ComfyUI 出图链路,底模不同则**写串的方式**不同。
+ *
+ * - `comfy`:danbooru 短 tag 流(默认)。写给 SDXL / Illustrious / Pony 那一类
+ *   吃 tag 的模型,tag 是主体、nl 是可选补充。
+ * - `moss`:写实散文流。MOSS-Image 的文本编码器是 Qwen3.5 9B,吃连贯英文散文,
+ *   短 tag 堆给它等于把画面信息砍掉大半。故该方言下**强制写 nl**、**不请求 AI 动态负面**。
+ *
+ * 为什么挂在工作流预设上而不是渠道级:这是**底模的属性**,和横竖尺寸、自然语言开关
+ * 同一边——一切工作流就该整套口径跟着换。
+ */
+export type SpecDialect = 'comfy' | 'moss';
+
 export interface ComfyWorkflowPreset extends SizePair {
   id: string;
   /** 显示名(下拉列表与切换用;允许重名,以 id 为键)。 */
@@ -80,6 +93,8 @@ export interface ComfyWorkflowPreset extends SizePair {
   naturalLanguage: boolean;
   /** 画幅锁:auto = 由自动 tag 判定横竖;portrait/landscape = 这套工作流一律出该方向(见 size.ts)。 */
   orientationLock: OrientationLock;
+  /** 提示词规范方言(见 SpecDialect);老预设缺该字段一律落 'comfy',不做迁移。 */
+  specDialect: SpecDialect;
 }
 
 /**
@@ -574,6 +589,24 @@ tag（JSON 的 tag 键）：danbooru 短 tag——英文小写、逗号分隔的
 - 不写质量词（masterpiece、best quality 之类）、不写负面内容。
 - 一律使用英文。`;
 
+/**
+ * MOSS 写实线的提示词规范(SpecDialect='moss' 时替代 ComfyUI 那份)。
+ *
+ * 与 DEFAULT_COMFY_SPEC 的根本差别不是措辞,是**契约形态**:那条线 tag 是主体、nl 可选;
+ * 这条线 tag 只锁元素、nl 是主体且必填。故本常量不挂 {{nl}} 宏 —— 它整份只在开启侧存在
+ * (autoTagProfile 在 moss 方言下把 nl 恒置 true,开关不再参与)。
+ *
+ * 素材来自本机 story-image 的 moss-real 真人线实测口径(见该仓库 configs/moss-real.md
+ * 与 prompts/specs/moss-photo.md),已改写成柏宝绘的协议形态(tag + nl + characters)。
+ */
+export const DEFAULT_MOSS_SPEC = "【MOSS-Image 写实线提示词规范】\n你输出的提示词会交给 MOSS-Image（官方 SFT int8 写实底模）出图。这条底模的文本编码器是 Qwen3.5 9B，读的是**连贯英文散文**，不是 danbooru 短 tag 堆。故本线是「简短的英文 tag 行锁元素 + 连贯英文散文写画面」的混合写法。\n\ntag（JSON 的 tag 键）：只用来**锁定元素**，英文小写、逗号分隔，一句话能说完的东西不要拆成五个 tag。\n顺序：人数 → 景别（只写一个）→ 人种与年龄感 → 外貌锚点 → 服装（逐件）→ 动作 → 表情与视线 → 场景 → 光线。\n- 例：1girl, solo, medium shot, chinese, east asian, twenty years old, long black hair, white cotton camisole, standing, looking at viewer, smile, dorm room, desk lamp\n- 40 个 tag 以内；不要写成完整句子；不写权重语法（(x:1.3)）、不写 BREAK、不写画幅比例、不写采样参数、不写 LoRA 触发词。\n- 画质串由渠道预设的「固定正面」承担，**不要**在 tag 里写 masterpiece / best quality / very aesthetic —— 那是动漫线的词表，写在这条线上会把画面推回插画与游戏 CG。同理不要写 moodyrealism / photorealistic / photograph 这类画质前缀。\n- 表情与视线每张都要写，用标准词：smile / grin / blush / embarrassed / frown / surprised / crying / angry / serious / sad / worried / scared / smug / seductive smile / expressionless / half-closed eyes / open mouth；视线写 looking at viewer / looking at another / looking away / looking down / looking up / looking back。禁止把中文感受直译成自创词组。\n- 人种是这条线的硬约束：东亚角色一律写 chinese / east asian，**不写就按英文先验出欧美脸**。\n\nnl（JSON 的 nl 键）：**本线必填，且一律英文**。这是画面的主体描述，tag 只是补充。\n写法：一段连贯散文，按「机位与景别 → 谁在哪里做什么 → 环境分层 → 光线 → 材质」的顺序写，2–5 句、60–160 词。\n- 机位与景别写在**第一句**：medium shot from a low angle, shot on a handheld phone 之类；用户或正文给了就照抄，没给就自己定，不另起一段。\n- 环境分层：前景有什么、中景是什么、背景里有什么。\n- 光线写「光从哪来、落在什么位置、明暗怎么分」，**不写**皮肤上的反光 / 油光 / 高光点（832×1216 的半身图上脸只有约 100 像素，这类词会糊成一块脏亮斑）。\n- 材质写「粗糙的那一面」：看得见的毛孔、细小的肤色不均、一两点很淡的斑或小痣、脸颊靠近下颌的一层浅绒毛、手肘膝盖略深略粗、布的织纹与褶皱阴影。**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷 —— 它们和负面里的 overly smooth skin 打架，出来是假面。\n- 拍摄介质写进 nl（本线预设没有手机摄影 LoRA）：手机直拍 / 手持略歪 / 竖构图 / 室内顶光发白 / 暗部有噪点 / 焦点略软，一段话说死是怎么拍下来的；别堆 HDR、计算摄影、高分辨率这类参数词。\n- ⚠ **nl 最终会被折叠成一行**（换行变空格），所以**用句号分句，不要靠换行分段**，也别写小标题、编号或列表。\n- 不在 nl 里重述 tag 已经锁死的元素；同一件事不写两遍。\n\n分镜页：**本线不出**。一页多格会把脸和贴合细节压碎。\n\n画幅方向（size 键）：人像、半身、特写写 portrait；横向场景或双人横向构图写 landscape。与 tag 里的景别保持一致。\n\n通用要求：\n- 只写「画得出来」的东西。正文里明确的外貌、服装、道具原样保留，不新增人物、服装、道具，不改人数。\n- 画面里不该出现的东西，**正面不写**就是最有效的压制；**禁止正向否定句**（no bra、without glasses 会反过来画出该物）。\n- 正文是小说不是分镜脚本：镜头、构图、光线这些「画出来才存在」的必须主动补全；人物、动作、场景事实必须以正文与设定为准。\n- 一律英文（角色名除外：中文名写中文，不音译）。";
+
+/**
+ * MOSS 写实线的思维链。与规范配套:
+ * 槽位块要求填的每一项,都必须在 DEFAULT_MOSS_SPEC 里有判据,否则模型会去填它没被教过的东西。
+ */
+export const DEFAULT_MOSS_THINKING = "【输出前思考清单（MOSS 写实线）】\n先在 <thinking> 里完成以下自查，再直接输出 JSON。思考里**不要**写出最终答案的草稿——不写完整 tag 串、不写完整 nl 句、不写 JSON 对象。\n\n1. 本楼选哪个瞬间：一句话说清「谁、在做什么、镜头框到哪里」。核心互动发生在躯干以下时，景别必须能框住它（medium shot / full body），不许用 close-up 把接触点裁出画面。\n\n2. 在场者逐个清点：每个可见个体三选一——【已建档】（库中有同名条目）/【本次建档】（changes 里有 field:\"new\"）/【一次性】（不建档不写 changes，入画时在 characters[] 里补一次性外貌）。镜头外的人不许写进 tag / nl / characters。人群按一团写进 tag，不拆成角色块。\n\n3. 元素清单（进 tag）：人数、景别（只一个）、人种与年龄感、外貌锚点、逐件服装、动作、表情、视线、场景、光线。每项都要能在 tag 里找到对应词；表情与视线不得留空。\n\n4. 画面描述（进 nl）：机位与景别在首句；然后人在做什么；环境按前景/中景/背景分层；光线写方向与落点；最后写材质（毛孔、肤色不均、布的织纹）。材质只写粗糙面，不写光滑/细腻/油光。\n\n5. 拍摄介质：nl 里说清这套画面是怎么被拍下来的（手机直拍 / 手持 / 竖构图 / 噪点 / 焦点软），不堆参数词。\n\n6. 照抄纪律：已建档角色的固定外貌从【角色固定外貌库】逐字照抄，用词一字不改；同一角色一张图里只写一遍，再次提到用简短指代。角色名逐字保持原文（中文名写中文），不音译不变体。\n\n7. 自查禁区：没有权重语法、没有正向否定句（no / without）、没有画幅比例词、没有采样参数、没有 LoRA 触发词、没有动漫画质词（masterpiece / best quality / very aesthetic）、没有皮肤反光词（glossy / shiny / oily / 油光 / 反光）。\n\n8. 张数在设定范围内；没有值得画的画面就返回空数组，不要凑数。";
+
 /** {{nl}} 宏的展开内容(「生成自然语言」开启时);关闭时宏展开为空串。 */
 export const DEFAULT_COMFY_NL_SPEC = `nl（JSON 的 nl 键）：自然语言——连贯完整的英文句子描述同一画面（单人一到三句；多人按下面结构组织），例如：
 A girl with long black hair in a school uniform sits by the classroom window, warm sunlight falling across her desk.
@@ -1019,6 +1052,11 @@ export interface AutoTagPrompts {
   /** NAI 思维链(4.5/V5);留空回落内置默认(DEFAULT_NAI_V5_THINKING)。
    *  槽位块是 Base + 每角色块,与 comfy 那份的单串形态不同,不可互换。 */
   naiV5Thinking: string;
+  /** MOSS 写实线规范(当前工作流的 specDialect='moss' 时替代 comfySpec);
+   *  留空回落内置默认(DEFAULT_MOSS_SPEC)。形态是「tag 锁元素 + 必填英文 nl」。 */
+  mossSpec: string;
+  /** MOSS 写实线思维链;与 mossSpec 配套,留空回落内置默认(DEFAULT_MOSS_THINKING)。 */
+  mossThinking: string;
 }
 
 export interface ImageSettings {
@@ -1091,6 +1129,7 @@ export function newComfyWorkflow(name = DEFAULT_WORKFLOW_NAME): ComfyWorkflowPre
     portraitSize: DEFAULT_PORTRAIT_SIZE,
     landscapeSize: DEFAULT_LANDSCAPE_SIZE,
     orientationLock: 'auto',
+    specDialect: 'comfy',
   };
 }
 
@@ -1203,6 +1242,8 @@ function defaults(): ImageSettings {
         comfyThinking: '',
         naiThinking: '',
         naiV5Thinking: '',
+        mossSpec: '',
+        mossThinking: '',
       },
     },
     excludes: excludesDefaults(),
@@ -1401,6 +1442,9 @@ function normalizeWorkflowPreset(raw: unknown, seq: number): ComfyWorkflowPreset
     portraitSize: size(o.portraitSize, DEFAULT_PORTRAIT_SIZE),
     landscapeSize: size(o.landscapeSize, DEFAULT_LANDSCAPE_SIZE),
     orientationLock: normalizeOrientationLock(o.orientationLock),
+    // 老预设没有这个字段:落 'comfy' 即升级前行为,不写迁移(与 orientationLock 同口径)。
+    // 只有 'moss' 才是新语义,脏值也回落 'comfy'。
+    specDialect: o.specDialect === 'moss' ? 'moss' : 'comfy',
   };
 }
 
@@ -1422,6 +1466,8 @@ function foldLegacyWorkflow(o: Partial<ComfyUISettings>, conn: BackendConn): Com
     // 渠道级横竖尺寸下沉进预设;normalizeBackend 已做过 resolution→横竖两格的老迁移
     portraitSize: conn.portraitSize.trim() || preset.portraitSize,
     landscapeSize: conn.landscapeSize.trim() || preset.landscapeSize,
+    // 存量只有 tag 流,折进来的这条也是 'comfy'(preset 默认值即可,显式写出来是为了不依赖默认)
+    specDialect: 'comfy',
   };
 }
 
@@ -1815,6 +1861,8 @@ function normalize(raw: unknown): ImageSettings {
         comfyThinking: typeof rp.comfyThinking === 'string' ? rp.comfyThinking : legacyThinking,
         naiThinking: typeof rp.naiThinking === 'string' ? rp.naiThinking : legacyThinking,
         naiV5Thinking: typeof rp.naiV5Thinking === 'string' ? rp.naiV5Thinking : '',
+        mossSpec: typeof rp.mossSpec === 'string' ? rp.mossSpec : '',
+        mossThinking: typeof rp.mossThinking === 'string' ? rp.mossThinking : '',
       };
     })(),
   };

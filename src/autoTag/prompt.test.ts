@@ -24,6 +24,22 @@ function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
     comfyThinking: '',
     naiThinking: '',
     naiV5Thinking: '',
+    mossSpec: '',
+    mossThinking: '',
+    ...overrides,
+  };
+}
+
+/** 完整 AutoTagSettings(只关心 prompts 的用例用它,少写四个不可省字段)。 */
+function mossOptions(overrides: Partial<AutoTagSettings> = {}): AutoTagSettings {
+  return {
+    enabled: true,
+    contextMessages: 2,
+    minImages: 0,
+    maxImages: 2,
+    retryCount: 1,
+    autoGenerate: true,
+    prompts: prompts(),
     ...overrides,
   };
 }
@@ -1038,6 +1054,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       naiLock: settings.nai.orientationLock,
       presetNl: preset.naturalLanguage,
       presetLock: preset.orientationLock,
+      presetDialect: preset.specDialect,
     };
     return {
       preset,
@@ -1048,6 +1065,7 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
         settings.nai.orientationLock = saved.naiLock;
         preset.naturalLanguage = saved.presetNl;
         preset.orientationLock = saved.presetLock;
+        preset.specDialect = saved.presetDialect;
       },
     };
   }
@@ -1194,11 +1212,11 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.nai.model = 'nai-diffusion-4-5-full';
       settings.nai.naturalLanguage = true;
       settings.nai.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: true, lockedSize: null });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: true, lockedSize: null, dialect: 'comfy' });
 
       settings.nai.naturalLanguage = false;
       settings.nai.orientationLock = 'portrait';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait' });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait', dialect: 'comfy' });
 
       // 单串分支(NAI4)的协议本来就不写 nl,开关对它不起作用
       settings.nai.model = 'nai-diffusion-4-full';
@@ -1209,12 +1227,73 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.defaultBackend = 'comfyui';
       state.preset.naturalLanguage = true;
       state.preset.orientationLock = 'landscape';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: true, lockedSize: 'landscape' });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: true, lockedSize: 'landscape', dialect: 'comfy' });
 
       state.preset.naturalLanguage = false;
       state.preset.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: false, lockedSize: null });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: false, lockedSize: null, dialect: 'comfy' });
+
+      // MOSS 方言:nl 恒真(那条线的 tag 只锁元素、nl 才是主体),不受「生成自然语言」开关影响
+      state.preset.specDialect = 'moss';
+      state.preset.naturalLanguage = false;
+      expect(autoTagProfile()).toMatchObject({ nl: true, dialect: 'moss' });
     } finally {
+      state.restore();
+    }
+  });
+
+  it('MOSS 方言:换规范与思维链、强制 nl、不请求动态负面词', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss';
+      // 开关关掉也不影响 MOSS 线 —— nl 是那条线的主体
+      state.preset.naturalLanguage = false;
+      expect(autoTagProfile()).toMatchObject({ nl: true, dialect: 'moss' });
+
+      const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+
+      // 规范与思维链整份换成 MOSS 那份
+      const spec = pick(messages, 'MOSS-Image 写实线提示词规范');
+      expect(spec).toContain('nl（JSON 的 nl 键）：**本线必填');
+      expect(pick(messages, '输出前思考清单（MOSS 写实线）')).toBeTruthy();
+      // 不再混入 tag 流的 COMFY 规范与 NL 追加段
+      expect(messages.some(m => m.content.includes('【ComfyUI 提示词规范】'))).toBe(false);
+      expect(messages.some(m => m.content.includes('nl（JSON 的 nl 键）：自然语言——连贯完整的英文句子'))).toBe(false);
+
+      // 协议不再请求 negative:固定负面已由预设承担,AI 再写一段只会打架
+      const contract = messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+      expect(contract).not.toContain('negative 是本画面专用的 danbooru 负面短 tag');
+    } finally {
+      state.restore();
+    }
+  });
+
+  it('MOSS 方言下自报的 negative 也不会进协议(与 ComfyUI tag 流对照)', async () => {
+    const state = snapshot();
+    const savedWorkflow = state.preset.workflow;
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'comfy';
+      state.preset.naturalLanguage = true;
+      // tag 流的 negative 规则只在工作流真的吃 %negative_prompt% 时才出现
+      // (默认预设是空工作流,negativeOn=false),故这里显式给一套带负面的工作流。
+      state.preset.workflow = JSON.stringify({
+        '1': { class_type: 'CLIPTextEncode', inputs: { text: '%prompt%' } },
+        '2': { class_type: 'CLIPTextEncode', inputs: { text: '%negative_prompt%' } },
+      });
+      const comfyMsgs = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+      const comfyContract = comfyMsgs.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+
+      state.preset.specDialect = 'moss';
+      const mossMsgs = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+      const mossContract = mossMsgs.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+
+      // 关键差别:tag 流的合同里带 negative 规则,MOSS 流里根本没有这条
+      expect(comfyContract).toContain('negative 是本画面专用的 danbooru 负面短 tag');
+      expect(mossContract).not.toContain('negative 是本画面专用的 danbooru 负面短 tag');
+    } finally {
+      state.preset.workflow = savedWorkflow;
       state.restore();
     }
   });

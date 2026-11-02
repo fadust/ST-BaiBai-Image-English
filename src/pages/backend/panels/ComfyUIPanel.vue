@@ -2,6 +2,7 @@
 import {
   COMFY_TEMPLATE_OPTIONS,
   COMFY_TEMPLATES,
+  MOSS_DEFAULT_NEGATIVE,
   isComfyTemplateId,
   simpleDefaults,
   validateSimpleConfig,
@@ -32,6 +33,7 @@ import {
   newComfyWorkflow,
   ORIENTATION_LOCKS,
   settings,
+  type SpecDialect,
 } from '@/state/settings';
 import { computed, nextTick, ref, watch } from 'vue';
 
@@ -135,6 +137,24 @@ const modeOptions: Array<{ value: ComfyPresetMode; label: string }> = [
 
 const templateOptions = COMFY_TEMPLATE_OPTIONS;
 
+/**
+ * 提示词规范方言(归工作流而非全局):ComfyUI 面板的 tag 流与 MOSS 写实线是两套
+ * 互不通用的写法,而"这条工作流配哪个底模"只有预设自己知道。嵌在预设里,
+ * 切工作流即连同规范一起切走,不需要用户再去设置页记住"现在用的是哪份"。
+ */
+const specDialectOptions: Array<{ value: SpecDialect; label: string }> = [
+  { value: 'comfy', label: 'ComfyUI（动漫 tag 流）' },
+  { value: 'moss', label: 'MOSS（写实散文流）' },
+];
+
+/** BbiSelect 按 string 收发,这里收窄回 SpecDialect(与设置页各 *Sel computed 同款)。 */
+const specDialectSel = computed<string>({
+  get: () => active.value.specDialect,
+  set: v => {
+    active.value.specDialect = v as SpecDialect;
+  },
+});
+
 /** 当前模板的元数据(决定表单显示哪些字段)。 */
 const meta = computed(() => COMFY_TEMPLATES[active.value.simple.template] ?? COMFY_TEMPLATES.checkpoint);
 
@@ -220,6 +240,12 @@ function onTemplateChange(id: string) {
   if (current.template === id) return;
   const prevMeta = COMFY_TEMPLATES[current.template];
   const nextMeta = COMFY_TEMPLATES[id];
+  // 规范方言跟着底模走:MOSS 模板只能配写实散文流,离开时退回 tag 流。
+  // 只做「进出 moss」这两个方向,别处不动用户手动选的值。
+  if (id === 'moss') active.value.specDialect = 'moss';
+  else if (current.template === 'moss' && active.value.specDialect === 'moss') {
+    active.value.specDialect = 'comfy';
+  }
   if (active.value.portraitSize === prevMeta.portraitSize) active.value.portraitSize = nextMeta.portraitSize;
   if (active.value.landscapeSize === prevMeta.landscapeSize) active.value.landscapeSize = nextMeta.landscapeSize;
   active.value.simple = {
@@ -246,10 +272,51 @@ const simpleState = computed(() => {
     : { tone: 'ok', text: '有效', detail: '' };
 });
 
-const nlHint = computed(() =>
-  active.value.mode === 'simple'
+const nlHint = computed(() => {
+  // MOSS 线的 nl 不是"额外加一段"而是画面本体;这个开关在那边连解释都换了口径,
+  // 免得用户按 Flux 的经验以为关掉只是少写一段。
+  if (active.value.specDialect === 'moss') {
+    return 'MOSS 线必须写英文散文段(机位/环境分层/光线/人物),它同时充当正向提示词的主体';
+  }
+  return active.value.mode === 'simple'
     ? '额外生成一段自然语言描述;简易模式下优先于 tag 作为正向提示词(Flux/Anima 建议开启)'
-    : '额外生成一段自然语言描述,随 %nl% 注入工作流',
+    : '额外生成一段自然语言描述,随 %nl% 注入工作流';
+});
+
+/**
+ * MOSS 方言下「生成自然语言」是个**关不掉的开关**:autoTagProfile 在 moss 方言下把 nl 恒置 true,
+ * 勾掉也不会有任何变化。留着能点就是骗人(用户会以为「这次只写 tag」生效了),
+ * 故只在方言层面禁用;切回 comfy 方言立刻恢复可点,存量值原样保留。
+ */
+const isMossDialect = computed(() => active.value.specDialect === 'moss');
+
+/** MOSS 模板锁死的采样器(目前只有 euler);null = 用户自选,别处模板不受影响。 */
+const fixedSampler = computed(() => meta.value.samplerFixed);
+
+/**
+ * 固定负面是 MOSS 的必填项(见 ComfyTemplates 的 negativeRequired):空着一定出糊图,
+ * 而这份串又长到没人愿意手敲。给一个一键填入,只在空着时出现,填过就不再打扰。
+ */
+// 一键填入的是 MOSS 那份串,故只在 moss 模板下出现(别的模板即使日后也要必填负面,
+// 该配的是自己的默认串,不该被塞进写实线那 20 条)。
+const needMossNegative = computed(
+  () => active.value.simple.template === 'moss' && !active.value.simple.negative.trim(),
+);
+
+function fillDefaultNegative() {
+  active.value.simple.negative = MOSS_DEFAULT_NEGATIVE;
+}
+
+// BbiCombo 没有 disabled 属性,面板只靠 CSS 拦鼠标;Tab 仍能聚焦到那个框。
+// 这里兜住最后一道:底模锁定的采样器被改成别的值时原样弹回,不让锁在键盘路径上漏掉。
+// 同时盯住 fixedSampler(切换工作流/模板),把存量预设里对不上的值得以就地纠正,
+// 否则面板会显示一个「锁着」却装着别的值的框。
+watch(
+  [fixedSampler, () => active.value.simple.sampler],
+  ([fixed, sampler]) => {
+    if (fixed && sampler !== fixed) active.value.simple.sampler = fixed;
+  },
+  { immediate: true },
 );
 
 /** 药丸只显示一个词,具体原因放 title 悬浮提示,不占版面。 */
@@ -480,11 +547,26 @@ function applyAssist() {
           </span>
         </div>
 
-        <label class="bbi-switch-row">
+        <label class="bbi-switch-row" :class="{ 'is-locked': isMossDialect }">
           <span class="bbi-field-label">生成自然语言</span>
-          <input v-model="active.naturalLanguage" type="checkbox" class="bbi-checkbox" />
+          <input
+            v-model="active.naturalLanguage"
+            type="checkbox"
+            class="bbi-checkbox"
+            :disabled="isMossDialect"
+          />
         </label>
         <p class="bbi-field-hint wf-switch-hint">{{ nlHint }}</p>
+
+        <!-- 规范方言紧跟开关:两者管的都是「提示词长什么样」,放一起才看得出 MOSS 线
+             为什么把自然语言当作必填(那边强制写 nl,开关不再是唯一入口) -->
+        <div class="bbi-select-row">
+          <span class="bbi-field-label">提示词规范</span>
+          <BbiSelect v-model="specDialectSel" :options="specDialectOptions" aria-label="提示词规范" />
+        </div>
+        <p class="bbi-field-hint wf-switch-hint">
+          这套工作流配哪份规范：MOSS 线强制写英文散文段（nl），且不请求 AI 动态负面词。
+        </p>
 
         <div class="bbi-num-row">
           <span class="bbi-field-label">竖屏尺寸(宽×高)</span>
@@ -675,7 +757,13 @@ function applyAssist() {
                 <span>Shift</span>
                 <input class="bbi-input" type="number" v-model.number="active.simple.shift" min="0" max="10" step="0.1" />
               </label>
-              <label class="wf-param">
+              <!-- 底模锁死的采样器只读:换掉不是报错而是画质明显劣化,比事后解释便宜。
+                   BbiCombo 没有 disabled 属性,用 CSS 把输入框置灰并拦掉指针事件 -->
+              <label
+                class="wf-param"
+                :class="{ 'is-locked': fixedSampler }"
+                :title="fixedSampler ? `MOSS 只认 ${fixedSampler}` : undefined"
+              >
                 <span>采样器</span>
                 <BbiCombo v-model="active.simple.sampler" :options="samplerOptions" placeholder="euler" aria-label="采样器" />
               </label>
@@ -704,6 +792,14 @@ function applyAssist() {
                 :max-rows="6"
                 placeholder="固定负面:通用负面词;AI 生成的动态负面追加在后"
               />
+            </div>
+            <!-- MOSS 线的动态负面被方言关掉了,这条固定负面是唯一的负面来源,
+                 空着必然走形(validateSimpleConfig 也会拦)。空着时才出现,填过就不打扰。 -->
+            <div v-if="needMossNegative" class="wf-negative-hint">
+              <span class="bbi-field-hint">MOSS 线的固定负面是必填项，空着出图必然走形。</span>
+              <button class="bbi-btn bbi-btn-sm" type="button" @click="fillDefaultNegative">
+                填入 MOSS 默认负面
+              </button>
             </div>
           </section>
 
@@ -946,6 +1042,42 @@ function applyAssist() {
 .wf-prompts {
   display: grid;
   gap: 8px;
+}
+/* 负面对填提示:说明在左、按钮在右(说明自带 12px 与 1.6 行高,
+   与按钮同一行时垂直居中才不显歪)。 */
+.wf-negative-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 6px;
+}
+.wf-negative-hint .bbi-field-hint {
+  margin: 0;
+}
+/* BbiCombo 没有 disabled 属性(它只有透传的 modelValue/options),故底模锁死的
+   采样器在这里补禁用态:置灰 + 拦指针。值本身由 simpleDefaults 与上面的 watch 保证。 */
+.wf-param.is-locked {
+  cursor: default;
+}
+.wf-param.is-locked > span {
+  opacity: 0.6;
+}
+.wf-param.is-locked :deep(.bbi-combo-input) {
+  opacity: 0.6;
+  pointer-events: none;
+}
+.wf-param.is-locked :deep(.bbi-combo-caret) {
+  display: none;
+}
+/* MOSS 方言下「生成自然语言」同理:勾选值保留但不再生效(协议强制 nl),
+   故整行置灰 + 复选框不可点,与采样器锁同一套视觉语言。 */
+.bbi-switch-row.is-locked {
+  cursor: default;
+  opacity: 0.6;
+}
+.bbi-switch-row.is-locked .bbi-checkbox {
+  pointer-events: none;
 }
 @media (max-width: 640px) {
   .wf-params {

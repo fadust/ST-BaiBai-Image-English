@@ -30,7 +30,7 @@ export type SimpleWorkflow = Record<string, SimpleWorkflowNode>;
 
 export type ComfyPresetMode = 'custom' | 'simple';
 
-export type ComfySimpleTemplateId = 'checkpoint' | 'flux' | 'anima';
+export type ComfySimpleTemplateId = 'checkpoint' | 'flux' | 'anima' | 'moss';
 
 export interface ComfyLoraEntry {
   /** LoRA 文件名(相对 models/loras)。 */
@@ -84,6 +84,17 @@ export interface ComfyTemplateMeta {
   clips: { key: 'clip1' | 'clip2'; label: string }[];
   /** 是否有真实负面输入(Flux 负面恒空,故也不请求 AI 动态负面词)。 */
   supportsNegative: boolean;
+  /**
+   * 固定负面是**必填**的:该底模的题材基线(画质/解剖/水印那套)只有预设里这条固定负面能承担,
+   * 空着出图必然走形。validateSimpleConfig 据此报错拦住,而不是让用户出一批糊图才发现。
+   * 与 supportsNegative 正交:那是「有没有负面输入通道」,这是「通道里必须有东西」。
+   */
+  negativeRequired: boolean;
+  /**
+   * 采样器被底模锁死(null = 用户自选)。MOSS 官方 SFT 口径是 euler,换别的不是报错而是画质明显劣化,
+   * 面板据此禁用选择框——比事后解释「为什么出图变糊」便宜。
+   */
+  samplerFixed: string | null;
   /** 简易模式画幅默认尺寸(写入新预设的横竖尺寸)。 */
   portraitSize: string;
   landscapeSize: string;
@@ -108,6 +119,8 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     vaePlaceholder: '可留空,用模型内置',
     clips: [],
     supportsNegative: true,
+    negativeRequired: false,
+    samplerFixed: null,
     portraitSize: '832×1216',
     landscapeSize: '1216×832',
     defaults: { steps: 28, cfg: 5, sampler: 'euler_ancestral', scheduler: 'normal', guidance: 1, shift: 3 },
@@ -125,6 +138,8 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
       { key: 'clip2', label: 'CLIP-L' },
     ],
     supportsNegative: false,
+    negativeRequired: false,
+    samplerFixed: null,
     portraitSize: '1024×1024',
     landscapeSize: '1344×768',
     defaults: { steps: 20, cfg: 1, sampler: 'euler', scheduler: 'simple', guidance: 3.5, shift: 3 },
@@ -139,11 +154,47 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     vaePlaceholder: 'qwen_image_vae.safetensors',
     clips: [{ key: 'clip1', label: 'Qwen2.5-VL' }],
     supportsNegative: true,
+    negativeRequired: false,
+    samplerFixed: null,
     portraitSize: '1024×1024',
     landscapeSize: '1344×768',
     defaults: { steps: 28, cfg: 4, sampler: 'euler', scheduler: 'simple', guidance: 1, shift: 3 },
   },
+  moss: {
+    id: 'moss',
+    label: 'MOSS-Image 写实',
+    modelKind: 'unet',
+    modelLabel: 'MOSS 底模',
+    vaeRequired: true,
+    // MOSS 的 VAE 是 flux2 系(128 通道),不能用 SD 的 ae.safetensors;留空的语义在这里不存在。
+    vaeLabel: 'VAE(flux2)',
+    vaePlaceholder: 'flux2-vae_small.safetensors',
+    // 文本编码器是 Qwen3.5 9B,CLIPLoader 的 type 必须是 moss_image(见 buildMossWorkflow)。
+    clips: [{ key: 'clip1', label: 'CLIP(Qwen3.5 9B)' }],
+    supportsNegative: true,
+    // MOSS 线的画质/解剖/水印基线只活在固定负面里,AI 那侧被方言关掉了动态负面(见 SpecDialect)。
+    negativeRequired: true,
+    // 官方 SFT 口径就是 euler + sgm_uniform,换采样器不是「个人口味」而是画质劣化。
+    samplerFixed: 'euler',
+    portraitSize: '832×1216',
+    landscapeSize: '1216×832',
+    defaults: { steps: 30, cfg: 3.5, sampler: 'euler', scheduler: 'sgm_uniform', guidance: 1, shift: 3 },
+  },
 };
+
+/**
+ * MOSS 线的默认固定负面(官方 16 条 + 本机补 4 条)。
+ *
+ * 为什么必填:MOSS 方言下 autoTag 不请求 AI 动态负面(见 SpecDialect 的 moss 分支),
+ * 串里那点题材级负面全靠这一条兜底。补的四条各有来由 —— `western face`/`caucasian`
+ * 防欧美脸(底模的英文先验会把东亚角色画成白人)、`fused bodies`/`deformed genitals`
+ * 防多人贴合处粘连与器官走形,都是实测最容易翻车的两处。
+ */
+export const MOSS_DEFAULT_NEGATIVE =
+  'worst quality, low quality, bad anatomy, deformed hands, extra fingers, malformed limbs, ' +
+  'distorted face, plastic skin, overly smooth skin, waxy skin, oversharpening, ' +
+  'excessive skin retouching, blurry, jpeg artifacts, watermark, text, logo, ' +
+  'western face, caucasian, fused bodies, deformed genitals';
 
 export const COMFY_TEMPLATE_OPTIONS = (Object.keys(COMFY_TEMPLATES) as ComfySimpleTemplateId[]).map(id => ({
   value: id,
@@ -176,7 +227,9 @@ export function simpleDefaults(template: ComfySimpleTemplateId = 'checkpoint'): 
     guidance: meta.defaults.guidance,
     shift: meta.defaults.shift,
     positive: '',
-    negative: '',
+    // MOSS 的固定负面是必填项(meta.negativeRequired),新建时就填好默认值,
+    // 让「选完模型点出图」这条路不被一条校验拦下;用户仍可整串替换。
+    negative: meta.negativeRequired ? MOSS_DEFAULT_NEGATIVE : '',
   };
 }
 
@@ -214,7 +267,9 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
     guidance: asNumber(o.guidance, base.guidance),
     shift: asNumber(o.shift, base.shift),
     positive: asText(o.positive),
-    negative: asText(o.negative),
+    // 字段**缺失**(老数据/新键)才用模板默认值;显式空串是用户自己清掉的,原样保留。
+    // 这条区分对 MOSS 有意义:它的默认负面是必填项,但用户仍有权整串删掉再自己写。
+    negative: typeof o.negative === 'string' ? o.negative : base.negative,
   };
 }
 
@@ -228,6 +283,11 @@ export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   if (meta.vaeRequired && !simple.vae.trim()) return `请选择 ${meta.vaeLabel}`;
   for (const clip of meta.clips) {
     if (!simple[clip.key].trim()) return `请选择 ${clip.label}`;
+  }
+  // 必填固定负面:空着不是「没配好」而是「一定糊」——MOSS 方言已关掉 AI 动态负面,
+  // 这条空串等于整条链路一个负面词都没有。拦在这里比让用户出一批走形图再排查便宜。
+  if (meta.negativeRequired && !simple.negative.trim()) {
+    return `${meta.label} 必须填写固定负面（可点「填入默认负面」一键填好）`;
   }
   return null;
 }
@@ -477,6 +537,63 @@ function buildAnimaWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues):
 }
 
 /**
+ * MOSS-Image 写实线(官方 SFT int8 口径)。
+ *
+ * 三个与其它模板族**不通用**的地方,照抄 flux/anima 的组装器会直接跑不通:
+ * 1. CLIPLoader 的 `type` 必须是 `moss_image`——文本编码器是 Qwen3.5 9B 的 MOSS 定制版,
+ *    按 flux(qwen_image 那套双编码器)加载会报类型不匹配;
+ * 2. latent 必须是 **EmptyFlux2LatentImage**:MOSS 指定 flux2 VAE(128 通道),
+ *    EmptySD3LatentImage / EmptyLatentImage 出的是 4/16 通道,进 VAE 时通道数对不上;
+ * 3. LoRA 只挂 UNet(LoraLoaderModelOnly):MOSS 工作流里的 LoRA 都是画风/器官向,
+ *    没有配套的文本编码器权重,挂双头那版会在 clip 侧报缺文件。
+ *
+ * 采样器被 meta.samplerFixed 锁在 euler,故这里直接取 simple.sampler(面板已禁用改它)。
+ */
+function buildMossWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues): SimpleWorkflow {
+  const nodes: SimpleWorkflow = {};
+  nodes['1'] = unetLoader(simple);
+  nodes['2'] = {
+    class_type: 'CLIPLoader',
+    inputs: { clip_name: simple.clip1.trim(), type: 'moss_image', device: 'default' },
+  };
+  nodes['3'] = { class_type: 'VAELoader', inputs: { vae_name: simple.vae.trim() } };
+
+  const chain = applyLoras(nodes, simple.loras, true, ['1', 0], null);
+
+  // 正向固定段(画质串)由 composePositive 拼在 AI 内容之前 —— MOSS 的画质基线在预设的 positive 里。
+  nodes['4'] = {
+    class_type: 'CLIPTextEncode',
+    inputs: { text: composePositive(simple, values), clip: ['2', 0] },
+  };
+  nodes['5'] = {
+    class_type: 'CLIPTextEncode',
+    inputs: { text: composeNegative(simple, values), clip: ['2', 0] },
+  };
+  nodes['6'] = {
+    class_type: 'EmptyFlux2LatentImage',
+    inputs: { width: values.width, height: values.height, batch_size: 1 },
+  };
+  nodes['7'] = {
+    class_type: 'KSampler',
+    inputs: {
+      seed: values.seed,
+      steps: simple.steps,
+      cfg: simple.cfg,
+      sampler_name: simple.sampler,
+      scheduler: simple.scheduler,
+      denoise: 1,
+      model: chain.model,
+      positive: ['4', 0],
+      negative: ['5', 0],
+      latent_image: ['6', 0],
+    },
+  };
+  nodes['8'] = { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } };
+  nodes['9'] = saveNode(['8', 0]);
+  return nodes;
+}
+
+/**
  * 把简易模式预设组装成可提交的 API 工作流(纯函数)。
  * 先跑与面板同口径的 validateSimpleConfig;尺寸异常也在这里报
  * (自定义模式是「工作流没用 %width% 就不查尺寸」,简易模式画布节点是必建的,没有豁免)。
@@ -492,6 +609,8 @@ export function buildSimpleWorkflow(simple: ComfySimpleConfig, values: SimpleGen
       return buildFluxWorkflow(simple, values);
     case 'anima':
       return buildAnimaWorkflow(simple, values);
+    case 'moss':
+      return buildMossWorkflow(simple, values);
     default:
       return buildCheckpointWorkflow(simple, values);
   }

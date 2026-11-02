@@ -59,7 +59,8 @@ src/
 │   └── slotPlan.ts    # 单槽重写提示备注(只重写第 N 张 + 当前提示词锚点 + 其余画面清单)
 ├── backends/          # 出图后端(链路 B 的生成端)+ 共享尺寸工具
 │   ├── comfyui.ts     # ComfyUI:工作流模板 %占位符% 渲染、浏览器直连/ST 转发自动回退
-│   ├── comfyTemplates.ts # 简易模式:模板族(checkpoint/flux/anima) + 参数组装 API JSON(无占位符)
+│   ├── comfyTemplates.ts # 简易模式:模板族(checkpoint/flux/anima/moss) + 参数组装 API JSON(无占位符)
+│   │                  # moss 是写实线,写串走散文流方言(见 §6 `SpecDialect`)
 │   ├── comfyObjectInfo.ts # 拉模型/LoRA/采样器列表(直连 /object_info,回退 ST 转发四个端点)
 │   ├── comfyWorkflowAssistant.ts # AI 自动定位工作流节点(片段 ID 协议,不复制原文)
 │   ├── nai.ts         # NovelAI:参数构造、vibe 编码/叠加、画师串前置拼装、.naiv4vibe 导入导出;
@@ -555,8 +556,41 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
   - **custom**:API 格式工作流模板,支持 `%prompt% %negative_prompt% %seed% %nl% %width% %height%`
     占位符(不支持即报错);
   - **simple**(comfyTemplates.ts):选模型/LoRA + 填参数,按架构模板族组装 JSON,**无占位符**。
-    模板族刻意收敛为 checkpoint 系 / Flux / Anima(Qwen 链路),新架构 = 加一条模板数据 + 一个组装分支;
+    模板族刻意收敛为 checkpoint 系 / Flux / Anima(Qwen 链路) / MOSS 写实,新架构 = 加一条模板数据 + 一个组装分支;
     正向 = 固定正面 + (nl 优先 || tag),负面 = 固定负面 + AI 动态负面(Flux 无真实负面输入,恒空)。
+  - **MOSS 写实模板族**(`COMFY_TEMPLATES.moss` / `buildMossWorkflow`)走官方 SFT int8 口径:
+    加载链 = UNETLoader → LoraLoaderModelOnly 链 → CLIPLoader(type 固定 `moss_image`) → VAELoader(flux2-vae_small)。
+    三处**与其它模板族不通用**,照抄 flux/anima 的组装器会直接跑不通:
+    - ⚠ latent 必须 `EmptyFlux2LatentImage`:MOSS 指定 flux2 VAE(128 通道),而 `EmptySD3LatentImage` /
+      `EmptyLatentImage` 出的是 4/16 通道,进 VAE 时通道数对不上。这是提交即失败,不是画质问题。
+    - CLIPLoader 的 `type` 只能是 `moss_image`(文本编码器是 Qwen3.5 9B 的 MOSS 定制版);
+      按 flux 的 `qwen_image` 那套双编码器加载会报类型不匹配。
+    - LoRA 只挂 UNet(`LoraLoaderModelOnly`):MOSS 侧的 LoRA 都是画风/器官向、没有配套的文本编码器权重,
+      挂双头那版会在 clip 侧报缺文件。
+    采样参数与尺寸按官方口径预设(30 步 / cfg 3.5 / euler + sgm_uniform / 832×1216),并由
+    `meta.samplerFixed = 'euler'` 让面板直接禁用采样器选择框——换采样器不是「个人口味」而是画质明显劣化,
+    提前拦住比事后解释「为什么出图变糊」便宜。
+  - **固定负面是必填项**(`meta.negativeRequired`),与 `supportsNegative` 正交:`supportsNegative` 说的是
+    「有没有负面输入通道」,`negativeRequired` 说的是「通道里必须有东西」。MOSS 线的画质/解剖/水印基线
+    **只活在预设那条固定负面里**(`MOSS_DEFAULT_NEGATIVE`:官方画质/解剖/水印基线 + 本机按实测补的
+    `western face` / `caucasian` 防欧美脸、`fused bodies` / `deformed genitals` 防多人贴合处粘连与器官走形),
+    因为 MOSS 方言下不再请求 AI 动态负面(见下),空着等于整条链路一个负面词都没有。
+    `simpleDefaults('moss')` 新建预设时直接预填这条串,`validateSimpleConfig` 再拦一次空串并提示「填入默认负面」——
+    空着不是「没配好」而是「一定走形」,让人出一批糊图再回头排查最贵。
+  - **提示词规范方言**(`SpecDialect`):同一套 ComfyUI 链路,底模不同则**写串的方式**不同,故方言挂在预设上
+    (§7 `ComfyWorkflowPreset.specDialect`)。`comfy` = 原 danbooru 短 tag 流(tag 为主体、nl 可选);
+    `moss` = 写实散文流(tag 只锁元素、nl 是画面主体)。根因在文本编码器:MOSS 那侧是 Qwen3.5 9B,读的是
+    连贯散文,短 tag 堆给它等于把画面信息砍掉大半;而 danbooru tag 流写给的是 SDXL/Illustrious 那一类短 tag 模型。
+    该方言下 `autoTagProfile()` 连带做两件事:① `nl` **恒 true**,不让「生成自然语言」开关参与——这条线关掉
+    不等于「少写一段」,等于把画面砍掉一半,留个能关的开关只会让人误解(副作用:runner 里「关掉自然语言就
+    丢弃模型照写的 nl」那条分支在本方言下永不触发,这是有意的——这条线 nl 是主体);② `dialect` 随
+    `AutoTagProfile` 一次性快照,而**动态负面词要不要请求由 `prompt.ts` 的 `buildAutoTagMessages` 按 dialect**
+    **直接决定**(`moss` 恒不请求,负面全由预设那条固定负面承担),runner 不参与该判定。
+    规范与思维链整份换 `DEFAULT_MOSS_SPEC` / `DEFAULT_MOSS_THINKING`
+    (预设上是 `prompts.mossSpec` / `prompts.mossThinking`),**不挂 `{{nl}}` 宏、也不追加 `DEFAULT_COMFY_NL_SPEC`**:
+    后者讲的是「tag 之外再加一段 nl」的 tag 流口径,混进散文流规范里自相矛盾。
+    ⚠ nl 里的换行会被折叠成空格(既有行为,`protocol.ts` 的 `sanitizeContent`),故 MOSS 规范明令
+    **用句号分句、不依赖换行分段**——照 tag 流习惯写成多行,发出去就是一句连到底。
   请求通道自动选择 —— **浏览器直连优先,仅网络级失败(CORS/拒连)回退 ST 服务端转发**;
   排队拿到 prompt_id 后轮询失败不重发(避免重复生图)。
   入参类型是收窄后的 `ComfyRunConn`(url + 单套预设的 mode/workflow/simple + 横竖尺寸),
@@ -618,7 +652,8 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
   订阅者用 `onSettingsReady(cb)` 等 hydrate 完成(如 ui.ts 回灌主题)。
 - **ComfyUI 工作流库**:`settings.comfyui.workflows`(`ComfyWorkflowPreset[]`)+ `activeWorkflowId`。
   - 一条预设 = 名字 + `mode`(custom/simple 互斥)+ 工作流 JSON + `simple` 参数 + `naturalLanguage` + 横竖尺寸
-    + `orientationLock`(画幅锁,见 §6;老预设缺字段落 `'auto'`)。
+    + `orientationLock`(画幅锁,见 §6;老预设缺字段落 `'auto'`)+ `specDialect`(提示词规范方言,见 §6;
+    老预设缺字段一律落 `'comfy'`,**不做迁移**——`comfy` 就是升级前那套 danbooru tag 流的口径,补不补等价)。
     这些跟着工作流走而非留在渠道级,因为它们是**底模的属性**(Illustrious 要短 tag + 832×1216,
     Flux 要自然语言 + 1024 方图);留在渠道级的话每次切工作流还得手改两处。
     `url` 反过来仍是渠道级(一台服务器跑所有工作流)。
@@ -929,6 +964,8 @@ API 对象 `Object.freeze`,一个插件改不动下一个插件拿到的东西�
 | 跟随主 API | src/api/client.ts 的 requestViaMainApi |
 | ComfyUI 工作流 / 出图 / 通道回退 | src/backends/comfyui.ts |
 | ComfyUI 简易模式(模板组装/校验) | src/backends/comfyTemplates.ts(UI 在 ComfyUIPanel.vue) |
+| MOSS 写实线(模板族 / 固定负面 / 采样器锁) | src/backends/comfyTemplates.ts(`COMFY_TEMPLATES.moss` / `MOSS_DEFAULT_NEGATIVE` / `buildMossWorkflow`;UI 在 ComfyUIPanel.vue) |
+| 提示词规范方言(comfy tag 流 / moss 散文流) | src/state/settings.ts 的 `SpecDialect` + `ComfyWorkflowPreset.specDialect`;选择在 autoTag/prompt.ts 的 `autoTagProfile` / `backendPromptSpec` |
 | ComfyUI 模型/LoRA 列表拉取 | src/backends/comfyObjectInfo.ts |
 | ComfyUI 工作流库(多套保存/切换) | src/state/settings.ts 的 `ComfyWorkflowPreset` + `activeComfyPreset` / `effectiveComfyConn`(UI 在 ComfyUIPanel.vue) |
 | 工作流 AI 自动配置(节点定位) | src/backends/comfyWorkflowAssistant.ts(+ 面板按钮在 ComfyUIPanel.vue) |

@@ -11,6 +11,8 @@ import {
   DEFAULT_COMFY_SPEC,
   DEFAULT_COMFY_THINKING,
   DEFAULT_JAILBREAK_PROMPT,
+  DEFAULT_MOSS_SPEC,
+  DEFAULT_MOSS_THINKING,
   DEFAULT_NAI_V5_SPEC,
   DEFAULT_NAI_V5_THINKING,
   IMAGE_DISPLAY_SIZES,
@@ -189,6 +191,23 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
     hint: '默认后端为 ComfyUI 时使用的输出前思考清单，作为 system 压在任务消息之后（解析时会自动剥掉思考块）。与「ComfyUI 规范」配套，同样支持 {{#nl}}…{{/nl}} / {{^nl}}…{{/nl}} 条件段。留空用内置默认。',
     builtin: DEFAULT_COMFY_THINKING,
     macros: NL_SECTION_MACROS,
+  },
+  // MOSS 写实线是第三对规范:它不按后端区分而按**当前工作流的 specDialect** 区分,
+  // 故与上面两对并列在 ComfyUI 那对之后——同一后端下的第二套写法,不挂 {{nl}} 宏
+  // (那份文本本身就要求必写 nl,没有"关掉 nl"这个状态)。
+  {
+    key: 'mossSpec',
+    label: 'MOSS 规范',
+    hint: '默认后端为 ComfyUI 且当前工作流的「提示词规范」选了 MOSS 时使用：定义 MOSS-Image 写实线的画面串写法（英文 tag 行 + 英文散文段 + 解剖/材质/光线要求）。留空用内置默认。',
+    builtin: DEFAULT_MOSS_SPEC,
+    macros: [],
+  },
+  {
+    key: 'mossThinking',
+    label: 'MOSS 思维链',
+    hint: '与「MOSS 规范」配套的输出前思考清单。留空用内置默认。',
+    builtin: DEFAULT_MOSS_THINKING,
+    macros: [],
   },
 ];
 
