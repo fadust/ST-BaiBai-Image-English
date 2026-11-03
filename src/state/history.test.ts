@@ -7,6 +7,8 @@ import {
   failImage,
   failLlm,
   finishLlm,
+  finishImage,
+  patchImagePrompt,
   patchLlmTokens,
   records,
   resetHistory,
@@ -152,6 +154,72 @@ describe('状态流转', () => {
     expect(record.characters).toEqual([
       { name: 'A', tag: '1girl, black hair', nl: 'left' },
     ]);
+  });
+});
+
+describe('生图记录的最终提示词全文', () => {
+  function image(extra: Record<string, unknown> = {}): number {
+    return beginImage({
+      backend: 'comfyui',
+      model: '预设',
+      prompt: '1girl',
+      nl: '',
+      negative: '',
+      characters: [],
+      seed: 1,
+      size: 'portrait',
+      floor: 1,
+      seq: 0,
+      ...extra,
+    });
+  }
+
+  it('patchImagePrompt 能在请求前补录最终全文', () => {
+    const id = image();
+    // begin 时还没有成品(拼装只在 backends 里发生),故分段原料先记,全文后补
+    expect((records[0] as ImageRecord).finalPrompt).toBeUndefined();
+    patchImagePrompt(id, 'quality, 1girl, 林夏：鹅蛋脸。', 'worst quality');
+    const record = records[0] as ImageRecord;
+    expect(record.finalPrompt).toBe('quality, 1girl, 林夏：鹅蛋脸。');
+    expect(record.finalNegative).toBe('worst quality');
+    // 分段原料保留,供对照「用户填了什么」
+    expect(record.prompt).toBe('1girl');
+  });
+
+  it('finishImage 也能一并带上最终全文', () => {
+    const id = image();
+    finishImage(id, { finalPrompt: 'full string', finalNegative: 'neg' });
+    const record = records[0] as ImageRecord;
+    expect(record.status).toBe('ok');
+    expect(record.finalPrompt).toBe('full string');
+    expect(record.finalNegative).toBe('neg');
+  });
+
+  it('空串不写键、也不覆盖已有值', () => {
+    const id = image();
+    patchImagePrompt(id, '', '');
+    // 没算出来就是「未知」,不该落一个假的空提示词
+    expect('finalPrompt' in (records[0] as ImageRecord)).toBe(false);
+    patchImagePrompt(id, 'real', '');
+    patchImagePrompt(id, '', '');
+    expect((records[0] as ImageRecord).finalPrompt).toBe('real');
+  });
+
+  it('appearance 落库,便于对照「填了什么」与「拼到哪儿」', () => {
+    image({ appearance: '鹅蛋脸,单眼皮。' });
+    expect((records[0] as ImageRecord).appearance).toBe('鹅蛋脸,单眼皮。');
+    // 空串同样不写键
+    image({ appearance: '   ' });
+    expect('appearance' in (records[0] as ImageRecord)).toBe(false);
+  });
+
+  it('超长的最终全文按同一口径截断', () => {
+    const id = image();
+    const huge = 'a'.repeat(MAX_CONTENT + 500);
+    patchImagePrompt(id, huge);
+    const text = (records[0] as ImageRecord).finalPrompt ?? '';
+    expect(text.length).toBeLessThan(huge.length);
+    expect(text).toContain('已截断');
   });
 });
 

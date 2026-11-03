@@ -1269,6 +1269,36 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 
+  it('MOSS 方言:外貌归属按库标记分流,不再无条件要求照抄', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss';
+      const library = [
+        '- 林夏 [中文外貌已填]: 性别=1girl, 头发=long black hair',
+        '- 许梨: 性别=1girl, 头发=short brown hair',
+      ].join('\n');
+
+      const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null, undefined, library);
+      const contract = messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+
+      // 填了中文外貌的角色:外貌由插件注入,AI 不重描(与 MOSS 规范同口径)
+      expect(contract).toContain('一个外貌词都不要写');
+      // 没填的仍然由 AI 补一次 —— 否则没填 zh 的角色会彻底失去外貌
+      expect(contract).toContain('外貌由你补一次');
+      // 通用条款那句「无条件照抄库字段」在 moss 下必须让位,否则两条相反指令并存
+      expect(contract).not.toContain('用词一字不改，不得自行改写或增删其固定外貌');
+
+      // tag 流保持原样:那条线没有中文外貌通道,照抄才是对的口径
+      state.preset.specDialect = 'comfy';
+      const comfyMessages = await buildAutoTagMessages(context(), 1, mossOptions(), null, undefined, library);
+      const comfyContract = comfyMessages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+      expect(comfyContract).toContain('用词一字不改，不得自行改写或增删其固定外貌');
+    } finally {
+      state.restore();
+    }
+  });
+
   it('MOSS 方言下自报的 negative 也不会进协议(与 ComfyUI tag 流对照)', async () => {
     const state = snapshot();
     const savedWorkflow = state.preset.workflow;

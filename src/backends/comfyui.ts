@@ -1,4 +1,4 @@
-import { buildSimpleWorkflow } from '@/backends/comfyTemplates';
+import { buildSimpleWorkflow, composeNegative, composePositive } from '@/backends/comfyTemplates';
 import { parseSize, pickSize, type Orientation } from '@/backends/size';
 import { getContext } from '@/st/context';
 import { type ComfyRunConn } from '@/state/settings';
@@ -481,6 +481,65 @@ async function pollDirectResult(
   }
 }
 
+/**
+ * 自定义模式的提示词入参:中文外貌并进 %prompt%(那里一定存在,%nl% 可有可无)。
+ *
+ * 抽成函数是为了让「记录用的全文」与「真正提交的全文」共用同一处拼装 ——
+ * 两处各写一遍同样的 join 迟早会漂,而历史里记错的值比没有更坏。
+ */
+function previewTemplateValues(values: ComfyTemplateValues): { prompt: string } {
+  const appearance = (values.appearance ?? '').trim();
+  return {
+    prompt: appearance ? [values.prompt.trim(), appearance].filter(Boolean).join(', ') : values.prompt,
+  };
+}
+
+/** 最终提交的提示词全文(供请求历史落账)。 */
+export interface ComfyPromptPreview {
+  positive: string;
+  negative: string;
+}
+
+/**
+ * 算出这次**将要**提交的提示词全文。纯函数,不碰网络,可在发请求前调用。
+ *
+ * 简易模式直接走 composePositive/composeNegative(与 buildSimpleWorkflow 同一对函数);
+ * 自定义模式没法从工作流反推出「最终文本」(同一段文本可能被多节点共用、也可能被节点
+ * 自己加料),故回报**送进占位符的那个值** —— 那才是用户能看懂、也能对照排查的东西。
+ */
+export function previewComfyPrompt(conn: ComfyRunConn, values: ComfyTemplateValues): ComfyPromptPreview {
+  // **本函数绝不抛**:它只服务于「记录」,而提交路径自己会做全部校验并抛出恰当的错。
+  // 预览先抛会让「工作流没填好」这类错误的出处变成历史埋点,还会抢在真正的校验之前
+  // 把请求拦掉 —— 报错文案与优先级都跟着变。算不出来就给空串,让主流程照常走到它该走的地方。
+  try {
+    if (conn.mode === 'simple') {
+      const simpleValues = {
+        prompt: values.prompt,
+        nl: values.nl,
+        appearance: values.appearance,
+        negative: values.negative_prompt,
+        seed: values.seed ?? 0,
+        width: values.width ?? 0,
+        height: values.height ?? 0,
+      };
+      return {
+        positive: composePositive(conn.simple, simpleValues),
+        negative: composeNegative(conn.simple, simpleValues),
+      };
+    }
+    const { prompt } = previewTemplateValues(values);
+    // 工作流用到了 %nl% 才拼进去 —— 与 renderWorkflowTemplate 的实际替换口径一致
+    const nl = (values.nl ?? '').trim();
+    const usesNl = getWorkflowPlaceholders(conn.workflow).includes('nl');
+    return {
+      positive: usesNl && nl ? `${prompt}, ${nl}` : prompt,
+      negative: (values.negative_prompt ?? '').trim(),
+    };
+  } catch {
+    return { positive: '', negative: '' };
+  }
+}
+
 export async function generateComfyImage(
   conn: ComfyRunConn,
   values: ComfyTemplateValues,
@@ -514,12 +573,8 @@ export async function generateComfyImage(
   } else {
     // 自定义模式没有"角色外貌"这个槽位,只能并进 %prompt%:它至少在工作流里一定存在
     // (renderWorkflowTemplate 强制要求),而 %nl% 是可有可无的。
-    const appearance = (values.appearance ?? '').trim();
-    workflow = renderWorkflowTemplate(conn.workflow, {
-      ...values,
-      prompt: appearance ? [values.prompt.trim(), appearance].filter(Boolean).join(', ') : values.prompt,
-      ...size,
-    });
+    const preview = previewTemplateValues(values);
+    workflow = renderWorkflowTemplate(conn.workflow, { ...values, ...preview, ...size });
   }
 
   // 通道自动选择:浏览器直连优先;仅当请求根本没送达 ComfyUI(网络级失败)时回退 ST 后端转发。

@@ -37,7 +37,7 @@ import { isTagPlanning } from '@/floor/tagPlanState';
 import { formatGenerationMeta } from '@/generationMeta';
 import { activeComfyPreset, activeOrientationLock, imageDisplayMaxHeight, settings } from '@/state/settings';
 import { chineseAppearanceForText } from '@/state/charTags';
-import { beginImage, failImage, finishImage, safeHistory } from '@/state/history';
+import { beginImage, failImage, finishImage, patchImagePrompt, safeHistory } from '@/state/history';
 import { copyText } from '@/st/clipboard';
 import { getContext } from '@/st/context';
 import { formatPromptText } from '@/st/imageTagRegex';
@@ -300,12 +300,19 @@ async function generate(): Promise<void> {
         size: job.size,
         floor: job.messageId,
         seq: job.seq,
+        // 中文外貌单独记一份:排查脸漂时要对照「用户填了什么」与「它落在串的哪儿」。
+        // moss 之外它不并入正向,所以 finalPrompt 里看不到,这条是唯一痕迹。
+        appearance: job.appearance,
       }),
     );
     // 闸门、后端分派都在 generateImage 里(公开接口走同一条路,见 generate.ts);
     // 本组件只把进度回调接到自己的槽位运行态上。
-    const { result, meta } = await generateImage({ ...job, seed }, signal, {
+    const { result, meta, finalPrompt, finalNegative } = await generateImage({ ...job, seed }, signal, {
       onStart: () => setGenPhase(slot, token, 'generating'),
+      // 拼装完成即落账,**早于请求**:失败/被拦的请求也要能看清它本来要发什么。
+      onPrompt: info => {
+        if (historyId !== null) safeHistory(() => patchImagePrompt(historyId!, info.positive, info.negative));
+      },
       onQueue: ahead => setQueueAhead(slot, token, ahead),
       onRetry: retry => setGenRetry(slot, token, retry),
     });
@@ -321,7 +328,11 @@ async function generate(): Promise<void> {
     // 卡片从 extra 恢复为 ready(blob/dataURL 生命周期随之结束)。
     await saveImageResult(job.messageId, job.swipeId, job.seq, job.tag, seed, result, meta);
     result.revoke();
-    if (historyId !== null) safeHistory(() => finishImage(historyId!));
+    // finalPrompt 已经通过 onPrompt 在请求前落账,这里再带一次是同源的幂等补录:
+    // 万一 onPrompt 那条路径被 safeHistory 吞掉,成功路径仍能把全文补上。
+    if (historyId !== null) {
+      safeHistory(() => finishImage(historyId!, { finalPrompt, finalNegative }));
+    }
     // 先清运行态再重水合:重水合会重建本组件,清完才不会带着 generating 复活
     clearGen(slot, token);
     const ctx = getContext();

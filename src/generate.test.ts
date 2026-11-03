@@ -58,6 +58,9 @@ function comfyReady(): void {
   settings.comfyui.activeWorkflowId = preset.id;
   preset.mode = 'custom';
   preset.workflow = '{"1":{}}';
+  // 固定正面是模块级单例的一部分,用例之间会串:不复位的话,前一个用例设的
+  // 「masterpiece」会带进后一个用例的正向期望里。
+  preset.simple.positive = '';
   preset.orientationLock = 'auto';
 }
 
@@ -346,6 +349,50 @@ describe('generateImage', () => {
     // 简易模式的固定负面 + 动态负面在 meta 里合成全文
     expect(out.meta.negative).toBe('bad');
     expect(out.meta.positive).toBe('1girl');
+  });
+
+  it('把最终成品全文一并回传,而不只是分段原料', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.template = 'moss';
+    preset.simple.model = 'moss_image_sft_int8_convrot.safetensors';
+    preset.simple.vae = 'flux2-vae_small.safetensors';
+    preset.simple.clip1 = 'qwen3.5_9b_int8_convrot.safetensors';
+    preset.simple.negative = 'worst quality';
+    preset.simple.positive = 'moodyrealism, photorealistic';
+
+    const out = await generateImage({
+      prompt: '1girl, 林夏, medium shot',
+      nl: '她坐在窗边。',
+      appearance: '林夏：鹅蛋脸,单眼皮。',
+      seed: 1,
+    });
+    // 分段原料看不出拼接顺序与去哪了,调用方要落账的必须是这条
+    expect(out.finalPrompt).toBe(
+      'moodyrealism, photorealistic, 1girl, 林夏, medium shot, 她坐在窗边。, 林夏：鹅蛋脸,单眼皮。',
+    );
+    expect(out.finalNegative).toBe('worst quality');
+    // 与 meta 同一份,不应出现两个口径
+    expect(out.finalPrompt).toBe(out.meta.positive);
+  });
+
+  it('onPrompt 在请求之前就回报最终全文,失败也能回看', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.model = 'pony.safetensors';
+    preset.simple.positive = 'masterpiece';
+    vi.mocked(generateComfyImage).mockRejectedValueOnce(new Error('服务器炸了'));
+
+    const seen: string[] = [];
+    await expect(
+      generateImage({ prompt: '1girl', seed: 1 }, undefined, {
+        onPrompt: info => seen.push(info.positive),
+      }),
+    ).rejects.toThrow('服务器炸了');
+    // 埋点先于请求:请求失败时这条仍在,正是排查需要的那一刻
+    expect(seen).toEqual(['masterpiece, 1girl']);
   });
 
   it('中文外貌在 ComfyUI 链路上随正向透传,落进 meta.positive', async () => {

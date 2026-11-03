@@ -34,7 +34,19 @@ import { getTagGenChannel } from '@/state/settings';
  * 主流程顺序:先落 changes(本楼发生的变化当楼生效) → 再兜底替换残留的 @占位符。
  */
 
-/** 把库条目渲染成给 AI 看的一行(字段式明细 + 占位符提示);锁定条目带 [locked] 标记。 */
+/** 有中文外貌的条目标记。只声明「存在」,不输出 zh 正文 —— 见 formatEntryForPrompt。 */
+export const ZH_FILLED_MARK = '[中文外貌已填]';
+
+/**
+ * 把库条目渲染成给 AI 看的一行(字段式明细 + 占位符提示);锁定条目带 [locked] 标记。
+ *
+ * zh(中文外貌)**只标记存在性、不输出正文**:规范与思维链都要求「填了中文外貌的角色不要重描,
+ * 没填的由你补一次」,而这条判据原先根本没有落到 AI 面前(库文本只渲染 CHAR_TAG_FIELDS);
+ * 模型只能瞎猜,猜错的两种结果都坏 —— 猜成「都没填」则没填的人也失去外貌,猜成「都填了」
+ * 则填了的人被写两遍(正是 MOSS 规范警告的「两套外貌条件、脸会漂」)。
+ *
+ * 输出正文同样不行:AI 看见 zh 就会照抄进 tag/nl,插件再拼一遍,等于双写。
+ */
 export function formatEntryForPrompt(entry: CharTagEntry, locked = false): string {
   const parts: string[] = [];
   for (const f of CHAR_TAG_FIELDS) {
@@ -43,7 +55,10 @@ export function formatEntryForPrompt(entry: CharTagEntry, locked = false): strin
   }
   if (!parts.length && entry.raw.trim()) parts.push(`tag=${entry.raw.trim()}`);
   if (entry.nl.trim()) parts.push(`nl=${entry.nl.trim()}`);
-  return `- ${entry.name}${locked ? ' [locked]' : ''}: ${parts.join(', ') || '(未记录字段)'}`;
+  const marks = [locked ? '[locked]' : '', (entry.zh ?? '').trim() ? ZH_FILLED_MARK : '']
+    .filter(Boolean)
+    .join(' ');
+  return `- ${entry.name}${marks ? ` ${marks}` : ''}: ${parts.join(', ') || '(未记录字段)'}`;
 }
 
 /**
@@ -56,7 +71,12 @@ export function buildLibraryText(entries: CharTagEntry[], lockedNames?: Readonly
   const lockedNote = lockedNames?.size
     ? '; entries marked [locked] are global and immutable: never report changes for them, always copy their fields as-is'
     : '';
-  return `【角色固定外貌库】[system-maintained; copy fields verbatim into character prompts${lockedNote}]\n${lines.join('\n')}`;
+  // 有 [中文外貌已填] 标记时在头部解释它的含义:标记只表示「插件会另行注入这段外貌」,
+  // 不表示 AI 可以少写服装/动作,也不表示该角色的英文字段可以省。
+  const zhNote = entries.some(entry => (entry.zh ?? '').trim())
+    ? '\n[中文外貌已填] = 该角色的中文外貌由插件在出图时另外拼进正向提示词,内容你看不到也不需要写;这类角色只写名字与本画面特有的服装、动作、表情、视线,不要重描五官/发色/肤色/体型。没有这个标记的角色,外貌由你自己补一次。'
+    : '';
+  return `【角色固定外貌库】[system-maintained; copy fields verbatim into character prompts${lockedNote}]\n${lines.join('\n')}${zhNote}`;
 }
 
 /** 旧接口兼容:runner 之外仍有调用方依赖锚定文本形态。 */

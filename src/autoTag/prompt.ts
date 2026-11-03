@@ -306,9 +306,21 @@ export async function buildAutoTagMessages(
         ? '5. size 已由用户在渠道设置里锁定为横图，每张图都填 "landscape"；后端规范里关于横竖怎么选的判据本次不适用。按横画幅取景：单人画面照常成立，用环境与留白撑开宽度，不要为了填满画面凭空加人。'
         : `5. size 是画幅方向，只能填 "portrait"（竖构图）或 "landscape"（横构图），判定口径见后端规范；拿不准就填 "portrait"。`;
 
+  // moss 方言与通用条款在这里**真冲突**:MOSS 规范/思维链要求「填了中文外貌的角色一个字都别重描」
+  // (两份外貌条件并存 → 脸漂),而通用条款要求「tag 与 nl 必须照抄库字段值」。两者对同一批
+  // 角色给出相反指令,模型会折中成「简短重描一遍」——恰是规范要防的那种状态。
+  // 故 moss 下这条按 [中文外貌已填] 标记分成两半,与规范同口径;其余方言保持原样。
+  const mossLibraryRule =
+    '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，名字必须逐字照抄库中条目名，不得音译或变体。\n' +
+    `   - 条目带 [中文外貌已填] 的：该角色的五官、发色、肤质、体型由插件另行注入，**你一个外貌词都不要写**（既不要写进 tag，也不要写进英文身体段）。你只负责名字、本画面特有的服装、动作、表情、视线。${nlOn ? '中文散文段照常写动作/穿着/环境/光线，不写外貌。' : ''}\n` +
+    '   - 条目**没有**该标记的：外貌由你补一次，且只补一次——tag 的外貌锚点位写发色/瞳色等固定特征，英文身体段写轮廓与状态。同一张图里不要重复第二遍，再次提到用简短指代（the boy、the silver-haired girl）承接。\n' +
+    '   - fandom 字段只作档案记录，画图时不照抄它，同人身份 tag 按下发的 MOSS 规范现场判定。\n' +
+    '   - 不要向用户索要、也不要猜测插件注入了什么内容：标记只说「有」，正文不可见。';
   const libraryReferenceRule = naiCharPromptsOn
     ? `- If a visible character exists in the fixed appearance library or is created in this changes array, copy the fixed fields into that character own characters[].tag; keep appearance wording verbatim but convert 1girl/1boy to girl/boy. The fandom identity tag (fields.fandom) goes first, verbatim. Do not put them in Base or assign them to another character.${nlOn ? ' Library natural-language notes may inform that character nl.' : ''} Use the library entry name verbatim for characters[].name and for any name inside ${nlOn ? 'tag/nl' : 'tag'} — never transliterate, translate, or vary it.`
-    : '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，tag 与 nl 就必须照抄库中/刚建档的字段值，用词一字不改，不得自行改写或增删其固定外貌。fandom 字段只作档案记录，ComfyUI 画图时不照抄它，同人身份 tag 按下发的 ComfyUI 规范现场判定并按规范转义括号。\n   - 同一角色的固定外貌在一张图里只写一遍：同一图内再次提到他时用简短指代（the boy、the silver-haired girl）承接，禁止把整串外貌重复第二遍——重复会让模型以为画面里有多个同样的人，把一个人画成互不相连的几块。';
+    : profile.dialect === 'moss'
+      ? mossLibraryRule
+      : '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，tag 与 nl 就必须照抄库中/刚建档的字段值，用词一字不改，不得自行改写或增删其固定外貌。fandom 字段只作档案记录，ComfyUI 画图时不照抄它，同人身份 tag 按下发的 ComfyUI 规范现场判定并按规范转义括号。\n   - 同一角色的固定外貌在一张图里只写一遍：同一图内再次提到他时用简短指代（the boy、the silver-haired girl）承接，禁止把整串外貌重复第二遍——重复会让模型以为画面里有多个同样的人，把一个人画成互不相连的几块。';
   // 建档 nl 只在协议含 nl 时要求(runner 的验收同一口径,见 autoTagProfile)
   const newCharacterNlRule = !naiCharPromptsOn
     ? ''

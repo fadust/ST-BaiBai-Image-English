@@ -557,6 +557,13 @@ export function findCharTag(name: string): CharTagEntry | undefined {
  * 免得短名把长名的角色也拉进来拼一遍。
  *
  * 拼的是 zh 原文:给人看的中文描述,交给中文原生的文本编码器,不做任何改写。
+ *
+ * **归属**:每段前面带名字(「林夏：鹅蛋脸…」),不再裸拼。多人同框时 tag 那条线有整套
+ * 邻接绑定纪律(white dress on green hair girl),而 zh 是中文散文、无法用 on X 绑定——
+ * 不加名字时模型拿到两个中文脸没有任何指向,只能随机分配或合并。名字是这里唯一能给的锚。
+ *
+ * **换行**:zh 是手填文本,可能带换行;nl 走 sanitizeContent 已被折成空格,这里同口径对齐,
+ * 免得中文外貌成为整条正向里唯一带换行的段落。
  */
 export function chineseAppearanceForText(text: string): string {
   const source = (text ?? '').trim();
@@ -574,7 +581,8 @@ export function chineseAppearanceForText(text: string): string {
     // (「雪」是「小雪」的子串,而「小雪」已经命中并拼过一段了。)
     if (accepted.some(longer => longer.includes(name))) continue;
     accepted.push(name);
-    parts.push((entry.zh ?? '').trim());
+    const zh = (entry.zh ?? '').trim().replace(/[\r\n]+/g, ' ');
+    if (zh) parts.push(`${name}：${zh}`);
   }
   return parts.join(' ');
 }

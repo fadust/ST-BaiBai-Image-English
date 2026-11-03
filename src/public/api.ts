@@ -264,6 +264,8 @@ export async function generate(
   try {
     output = await generateImage({ prompt, nl, negative, characters, size, seed }, signal, {
       onStart: () => report({ phase: 'generating' }),
+      // 公开接口不记请求历史(第三方调用不该污染用户的调试面板),最终全文改为随结果回传,
+      // 调用方自行决定要不要留。
       onQueue: ahead => report({ phase: 'queued-remote', ahead }),
       onRetry: retry =>
         retry
@@ -294,6 +296,10 @@ export async function generate(
       seed: output.seed,
       backend: output.backend,
       charactersApplied: output.charactersApplied,
+      // 最终提交的提示词全文(合成后)。第三方常需要「我传的 tag 最后变成什么了」
+      // ——尤其开了自然语言时 tag 可能被 nl 顶掉、开了中文外貌时末尾会多一段。
+      finalPrompt: output.finalPrompt,
+      finalNegative: output.finalNegative,
     };
   } catch (error) {
     throw toPublicError(error);

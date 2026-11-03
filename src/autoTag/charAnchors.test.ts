@@ -7,6 +7,7 @@ import {
   formatEntryForPrompt,
   parseConvertedTags,
   resolveCharAnchors,
+  ZH_FILLED_MARK,
 } from '@/autoTag/charAnchors';
 import {
   createCharTagNewOp,
@@ -47,6 +48,36 @@ describe('formatEntryForPrompt / buildLibraryText', () => {
 
   it('returns empty string for no entries', () => {
     expect(buildLibraryText([])).toBe('');
+  });
+
+  it('有中文外貌的条目带 [中文外貌已填] 标记,且不输出 zh 正文', () => {
+    const e = entry('林夏', { sex: '1girl', hair: 'long black hair' });
+    e.zh = '鹅蛋脸,单眼皮,皮肤偏白。';
+    const line = formatEntryForPrompt(e);
+    expect(line).toContain(ZH_FILLED_MARK);
+    // 只标记存在性:正文进了提示词就会被照抄进 tag/nl,插件再拼一遍等于双写
+    expect(line).not.toContain('鹅蛋脸');
+    // 英文字段照常渲染(它们是 tag 那条线的来源,与 zh 通道并存)
+    expect(line).toContain('头发=long black hair');
+  });
+
+  it('没填 zh 的条目不带该标记', () => {
+    expect(formatEntryForPrompt(entry('许梨', { sex: '1girl' }))).not.toContain(ZH_FILLED_MARK);
+    // 空的 zh 键与没有该键等价
+    const blank = entry('许梨', { sex: '1girl' });
+    blank.zh = '   ';
+    expect(formatEntryForPrompt(blank)).not.toContain(ZH_FILLED_MARK);
+  });
+
+  it('库里有任何人填了 zh 时,头部解释这个标记的含义', () => {
+    const filled = entry('林夏', { sex: '1girl' });
+    filled.zh = '鹅蛋脸。';
+    const text = buildLibraryText([filled]);
+    expect(text).toContain(ZH_FILLED_MARK);
+    // 不解释的话,标记对模型只是个陌生符号,分流规则无从执行
+    expect(text).toContain('不要重描五官');
+    // 无人填 zh 时不加这段说明,免得给没用到该通道的库塞无关规则
+    expect(buildLibraryText([entry('小雪', { sex: '1girl' })])).not.toContain('不要重描五官');
   });
 
   it('marks locked entries and declares immutability in the header', () => {

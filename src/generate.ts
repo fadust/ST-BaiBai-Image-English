@@ -23,9 +23,15 @@
  */
 
 import type { ImageCharacterPrompt } from '@/autoTag/protocol';
-import { comfySimpleParams, composeNegative, composePositive, validateSimpleConfig, type SimpleGenValues } from '@/backends/comfyTemplates';
-import { generateComfyImage, randomSeed, type ComfyImageResult } from '@/backends/comfyui';
-import { generateNaiImage, naiRandomSeed, naiSupportsCharacterPrompts } from '@/backends/nai';
+import { comfySimpleParams, validateSimpleConfig } from '@/backends/comfyTemplates';
+import { generateComfyImage, previewComfyPrompt, randomSeed, type ComfyImageResult } from '@/backends/comfyui';
+import {
+  fullNegativePrompt,
+  fullPositivePrompt,
+  generateNaiImage,
+  naiRandomSeed,
+  naiSupportsCharacterPrompts,
+} from '@/backends/nai';
 import { effectiveOrientation, parseSize, pickSize, type Orientation } from '@/backends/size';
 import { acquireNaiSlot } from '@/floor/genQueue';
 import type { GenerationMeta } from '@/generationMeta';
@@ -56,9 +62,21 @@ export interface GenerateInput {
 }
 
 /** 生成过程中的进度上报(卡片用它显示排队位置与退避进度)。 */
+/** 最终提交的提示词全文(合成后)。 */
+export interface FinalPromptInfo {
+  positive: string;
+  negative: string;
+}
+
 export interface GenerateProgress {
   /** 已取得闸门槽位、请求即将发出(NAI 从「排队中」进入「生成中」的时机)。 */
   onStart?: () => void;
+  /**
+   * 拼装完成、请求即将发出时回报最终全文。**先于请求发出**,故即使请求失败/被拦,
+   * 调用方也已拿到「它本来要发什么」——这正是排查最需要的那一刻。
+   * 拼装是纯函数(composePositive / fullPositivePrompt),在调后端之前就能算出。
+   */
+  onPrompt?: (info: FinalPromptInfo) => void;
   /** ComfyUI 服务端队列里前面还有几个;null = 未知。 */
   onQueue?: (ahead: number | null) => void;
   /** NAI 限流退避进度;传 null 表示已不在退避中。 */
@@ -73,6 +91,15 @@ export interface GenerateOutput {
   size: Orientation;
   backend: BackendId;
   /**
+   * 最终实际提交给后端的那一条正向全文(合成后,含固定正面/画质词/中文外貌)。
+   * meta.positive 有时拿不到(ComfyUI 自定义模式无法在这里拼出全文),这里同口径:
+   * 拿不到时为空串。存在的理由是调用方要把它写进请求历史——分段原料(simpleValues)
+   * 看不出拼接顺序、看不出哪段被丢弃,回看时没用。
+   */
+  finalPrompt: string;
+  /** 最终实际提交的负面全文;口径同上。 */
+  finalNegative: string;
+  /**
    * characters 是否真的发给了后端。
    * ComfyUI 链路**不支持**多角色提示(comfyui.ts / comfyTemplates.ts 全程不读该字段),
    * 传了也是静默丢弃 —— 故显式回报,调用方据此决定要不要提示用户换后端。
@@ -84,6 +111,19 @@ export interface GenerateOutput {
    * NAI 的画师串与 vibe 不在 tag 文本里，不在这里冒泡出去就只能永久丢失。
    */
   meta: GenerationMeta;
+}
+
+/**
+ * 回报最终全文。**绝不抛**:埋点失败了不能把生图搞挂(理由同 state/history 的 safeHistory)。
+ * 空串不回报 —— 那表示「算不出来」,让调用方保留「未知」而不是收到一个假的空提示词。
+ */
+function reportPrompt(progress: GenerateProgress, positive: string, negative: string): void {
+  if (!positive && !negative) return;
+  try {
+    progress.onPrompt?.({ positive, negative });
+  } catch (error) {
+    console.warn('[柏宝绘] 回报最终提示词失败(已忽略)', error);
+  }
 }
 
 /** 后端就绪状态。 */
@@ -201,9 +241,20 @@ export async function generateImage(
     const size = effectiveOrientation(activeOrientationLock(), input.size ?? 'portrait');
     let result: ComfyImageResult;
     let meta: GenerationMeta;
+    // 最终全文在这里先算一遍(纯函数),**先于请求**报给调用方:失败也要能回看发了什么。
+    // 两处拼装都必须与后端内部用自己的那份完全同源 —— 逐字段照抄,不许「差不多」:
+    // 差一个字段,历史里记的就不是真正发出去的东西了。
+    let finalPrompt = '';
+    let finalNegative = '';
     if (isNai) {
+      const nai = effectiveNai();
+      // 先算成品再发请求:与 backends/nai 内部同一对纯函数(fullPositivePrompt /
+      // fullNegativePrompt),同一份 nai 快照 —— 所以这里算出的就是真正发出去的那条。
+      finalPrompt = fullPositivePrompt(nai, input.prompt, input.nl ?? '');
+      finalNegative = fullNegativePrompt(nai);
+      reportPrompt(progress, finalPrompt, finalNegative);
       const output = await generateNaiImage(
-        effectiveNai(),
+        nai,
         // characters 原样透传:不支持的模型由 buildNaiParameters 自己滤掉(同一口径
         // naiSupportsCharacterPrompts),在这儿再滤一遍只会多一处会漂的判据
         { prompt: input.prompt, nl: input.nl ?? '', characters, seed: input.seed, size },
@@ -214,6 +265,23 @@ export async function generateImage(
       meta = { backend: 'nai', model: status.model, ...output.usage };
     } else {
       const conn = effectiveComfyConn();
+      // 尺寸解析口径与 generateComfyImage 一致（未解析出时 0 = 用工作流自带尺寸）。
+      const px = parseSize(pickSize(conn, size));
+      const width = px?.width ?? 0;
+      const height = px?.height ?? 0;
+      // 与 generateComfyImage 内部同一对纯函数、同一份取值:算出来的就是发出去的那条。
+      const preview = previewComfyPrompt(conn, {
+        prompt: input.prompt,
+        nl: input.nl,
+        appearance: input.appearance,
+        negative_prompt: input.negative,
+        seed: input.seed,
+        width,
+        height,
+      });
+      finalPrompt = preview.positive;
+      finalNegative = preview.negative;
+      reportPrompt(progress, finalPrompt, finalNegative);
       result = await generateComfyImage(
         conn,
         {
@@ -228,27 +296,13 @@ export async function generateImage(
         { onQueue: ahead => progress.onQueue?.(ahead) },
       );
       // ComfyUI 没有运行期跳过的概念，配方全在预设里，可在此直接快照。
-      // 尺寸解析口径与 generateComfyImage 一致（未解析出时 0 = 用工作流自带尺寸）。
-      const px = parseSize(pickSize(conn, size));
-      const width = px?.width ?? 0;
-      const height = px?.height ?? 0;
-      const simpleValues: SimpleGenValues = {
-        prompt: input.prompt,
-        nl: input.nl,
-        appearance: input.appearance,
-        negative: input.negative,
-        seed: input.seed,
-        width,
-        height,
-      };
       meta = {
         backend: 'comfyui',
         model: status.model,
         width,
         height,
-        // custom 模式的提示词由工作流里的占位符决定，无法在这里拼出全文，留空。
-        positive: conn.mode === 'simple' ? composePositive(conn.simple, simpleValues) : '',
-        negative: conn.mode === 'simple' ? composeNegative(conn.simple, simpleValues) : '',
+        positive: finalPrompt,
+        negative: finalNegative,
         artist: null,
         vibes: [],
         params: conn.mode === 'simple' ? comfySimpleParams(conn.simple) : { mode: 'custom' },
@@ -257,7 +311,16 @@ export async function generateImage(
 
     // 退避文案到此为止:图已拿到,落盘还要一会儿,不该继续显示「稍后重试」
     progress.onRetry?.(null);
-    return { result, seed: input.seed, size, backend: status.backend, charactersApplied, meta };
+    return {
+      result,
+      seed: input.seed,
+      size,
+      backend: status.backend,
+      charactersApplied,
+      finalPrompt,
+      finalNegative,
+      meta,
+    };
   } finally {
     release?.();
   }

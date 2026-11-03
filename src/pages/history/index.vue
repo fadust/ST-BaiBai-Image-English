@@ -96,14 +96,19 @@ function segments(record: HistoryRecord): Segment[] {
     if (record.response) out.push({ label: '返回', text: record.response });
     return out;
   }
-  const out: Segment[] = [{ label: '正向提示词', text: record.prompt }];
+  // 最终全文排第一:它是「这次到底发了什么」的唯一答案,分段原料只用来对照。
+  const out: Segment[] = [];
+  if (record.finalPrompt) out.push({ label: '最终正向(实际提交)', text: record.finalPrompt });
+  out.push({ label: '正向提示词', text: record.prompt });
   if (record.nl) out.push({ label: '自然语言', text: record.nl });
+  if (record.appearance) out.push({ label: '中文外貌(插件注入)', text: record.appearance });
   for (const character of record.characters ?? []) {
     out.push({
       label: `\u89d2\u8272: ${character.name}`,
       text: [character.tag, character.nl].filter(Boolean).join('\n\n'),
     });
   }
+  if (record.finalNegative) out.push({ label: '最终负面(实际提交)', text: record.finalNegative });
   if (record.negative) out.push({ label: '负面', text: record.negative });
   return out;
 }
@@ -125,6 +130,8 @@ function facts(record: HistoryRecord): string[] {
     }
   } else {
     out.push(`种子 ${record.seed}`, record.size);
+    // 最终全文是这条记录最有用的东西:带个 token 粗估,能一眼看出哪次串被撑爆了
+    if (record.finalPrompt) out.push(`最终正向 ≈${roughTokens(record.finalPrompt)} token`);
   }
   return out.filter(Boolean);
 }

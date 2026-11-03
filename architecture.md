@@ -607,6 +607,21 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     (库里同时有「雪」与「小雪」时不能把同一个人拼两遍)。**只在 moss 模板下并入**——
     其余模板的文本编码器对中文几乎无响应,拼了只是噪声。custom 模式没有独立槽位,
     该段并进 `%prompt%`(工作流必有此占位符,`%nl%` 则可有可无)。
+    ③ **每段带名字归属**(如「林夏：鹅蛋脸…」):tag 那条线有整套邻接绑定纪律
+    (white dress on green hair girl),zh 是中文散文、无法用 `on X` 绑定,不加名字时
+    多人同框只能随机分配或合并。换行也在此折成空格,与 `sanitizeContent` 同口径。
+    ④ **AI 侧按标记分流**:`formatEntryForPrompt` 给填了 zh 的条目加 `[中文外貌已填]`
+    标记(只声明存在、**不输出 zh 正文**——正文进了提示词就会被照抄,插件再拼一遍等于双写),
+    `buildLibraryText` 在有人填 zh 时于头部解释该标记。不这么做的话,「填了别重描、
+    没填你补一次」这条判据根本没落到模型面前,它只能瞎猜:猜成「都没填」则没填的人也失
+    去外貌,猜成「都填了」则填了的人被写两遍(正是 MOSS 规范警告的两套外貌条件)。
+    ⑤ **通用条款按方言分叉**:`prompt.ts` 的 `libraryReferenceRule` 在 moss 下换掉
+    「tag 与 nl 必须照抄库字段、一字不改」那句——它与 MOSS 规范的「填了中文外貌的角色
+    一个字都别重描」直接相反,两条相反指令并存时模型会折中成「简短重描一遍」,
+    恰是要防的状态。tag 流不改:那条线没有 zh 通道,照抄才是对的。
+    MOSS 规范与思维链同步改成按标记分流,并把英文身体段的「必须完整写体型」放宽为
+    「带标记时跳过体型总述、年龄/人种/穿着程度/器官贴合仍然必写」——原文那两条
+    (身体段必写 60–120 词 vs 外貌一个字都别写)不可能同时满足,模型只能自行妥协。
   请求通道自动选择 —— **浏览器直连优先,仅网络级失败(CORS/拒连)回退 ST 服务端转发**;
   排队拿到 prompt_id 后轮询失败不重发(避免重复生图)。
   入参类型是收窄后的 `ComfyRunConn`(url + 单套预设的 mode/workflow/simple + 横竖尺寸),
@@ -1013,6 +1028,8 @@ API 对象 `Object.freeze`,一个插件改不动下一个插件拿到的东西�
 | 楼层按钮 / 顶栏按钮 / 魔杖入口 | src/floor/actionButton.ts / src/topbar.ts / src/menu.ts |
 | 正文写回(含竞态) | src/st/messageEdit.ts |
 | 请求历史(LLM/生图,内存不持久化) | src/state/history.ts(store)+ src/pages/history/index.vue(页面)+ src/api/client.ts 埋点 |
+| 最终提交的提示词全文(含拼接结果) | `generate.ts` 的 `GenerateOutput.finalPrompt/finalNegative` 与 `GenerateProgress.onPrompt`;拼装口径 = `backends/comfyui.ts` 的 `previewComfyPrompt`(simple 走 compose*、custom 走占位符取值)+ `backends/nai.ts` 的 `fullPositivePrompt`。历史侧 `patchImagePrompt`/`finishImage({finalPrompt})` 落账,`ImageRecord.finalPrompt` 展示;公开接口随结果回传同名字段 |
+| 角色库「有中文外貌」标记 | `autoTag/charAnchors.ts` 的 `ZH_FILLED_MARK`(只声明存在、不输出正文)+ `buildLibraryText` 头部解释;消费在 `autoTag/prompt.ts` 的 `libraryReferenceRule`(moss 方言分叉) |
 | 复制到剪贴板 | src/st/clipboard.ts 的 copyText |
 | 主窗口 UI(遮罩/导航/动画/抽屉) | src/App.vue + state/ui.ts + components/ |
 | 主题 | src/styles/theme.css + state/ui.ts 的 THEMES |

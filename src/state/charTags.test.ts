@@ -200,8 +200,9 @@ describe('中文外貌(zh)的认人与拼接', () => {
 
   it('名字在 tag 或 nl 里字面出现时拼出该角色的中文外貌', () => {
     seed([{ name: '林夏', zh: '鹅蛋脸,单眼皮,皮肤偏白。' }]);
-    expect(chineseAppearanceForText('1girl, 林夏, medium shot')).toBe('鹅蛋脸,单眼皮,皮肤偏白。');
-    expect(chineseAppearanceForText('林夏坐在窗边。')).toBe('鹅蛋脸,单眼皮,皮肤偏白。');
+    // 每段前面带名字:多人同框时靠它把描述绑定到具体角色
+    expect(chineseAppearanceForText('1girl, 林夏, medium shot')).toBe('林夏：鹅蛋脸,单眼皮,皮肤偏白。');
+    expect(chineseAppearanceForText('林夏坐在窗边。')).toBe('林夏：鹅蛋脸,单眼皮,皮肤偏白。');
   });
 
   it('没出现的角色不拼;没填 zh 的也不拼', () => {
@@ -211,7 +212,7 @@ describe('中文外貌(zh)的认人与拼接', () => {
       { name: '许梨' },
     ]);
     expect(chineseAppearanceForText('1girl, medium shot')).toBe('');
-    expect(chineseAppearanceForText('苏曼站在门口。')).toBe('圆脸,双眼皮。');
+    expect(chineseAppearanceForText('苏曼站在门口。')).toBe('苏曼：圆脸,双眼皮。');
     expect(chineseAppearanceForText('许梨走过来。')).toBe('');
   });
 
@@ -221,9 +222,9 @@ describe('中文外貌(zh)的认人与拼接', () => {
       { name: '小雪', zh: '长名描述。' },
     ]);
     // "小雪" 包含 "雪":若不做覆盖判断,同一个人会被拼两段
-    expect(chineseAppearanceForText('小雪走过来。')).toBe('长名描述。');
+    expect(chineseAppearanceForText('小雪走过来。')).toBe('小雪：长名描述。');
     // 只有 "雪" 字出现时才轮到短名那条
-    expect(chineseAppearanceForText('雪落在肩上。')).toBe('短名描述。');
+    expect(chineseAppearanceForText('雪落在肩上。')).toBe('雪：短名描述。');
   });
 
   it('两个不相干的角色都在场时各拼一段,顺序按名字长度降序', () => {
@@ -231,7 +232,21 @@ describe('中文外貌(zh)的认人与拼接', () => {
       { name: '林夏', zh: '鹅蛋脸。' },
       { name: '苏曼', zh: '圆脸。' },
     ]);
-    expect(chineseAppearanceForText('林夏和苏曼站在门口。')).toBe('鹅蛋脸。 圆脸。');
+    expect(chineseAppearanceForText('林夏和苏曼站在门口。')).toBe('林夏：鹅蛋脸。 苏曼：圆脸。');
+  });
+
+  it('中文外貌里的换行被折成空格(与 nl 的 sanitizeContent 同口径)', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸,\r\n单眼皮,\n皮肤偏白。' }]);
+    // 不折的话,中文外貌会成为整条正向里唯一带换行的段落
+    expect(chineseAppearanceForText('林夏')).toBe('林夏：鹅蛋脸, 单眼皮, 皮肤偏白。');
+  });
+
+  it('名称为空或 zh 全是空白的条目不会被拼进来', () => {
+    seed([
+      { name: '林夏', zh: '   ' },
+      { name: '  ', zh: '不该出现。' },
+    ]);
+    expect(chineseAppearanceForText('林夏')).toBe('');
   });
 
   it('空文本与空库都返回空串', () => {

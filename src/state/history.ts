@@ -82,6 +82,23 @@ export interface ImageRecord extends BaseRecord {
   /** 楼层坐标:详情里据此指回是哪一楼哪个槽位。图片本身不存(见文件头)。 */
   floor: number;
   seq: number;
+  /**
+   * **最终实际提交给后端的那一条正向全文**(已含固定正面/AI tag/nl/中文外貌、
+   * NAI 的画质词与画师串)。上面那几个字段是分段原料,这里是合成后的成品——
+   * 「这次到底发了什么」只能看它:分段原料看不出拼接顺序、看不出某段是否被丢弃
+   * (非 moss 模板下 nl 会顶掉 tag)、也看不出中文外貌拼在了哪儿。
+   *
+   * 由 startImage() 在生成开始时补录(拼装只在后端模块里发生,begin 时还拿不到);
+   * 为空串表示这次没能拿到(例如请求在校验阶段即被拦下)。
+   */
+  finalPrompt?: string;
+  /** 最终实际提交的负面全文(已含固定负面);口径同 finalPrompt。 */
+  finalNegative?: string;
+  /**
+   * 中文外貌段落(插件从角色库机械拼接)。与 finalPrompt 并存:
+   * 前者是「用户填了什么」,后者是「它最后落在串的哪个位置」——排查脸漂时要对照着看。
+   */
+  appearance?: string;
 }
 
 export type HistoryRecord = LlmRecord | ImageRecord;
@@ -233,12 +250,21 @@ export interface ImageBegin {
   size: Orientation;
   floor: number;
   seq: number;
+  /** 中文外貌段落;null/缺省 = 本次没有(非 moss 模板或库中无人命中)。 */
+  appearance?: string;
+  /**
+   * 最终提交的正向全文。**调用方通常不传**:拼装只在 backends 里发生,
+   * begin 时还没拼出成品;拿到之后用 finishImage(id, {...}) 补录。
+   * 只有调用方自己就知道成品时(如直接给后端的固定串)才在这里传。
+   */
+  finalPrompt?: string;
+  finalNegative?: string;
 }
 
 /** 登记一次生图请求。图片结果不进 store(dataURL 会爆内存,且图已落盘进 ST)。 */
 export function beginImage(info: ImageBegin): number {
   const id = nextId++;
-  push({
+  const record: ImageRecord = {
     id,
     kind: 'image',
     status: 'running',
@@ -259,15 +285,43 @@ export function beginImage(info: ImageBegin): number {
     size: info.size,
     floor: info.floor,
     seq: info.seq,
-  });
+  };
+  // 可选键:没有就不写,免得每条记录都多出两个空字段(与 CharTagEntry.zh 同口径)
+  const appearance = (info.appearance ?? '').trim();
+  if (appearance) record.appearance = truncate(appearance);
+  if (info.finalPrompt) record.finalPrompt = truncate(info.finalPrompt);
+  if (info.finalNegative) record.finalNegative = truncate(info.finalNegative);
+  push(record);
   return id;
 }
 
-export function finishImage(id: number): void {
+export interface ImageFinish {
+  /**
+   * 最终实际提交的正向/负面全文。拼装发生在 backends(comfyTemplates 的 composePositive、
+   * nai 的 fullPositivePrompt),begin 时还没有成品,故在生成成功或失败后补录。
+   * 失败也要补:被拦在提交前的请求同样值得回看「它本来要发什么」。
+   */
+  finalPrompt?: string;
+  finalNegative?: string;
+}
+
+/**
+ * 补录最终提交的提示词全文。可在 finish 前、后任意时刻调用;
+ * 空串不写(不覆盖已有值,也不给记录凭空加空键)。
+ */
+export function patchImagePrompt(id: number, finalPrompt?: string, finalNegative?: string): void {
+  const record = find(id);
+  if (record?.kind !== 'image') return;
+  if (finalPrompt) record.finalPrompt = truncate(finalPrompt);
+  if (finalNegative) record.finalNegative = truncate(finalNegative);
+}
+
+export function finishImage(id: number, info: ImageFinish = {}): void {
   const record = find(id);
   if (record?.kind !== 'image') return;
   record.status = 'ok';
   record.durationMs = Date.now() - record.startedAt;
+  patchImagePrompt(id, info.finalPrompt, info.finalNegative);
 }
 
 export function failImage(id: number, message: string, aborted = false): void {
