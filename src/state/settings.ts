@@ -599,13 +599,143 @@ tag（JSON 的 tag 键）：danbooru 短 tag——英文小写、逗号分隔的
  * 素材来自本机 story-image 的 moss-real 真人线实测口径(见该仓库 configs/moss-real.md
  * 与 prompts/specs/moss-photo.md),已改写成柏宝绘的协议形态(tag + nl + characters)。
  */
-export const DEFAULT_MOSS_SPEC = "【MOSS-Image 写实线提示词规范】\n你输出的提示词会交给 MOSS-Image（官方 SFT int8 写实底模）出图。文本编码器是 Qwen3.5 9B，读连贯散文，不吃 danbooru 短 tag 堆。故本线是「英文 tag 行锁元素 + 中文散文写画面 + 英文身体段锁解剖」的三段混合串，插件会把三段按此顺序拼成一条。\n\ntag（JSON 的 tag 键）：只用英文锁「画面里有什么」，逗号分隔，一句话能说完的不要拆成五个 tag。\n顺序：人数 → 景别（只写一个）→ 人种与年龄感 → 外貌锚点 → 服装（逐件）→ 动作 → 表情与视线 → 场景 → 光线。\n- 例：1girl, solo, medium shot, chinese, east asian, twenty years old, long black hair, white cotton camisole, standing, looking at viewer, smile, dorm room, desk lamp\n- 40 个 tag 以内；不写完整句子；不写权重语法（(x:1.3)）、不写 BREAK、不写画幅比例、不写采样参数、不写 LoRA 触发词。\n- 画质串由渠道预设的「固定正面」承担（moodyrealism, photorealistic, photograph, high detail, sharp focus, natural skin texture）。tag 里**不要**再写 masterpiece / best quality / very aesthetic —— 那是动漫线词表，会把画面推回插画与游戏 CG；也不重复 moodyrealism / photorealistic / photograph。\n- 表情与视线每张都写，用标准词：smile / grin / blush / embarrassed / frown / surprised / crying / angry / serious / sad / worried / scared / smug / seductive smile / expressionless / half-closed eyes / open mouth；视线写 looking at viewer / looking at another / looking away / looking down / looking up / looking back。禁止把中文感受直译成自创词组。\n- 人种是硬约束：东亚角色一律写 chinese / east asian，不写就按英文先验出欧美脸。\n- **不限英文段落**：tag 行在本线会和 nl 一起进模型（不是二选一），所以人数、景别、人种这些承重墙必须写全，别指望散文里补。\n\nnl（JSON 的 nl 键）：**本线必填**，由「中文散文段 + 英文身体段」两部分组成，中文在前、英文在后。\n\nA. 中文散文段（2–3 句，共 120–350 字）：\n- 机位与景别写在**第一句**：中景、低机位、手持拍摄之类；用户或正文给了就原样照抄（英文词照抄英文，中文照抄中文），没给就自己定，不另起一段。\n- 环境按**前景 / 中景 / 背景**分层写清楚。\n- 光线写「光从哪来、落在哪个位置、明暗怎么分」，**不写**皮肤上的反光 / 油光 / 高光点（832×1216 的半身图上脸只有约 100 像素，这类词会糊成一块脏亮斑）。\n- 不写外貌词：五官、发色、肤色、年龄、人种、罩杯、体型总述、腰胯臀腿，全部归 tag、英文身体段与下面的「角色外貌」通道。中文段只写**动作、穿着、环境、光线、介质**。\n\nB. 英文身体段（60–120 词，独立成句，接在中文段之后）：\n- 第一句必须给**年龄 + 人种**：She is a Chinese woman of twenty, …（男性写 a Chinese man of …）。**年龄与人种你永远要写**，它们不属于任一角色的固定外貌档案，插件也不会替你注入。\n- 顺序：先轮廓再细节最后状态 —— 肩／胸／腰／胯／臀／腿 → 穿着或赤裸到什么程度 → 器官与贴合处。\n- 器官用英文实词：breasts, areolae, nipples, waist, hips, vulva, clitoris, labia, penis, shaft, glans, testicles, anus；不要 down there / her sex 这类委婉语。\n- 轮廓与体型（肩背圆润、胸饱满自然下坠、腰细胯宽、大腿根有软肉、小腹平但有薄脂、臀圆而宽；胸型三选一 high and firm / slightly pendulous / full and wide-set；阴部三选一 clean-shaven / trimmed / natural bush）——**这一段是可选的，判据见下面的「角色外貌」**：角色带 [中文外貌已填] 标记时，他的体型与脸已由插件注入，你不要在英文段里再写一遍体型总述，只写本画面**此刻的状态**（穿着/赤裸程度、器官与贴合处、姿势造成的形变）。没有该标记时才按上面这套完整写一次。\n- 只写身体与状态；场景、光、风格留给中文段。\n- 材质写「粗糙的那一面」：看得见的毛孔、细小的肤色不均、一两点很淡的斑或小痣、脸颊靠下颌的一层浅绒毛、手肘膝盖略深略粗、布的织纹与褶皱阴影。**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷 —— 它们和负面里的 overly smooth skin 打架，出来是假面。\n\n⚠ nl 最终会被折叠成一行（换行变空格）：用句号分句，不要靠换行分段，也不要写小标题、编号、列表。\n\n## 角色外貌：看角色的标记决定谁写\n\n本线开启了「中文外貌」通道：角色库里填了中文外貌的角色，只要名字在 tag 或 nl 里出现，插件就会把他的外貌描述**原样拼在正向末尾**，不经你、也不经 AI 改写。\n\n你不必猜谁填了谁没填——【角色固定外貌库】里每个条目后面都带标记，照标记分流：\n\n**A. 条目带 [中文外貌已填]**\n- 该角色的五官、发色、肤质、体型**一个字都不要写**：不要写进 tag 的外貌锚点位，不要在英文身体段里再给一遍体型总述。写了会和插件拼进来那段形成两套外貌条件，脸会漂。\n- 你在 tag 里只写：**名字**（中文名写中文，逐字保持原文）+ 本画面特有的服装、动作、表情、视线、场景、光线。\n- 英文身体段仍需写：年龄 + 人种（必写）、穿着或赤裸到什么程度、器官与贴合处、姿势造成的形变。**跳过的是「体型总述」那几句，不是整段。**\n- 该角色的皮肤质感（毛孔、细致肤色不均、绒毛）照常写——材质层不属于固定外貌档案。\n\n**B. 条目没有该标记**（库里的角色确实没填、或本来就是一次性角色）\n- 外貌由你补一次，且只补一次：tag 的外貌锚点位写发色/瞳色等固定特征，英文身体段按完整顺序写轮廓、体型、状态。\n\n**无论哪类**：\n- 同一角色一张图里外貌只写一遍，再次提到用简短指代（the boy、the silver-haired girl）。\n- 标记只表示「有」，具体内容你看不到、也**不要向自己编造或向用户索要**。\n\n分镜页：**本线不出**。一页多格会把脸和贴合细节压碎。\n\n画幅方向（size 键）：人像、半身、特写写 portrait；横向场景或双人横向构图写 landscape。与 tag 里的景别保持一致。\n\n禁止项：\n- 权重语法、正向否定句（no bra / without glasses 会反过来画出该物）、画幅比例词、采样参数、LoRA 触发词。\n- 动漫画质词（masterpiece / best quality / very aesthetic）。\n- 皮肤反光词：glossy / shiny / oily / greasy、油光 / 油亮 / 反光 —— 负面串里已有这四条，正面再写会打架。\n- 拍摄介质参数词（HDR / 计算摄影 / 高分辨率）：手机直拍、手持略歪、竖构图、暗部有噪点、焦点略软这一类**观感**照写，不用参数词。\n- 同一件事两层说：tag 写了 white cotton camisole，中文段又写一遍「穿白吊带」。\n\n通用要求：\n- 只写「画得出来」的东西。正文里明确的外貌、服装、道具原样保留，不新增人物、服装、道具，不改人数。\n- 画面里不该出现的东西，**正面不写**就是最有效的压制。\n- 正文是小说不是分镜脚本：镜头、构图、光线这些「画出来才存在」的必须主动补全；人物、动作、场景事实必须以正文与设定为准。\n- 中文段写中文，tag 行与身体段写英文；角色名保持原文（中文名写中文，不音译）。";
+export const DEFAULT_MOSS_SPEC = `【MOSS-Image 写实线提示词规范】
+你输出的提示词会交给 MOSS-Image（官方 SFT int8 写实底模）出图。文本编码器是 Qwen3.5 9B，读连贯散文，不吃 danbooru 短 tag 堆。故本线是「英文 tag 行锁元素 + 中文散文写画面 + 英文身体段锁解剖」的三段混合串，插件会按此顺序拼成一条。
+
+⚠ 三段是分工，不是把同一件事写三遍。tag 写「画面里有什么」，中文段写「怎么取景、空间怎么排、光从哪来」，英文段写「身体此刻是什么状态」。同一条信息三段各写一遍，等于给它叠三层权重——模型为了同时满足三层，会擅自改机位。
+
+## 一、机位先钉死，三段都受它约束
+
+机位是整条串的骨架。**先定机位，再写任何内容**，且全程只定一次。
+
+1.1 朝向四选一，写进 tag 行（紧跟景别）：front view（正对）/ three-quarter view（四分之三侧）/ side view（正侧，镜头与身体成直角）/ from behind（后视）。中文段第一句与它同口径，**不许改口**。
+1.2 机位定了，就只写这个机位物理上看得见的部位：
+- side view：看得见一侧脸廓与一只眼、一侧肩胸、一侧臀的轮廓、腿的侧线。**看不见**臀缝、看不见两片臀肉、看不见阴部正面、看不见整条后背。
+- from behind：看得见后脑、背、臀、臀缝。**看不见**脸（回头只露一只眼与半张脸）。
+- front view：看得见脸、胸腹正面。**看不见**后背与臀缝。
+- three-quarter view：露出的那一侧写全，被挡住的那一侧一个字都不要写。
+1.3 **某个细节只有换机位才成立时，改机位或删细节，绝不两者都写。** 这是本线最容易翻车的一处：模型算不出「side view + 臀缝可见」这种组合，它会保留你写得最具体的那半句（细节），把机位偷偷转到能满足它的方向——你在前面写十遍 side view 也拦不住。要侧视下的性张力，就写侧视下真看得见的：臀的整片轮廓、内裤边缘在胯上勒出的浅痕、蕾丝被透射光照透、大腿没入阴影。
+1.4 朝向别藏在动作词里：bent over / looking back 在训练数据里默认与后视绑定。非后视镜头不要单独用 bent over、looking back，改写成不含朝向的：leaning forward、back arched、upper body twisted、hands on knees、head turned to the side、glancing over her shoulder。真要回头，写 looking over her shoulder 并同时把机位写死。
+1.5 视线全串只留一个方向：looking at viewer / looking at another / looking away / looking back 四选一，不要并列。staring 没有主语会被摊到所有人身上，必须写成「谁 staring at 谁」。
+
+## 二、tag（JSON 的 tag 键）
+
+只用英文锁「画面里有什么」，逗号分隔，一句话能说完的不要拆成五个 tag。
+
+顺序：人数 → 景别（只写一个）→ **机位朝向（见 1.1）** → 人种与年龄感 → 外貌锚点 → 服装（逐件）→ 动作 → 表情与视线 → 场景 → 光线。
+- 例：1girl, solo, medium shot, three-quarter view, chinese, east asian, twenty years old, long black hair, white cotton camisole, standing, looking at viewer, smile, dorm room, desk lamp
+- 40 个 tag 以内；不写完整句子；不写权重语法（(x:1.3)）、不写 BREAK、不写画幅比例、不写采样参数、不写 LoRA 触发词。
+- 画质串由渠道预设的「固定正面」承担（moodyrealism, photorealistic, photograph, high detail, sharp focus, natural skin texture）。tag 里**不要**再写 masterpiece / best quality / very aesthetic —— 那是动漫线词表，会把画面推回插画与游戏 CG；也不重复 moodyrealism / photorealistic / photograph。
+- 表情与视线每张都写，用标准词：smile / grin / blush / embarrassed / frown / surprised / crying / angry / serious / sad / worried / scared / smug / seductive smile / expressionless / half-closed eyes / open mouth；视线写 looking at viewer / looking at another / looking away / looking down / looking up / looking back。禁止把中文感受直译成自创词组（tented shorts 这类自造复合词也算）。
+- 人种是硬约束：东亚角色一律写 chinese / east asian，不写就按英文先验出欧美脸。
+- **不限英文段落**：tag 行在本线会和 nl 一起进模型（不是二选一），所以人数、景别、机位、人种这些承重墙必须写全，别指望散文里补。
+- **每个动作和每件服装都要有归属**：多人画面写成「谁 + 做什么」（小静 leaning forward, 小宇 sitting cross-legged），不要写成 leaning forward, sitting cross-legged 这种飘着两截——模型会把它俩揉到同一个人身上。姿势与场景也要分开：sitting cross-legged 归动作，long sofa 归场景位。
+
+## 三、nl（JSON 的 nl 键）：**本线必填**
+
+由「中文散文段 + 英文身体段」两部分组成，中文在前、英文在后。
+
+### A. 中文散文段（2–3 句，共 120–350 字）
+- **第一句只干一件事：把机位的几何说清楚**——朝向、机位高度、主体在画面哪一侧、身体朝哪边、镜头与主体的相对角度。这是模型唯一的空间说明书，写歪了后面全歪。
+- 环境按**前景 / 中景 / 背景**分层，**同一件家具只能出现在其中一层**。前景写比主体更靠近镜头的（桌角、地毯边、灯座、门框、她自己撑在膝盖上的手）；背景写比主体更远的。前景写了沙发扶手、背景又写沙发，模型只能随机挑一个位置摆它，构图就散了。
+- 光线**先定光源在房间的哪一侧**，再说谁在受光面、谁沉在暗部。光从阳台来，阳台那一侧的人与物就是亮的；写「靠沙发这一侧沉在暗部」就必须让沙发在阳台的对侧。两头都要亮等于没有光源。逆光时补一句地面或墙面的反光，否则脸是一块黑。
+- 不写外貌词：五官、发色、肤色、年龄、人种、罩杯、体型总述、腰胯臀腿，全部归 tag、英文身体段与下面的「角色外貌」通道。中文段只写**动作、穿着、环境、光线、介质**。
+- 不写皮肤上的反光 / 油光 / 高光点（832×1216 的半身图上脸只有约 100 像素，这类词会糊成一块脏亮斑）。
+
+### B. 英文身体段（60–120 词，独立成句，接在中文段之后）
+- 第一句必须给**年龄 + 人种**：She is a Chinese woman of twenty, …（男性写 a Chinese man of …）。**年龄与人种你永远要写**，它们不属于任一角色的固定外貌档案，插件也不会替你注入。
+- **这一段不是中文段的翻译。** 中文段写过的姿势、场景、光线、介质，这里一个字都不要复述；这里只写身体：轮廓 → 穿着或赤裸到什么程度 → 器官与贴合处 → 姿势造成的形变。
+- 选词必须落在 1.2 的可见范围内：side view 下写 one buttock pushing through the thin fabric、the elastic edge pressing a shallow line into the near hip；不要写 both buttocks / the crease / over her vulva —— 这三样要求后视，写着写着机位就被拽过去了。
+- 器官用英文实词：breasts, areolae, nipples, waist, hips, vulva, clitoris, labia, penis, shaft, glans, testicles, anus；不要 down there / her sex 这类委婉语。
+- 轮廓与体型（肩背圆润、胸饱满自然下坠、腰细胯宽、大腿根有软肉、小腹平但有薄脂、臀圆而宽；胸型三选一 high and firm / slightly pendulous / full and wide-set；阴部三选一 clean-shaven / trimmed / natural bush）——**这一段是可选的，判据见下面的「角色外貌」**：角色带 [中文外貌已填] 标记时，他的体型与脸已由插件注入，你不要在英文段里再写一遍体型总述，只写本画面**此刻的状态**（穿着/赤裸程度、器官与贴合处、姿势造成的形变）。没有该标记时才按上面这套完整写一次。
+- 只写身体与状态；场景、光、风格留给中文段。
+- 材质写「粗糙的那一面」：看得见的毛孔、细小的肤色不均、一两点很淡的斑或小痣、脸颊靠下颌的一层浅绒毛、手肘膝盖略深略粗、布的织纹与褶皱阴影。**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷 —— 它们和负面里的 overly smooth skin 打架，出来是假面。
+
+⚠ nl 最终会被折叠成一行（换行变空格）：用句号分句，不要靠换行分段，也不要写小标题、编号、列表。
+
+## 四、角色外貌：看角色的标记决定谁写
+
+本线开启了「中文外貌」通道：角色库里填了中文外貌的角色，只要名字在 tag 或 nl 里出现，插件就会把他的外貌描述**原样拼在正向末尾**，不经你、也不经 AI 改写。
+
+你不必猜谁填了谁没填——【角色固定外貌库】里每个条目后面都带标记，照标记分流：
+
+**A. 条目带 [中文外貌已填]**
+- 该角色的五官、发色、肤质、体型**一个字都不要写**：不要写进 tag 的外貌锚点位，不要在英文身体段里再给一遍体型总述。写了会和插件拼进来那段形成两套外貌条件，脸会漂。
+- 你在 tag 里只写：**名字**（中文名写中文，逐字保持原文）+ 本画面特有的服装、动作、表情、视线、场景、光线。
+- 英文身体段仍需写：年龄 + 人种（必写）、穿着或赤裸到什么程度、器官与贴合处、姿势造成的形变。**跳过的是「体型总述」那几句，不是整段。**
+- 该角色的皮肤质感（毛孔、细致肤色不均、绒毛）照常写——材质层不属于固定外貌档案。
+
+**B. 条目没有该标记**（库里的角色确实没填、或本来就是一次性角色）
+- 外貌由你补一次，且只补一次：tag 的外貌锚点位写发色/瞳色等固定特征，英文身体段按完整顺序写轮廓、体型、状态。
+
+**无论哪类**：
+- 同一角色一张图里外貌只写一遍，再次提到用简短指代（the boy、the silver-haired girl）。
+- 标记只表示「有」，具体内容你看不到、也**不要向自己编造或向用户索要**。
+
+## 五、自检：交出去之前对一遍
+
+1. **机位一致性**：tag 的机位词、中文段第一句、英文段里提到的每一个部位，三者说的是同一台机器吗？侧面串里出现 the crease / both buttocks / 直面阴部，就是没对上，删细节。
+2. **一件东西只写一次**：tag 写了 black miniskirt，中文段不要再写「黑裙子」；中文段写了弯腰，英文段不要再翻译一遍弯腰。
+3. **同一件家具不许横跨两层**：前景与背景各查一遍，重复的删掉一个。
+4. **光只有一个来源**：写出「谁在亮面、谁在暗面」之前，先写清光源在房间哪一侧，两边都要亮就重写。
+
+分镜页：**本线不出**。一页多格会把脸和贴合细节压碎。
+
+画幅方向（size 键）：人像、半身、特写写 portrait；横向场景或双人横向构图写 landscape。与 tag 里的景别保持一致。**横向展开的身体塞进竖构图会被压扁、纵深被挤没**——一个横躺或弯腰横跨画面的人，写 landscape。
+
+禁止项：
+- 权重语法、正向否定句（no bra / without glasses 会反过来画出该物）、画幅比例词、采样参数、LoRA 触发词。
+- 动漫画质词（masterpiece / best quality / very aesthetic）。
+- 皮肤反光词：glossy / shiny / oily / greasy、油光 / 油亮 / 反光 —— 负面串里已有这四条，正面再写会打架。
+- 拍摄介质参数词（HDR / 计算摄影 / 高分辨率）：手机直拍、手持略歪、竖构图、暗部有噪点、焦点略软这一类**观感**照写，不用参数词。
+- 同一件事两层说：tag 写了 white cotton camisole，中文段又写一遍「穿白吊带」。
+- 自造复合 tag：tented shorts、embarrassed blush face 这类模型没见过的组合，拆回标准词（black basketball shorts + 英文段写 the outline of his penis straining the fabric）。
+
+通用要求：
+- 只写「画得出来」的东西。正文里明确的外貌、服装、道具原样保留，不新增人物、服装、道具，不改人数。
+- 画面里不该出现的东西，**正面不写**就是最有效的压制；不要靠 no / without 来压，那会反向画出该物。
+- 正文是小说不是分镜脚本：镜头、构图、光线这些「画出来才存在」的必须主动补全；人物、动作、场景事实必须以正文与设定为准。
+- 中文段写中文，tag 行与身体段写英文；角色名保持原文（中文名写中文，不音译）。`
 
 /**
  * MOSS 写实线的思维链。与规范配套:
  * 槽位块要求填的每一项,都必须在 DEFAULT_MOSS_SPEC 里有判据,否则模型会去填它没被教过的东西。
  */
-export const DEFAULT_MOSS_THINKING = "【输出前思考清单（MOSS 写实线）】\n先在 <thinking> 里完成以下自查，再直接输出 JSON。思考里**不要**写出最终答案的草稿——不写完整 tag 串、不写完整 nl 句、不写 JSON 对象。\n\n1. 本楼选哪个瞬间：一句话说清「谁、在做什么、镜头框到哪里」。核心互动发生在躯干以下时，景别必须能框住它（medium shot / full body），不许用 close-up 把接触点裁出画面。\n\n2. 在场者逐个清点：每个可见个体三选一——【已建档】（库中有同名条目）/【本次建档】（changes 里有 field:\"new\"）/【一次性】（不建档不写 changes）。镜头外的人不许写进 tag / nl / characters。人群按一团写进 tag。\n\n3. 元素清单（进 tag，全英文）：人数、景别（只一个）、人种与年龄感、外貌锚点、逐件服装、动作、表情、视线、场景、光线。每项都要能在 tag 里找到对应词；表情与视线不得留空；东亚角色必须有 chinese / east asian。画质串由渠道预设的「固定正面」承担，tag 里不要再写一遍，也不要写 masterpiece / best quality / very aesthetic。\n\n4. nl 由两段组成，中文在前、英文在后，缺一段都算没写完：\n\n   A. 中文散文段（2–3 句，120–350 字）：机位与景别在首句 → 谁在哪里、正在做什么、2–3 个表情或生理反应 → 环境按前景 / 中景 / 背景分层 → 光线从哪来、落在哪、明暗怎么分。\n      这一段**只写动作、穿着、环境、光线、介质**；五官 / 发色 / 肤色 / 年龄 / 人种 / 罩杯 / 体型总述 / 腰胯臀腿一律不写——它们归 tag、英文身体段与插件注入的角色外貌。中文段里重描外貌，脸就会漂。\n\n   B. 英文身体段（60–120 词）：第一句必须给年龄 + 人种（She is a Chinese woman of twenty, …）；然后先轮廓、再细节、最后状态——肩 / 胸 / 腰 / 胯 / 臀 / 腿 → 穿着或赤裸到什么程度 → 器官与贴合处（谁压在谁身上、哪个部位接触哪个部位）。器官用英文实词（breasts, areolae, nipples, waist, hips, vulva, clitoris, labia, penis, shaft, glans, testicles, anus），不用委婉语。胸型三选一（high and firm / slightly pendulous / full and wide-set），阴部三选一（clean-shaven / trimmed / natural bush）。\n\n5. 角色外貌归谁写：**看【角色固定外貌库】里的标记，别猜**。带 [中文外貌已填] 的角色，插件会把他的外貌原样拼进正向——你只写名字 + 本画面特有的服装、动作、表情、视线，tag 里不写五官/发色/体重，英文身体段跳过「体型总述」那几句（年龄与人种、穿着程度、器官贴合、姿势形变仍然必写）。没带标记的，才由你在 tag 与英文身体段里完整补一次，且只补一次。标记只说「有」，内容不可见，不要编造。\n\n6. 材质层（写在英文身体段末尾）：写「粗糙的那一面」——看得见的毛孔、细小的肤色不均、一两点很淡的斑或小痣、脸颊靠下颌的一层浅绒毛、手肘膝盖略深略粗、布的织纹与褶皱阴影。只写粗糙面，**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷。\n\n7. 拍摄介质：中文段里说清这套画面是怎么被拍下来的（手机直拍 / 手持略歪 / 竖构图 / 室内顶光发白 / 暗部有噪点 / 焦点略软），不堆 HDR、计算摄影、高分辨率这类参数词。\n\n8. 照抄纪律：同一角色一张图里只写一遍，再次提到用简短指代（the boy、the silver-haired girl）。角色名逐字保持原文（中文名写中文），不音译不变体。\n\n9. 自查禁区：没有权重语法、没有正向否定句（no / without）、没有画幅比例词、没有采样参数、没有 LoRA 触发词、没有动漫画质词（masterpiece / best quality / very aesthetic）、没有皮肤反光词（glossy / shiny / oily / greasy、油光 / 油亮 / 反光）。nl 会被折叠成一行，所以用句号分句，不靠换行分段，也不写小标题 / 编号 / 列表。\n\n10. 张数在设定范围内；没有值得画的画面就返回空数组，不要凑数。";
+export const DEFAULT_MOSS_THINKING = `【输出前思考清单（MOSS 写实线）】
+先在 <thinking> 里完成以下自查，再直接输出 JSON。思考里**不要**写出最终答案的草稿——不写完整 tag 串、不写完整 nl 句、不写 JSON 对象。
+
+1. 本楼选哪个瞬间：一句话说清「谁、在做什么、镜头框到哪里」。核心互动发生在躯干以下时，景别必须能框住它（medium shot / full body），不许用 close-up 把接触点裁出画面。
+
+2. 在场者逐个清点：每个可见个体三选一——【已建档】（库中有同名条目）/【本次建档】（changes 里有 field:"new"）/【一次性】（不建档不写 changes）。镜头外的人不许写进 tag / nl / characters。人群按一团写进 tag。
+
+3. 机位定死（本步必须在写任何内容之前完成）：
+   - 朝向四选一：front view / three-quarter view / side view / from behind；机位高度（eye level / hip level / low angle / high angle）；主体在画面哪一侧、身体朝哪边。这一组决定后面全部内容，定了就不再改。
+   - **可见性对照**：side view 只看得见一侧脸廓与一只眼、一侧肩胸、一侧臀的轮廓、腿的侧线——看不见臀缝、看不见两片臀肉、看不见阴部正面。from behind 看不见脸。front view 看不见后背与臀缝。
+   - 想写的细节如果只有换机位才成立，**现在就说：改机位，还是删细节**。两者都写，模型会为了细节把机位偷偷转过去。
+   - 朝向别藏在动作词里：bent over / looking back 自带后视先验。非后视镜头改用 leaning forward / back arched / upper body twisted / hands on knees / head turned to the side / glancing over her shoulder。
+
+4. 元素清单（进 tag，全英文）：人数、景别（只一个）、**机位朝向（第 3 步定下的那个）**、人种与年龄感、外貌锚点、逐件服装、动作、表情、视线、场景、光线。每项都要能在 tag 里找到对应词；表情与视线不得留空；视线全串只留一个方向；每个动作和每件服装都要带归属（小静 leaning forward, 小宇 sitting cross-legged），不许飘着。东亚角色必须有 chinese / east asian。画质串由渠道预设的「固定正面」承担，tag 里不要再写一遍，也不要写 masterpiece / best quality / very aesthetic。
+
+5. nl 由两段组成，中文在前、英文在后，缺一段都算没写完：
+
+   A. 中文散文段（2–3 句，120–350 字）：**第一句只写机位的几何**——朝向、机位高度、主体在画面哪一侧、身体朝哪边、镜头与主体的相对角度，与第 3 步字字对齐，后面不许改口；第二句写谁在哪里、正在做什么、2–3 个表情或生理反应；再写环境，前景 / 中景 / 背景分层，**同一件家具只能出现在其中一层**；最后写光线，**先定光源在房间哪一侧**，再说谁在受光面、谁沉在暗部，两头都要亮就是没写。
+      这一段**只写动作、穿着、环境、光线、介质**；五官 / 发色 / 肤色 / 年龄 / 人种 / 罩杯 / 体型总述 / 腰胯臀腿一律不写——它们归 tag、英文身体段与插件注入的角色外貌。中文段里重描外貌，脸就会漂。
+
+   B. 英文身体段（60–120 词）：第一句必须给年龄 + 人种（She is a Chinese woman of twenty, …）；**这一段不是中文段的翻译**——中文段写过的姿势、场景、光、介质，这里一个字都不复述；只写身体：轮廓（肩 / 胸 / 腰 / 胯 / 臀 / 腿）→ 穿着或赤裸到什么程度 → 器官与贴合处（谁压在谁身上、哪个部位接触哪个部位）→ 姿势造成的形变。器官用英文实词（breasts, areolae, nipples, waist, hips, vulva, clitoris, labia, penis, shaft, glans, testicles, anus），不用委婉语。选词必须落在第 3 步的可见范围里：side view 写 one buttock / the near hip / the elastic edge pressing a shallow line，不要写 both buttocks / the crease / over her vulva。胸型三选一（high and firm / slightly pendulous / full and wide-set），阴部三选一（clean-shaven / trimmed / natural bush）。
+
+6. 角色外貌归谁写：**看【角色固定外貌库】里的标记，别猜**。带 [中文外貌已填] 的角色，插件会把他的外貌原样拼进正向——你只写名字 + 本画面特有的服装、动作、表情、视线，tag 里不写五官/发色/体重，英文身体段跳过「体型总述」那几句（年龄与人种、穿着程度、器官贴合、姿势形变仍然必写）。没带标记的，才由你在 tag 与英文身体段里完整补一次，且只补一次。标记只说「有」，内容不可见，不要编造。
+
+7. 材质层（写在英文身体段末尾）：写「粗糙的那一面」——看得见的毛孔、细小的肤色不均、一两点很淡的斑或小痣、脸颊靠下颌的一层浅绒毛、手肘膝盖略深略粗、布的织纹与褶皱阴影。只写粗糙面，**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷。
+
+8. 拍摄介质：中文段里说清这套画面是怎么被拍下来的（手机直拍 / 手持略歪 / 竖构图 / 室内顶光发白 / 暗部有噪点 / 焦点略软），不堆 HDR、计算摄影、高分辨率这类参数词。
+
+9. 照抄纪律：同一角色一张图里只写一遍，再次提到用简短指代（the boy、the silver-haired girl）。角色名逐字保持原文（中文名写中文），不音译不变体。
+
+10. 自查禁区：没有权重语法、没有正向否定句（no / without）、没有画幅比例词、没有采样参数、没有 LoRA 触发词、没有动漫画质词（masterpiece / best quality / very aesthetic）、没有皮肤反光词（glossy / shiny / oily / greasy、油光 / 油亮 / 反光）、没有自造复合 tag。nl 会被折叠成一行，所以用句号分句，不靠换行分段，也不写小标题 / 编号 / 列表。
+
+11. 一致性总检：按规范的「自检：交出去之前对一遍」四条过一遍——机位词 / 中文段第一句 / 英文段提到的每个部位是否同一台机器；同一件东西有没有写两遍；前景与背景有没有放同一件家具；光有没有唯一的来源。有一项没过就回去改，不要交。
+
+12. 张数在设定范围内；没有值得画的画面就返回空数组，不要凑数。`
 
 /** {{nl}} 宏的展开内容(「生成自然语言」开启时);关闭时宏展开为空串。 */
 export const DEFAULT_COMFY_NL_SPEC = `nl（JSON 的 nl 键）：自然语言——连贯完整的英文句子描述同一画面（单人一到三句；多人按下面结构组织），例如：

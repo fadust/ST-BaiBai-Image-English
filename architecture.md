@@ -594,6 +594,20 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     后者讲的是「tag 之外再加一段 nl」的 tag 流口径,混进散文流规范里自相矛盾。
     ⚠ nl 里的换行会被折叠成空格(既有行为,`protocol.ts` 的 `sanitizeContent`),故 MOSS 规范明令
     **用句号分句、不依赖换行分段**——照 tag 流习惯写成多行,发出去就是一句连到底。
+  - **MOSS 线的机位契约**(规范 §一 + 思维链第 3 步):tag 的元素顺序里曾只有「景别」而没有「朝向」,
+    机位只活在 nl 首句一句话里;等中文身体段、英文身体段、中文外貌块都拼上去,那个信号早被冲淡。
+    实测后果是模型**为了保住细节而擅自改机位**:串里同时写 side view 与「蕾丝勒进臀缝 / 两片臀肉」
+    时,它会判定侧视下这些细节不成立,于是把镜头转到背后——正面写十遍 side view 也拦不住。
+    故规范新增三件硬约束:① 朝向进 tag 元素位(front / three-quarter / side / from behind,紧跟景别),
+    中文段首句必须同口径;② 列出四种朝向各自的可见部位表,并规定「细节只有换机位才成立时,
+    **改机位或删细节,绝不两者都写**」;③ 拆掉自带后视先验的复合动作词(bent over / looking back),
+    非后视镜头改用 leaning forward / back arched / upper body twisted 等不含朝向的说法。
+    同批还收了三处会独立毁构图的:**前景与背景不许放同一件家具**、**光位必须先定光源在房间哪一侧**
+    (否则「她后腰受光 + 沙发侧沉在暗部」两头都亮等于没有光源)、**英文身体段不是中文段的翻译**
+    (两段逐句对应等于把同一件事加权两遍)。规范末尾补一节「五、自检:交出去之前对一遍」,
+    思维链收一条一致性总检,让模型在交出前把机位词 / 中文段首句 / 英文段部位三者对一遍。
+    tag 流那两份规范不带这些条款——那条线 single-CLIP 吃短 tag,不会出现「散文细节压过机位词」
+    这种失效模式,写了只是噪声。
   - **中文外貌通道**(角色库 `zh` → 最终正向):角色库那七个字段是英文 danbooru tag,
     只能进 tag;而 MOSS 线的正向曾是 `nl || prompt`,nl 一非空 tag 整行就被丢掉,
     于是中文外貌**一个词都到不了模型**。补法分两处:
@@ -1029,6 +1043,7 @@ API 对象 `Object.freeze`,一个插件改不动下一个插件拿到的东西�
 | 正文写回(含竞态) | src/st/messageEdit.ts |
 | 请求历史(LLM/生图,内存不持久化) | src/state/history.ts(store)+ src/pages/history/index.vue(页面)+ src/api/client.ts 埋点 |
 | 最终提交的提示词全文(含拼接结果) | `generate.ts` 的 `GenerateOutput.finalPrompt/finalNegative` 与 `GenerateProgress.onPrompt`;拼装口径 = `backends/comfyui.ts` 的 `previewComfyPrompt`(simple 走 compose*、custom 走占位符取值)+ `backends/nai.ts` 的 `fullPositivePrompt`。历史侧 `patchImagePrompt`/`finishImage({finalPrompt})` 落账,`ImageRecord.finalPrompt` 展示;公开接口随结果回传同名字段 |
+| MOSS 线机位契约(朝向进 tag / 可见性对照 / 细节与机位二选一) | src/state/settings.ts 的 `DEFAULT_MOSS_SPEC` §一 + `DEFAULT_MOSS_THINKING` 第 3 步;只在 moss 方言下下发(`autoTag/prompt.ts` 的 `backendPromptSpec` / `backendThinkingPrompt`) |
 | 角色库「有中文外貌」标记 | `autoTag/charAnchors.ts` 的 `ZH_FILLED_MARK`(只声明存在、不输出正文)+ `buildLibraryText` 头部解释;消费在 `autoTag/prompt.ts` 的 `libraryReferenceRule`(moss 方言分叉) |
 | 复制到剪贴板 | src/st/clipboard.ts 的 copyText |
 | 主窗口 UI(遮罩/导航/动画/抽屉) | src/App.vue + state/ui.ts + components/ |

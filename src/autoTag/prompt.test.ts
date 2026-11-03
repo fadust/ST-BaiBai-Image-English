@@ -1269,6 +1269,48 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 
+  // 机位是 MOSS 线的骨架:tag 的元素顺序里曾有「景别」却没有「朝向」,机位只活在 nl 首句,
+  // 被后面两段冲淡后模型会为了细节改机位(实测:side view + 臀缝可见 → 出图变成后视)。
+  it('MOSS 方言:机位朝向进 tag 元素位,且规范/思维链都钉住可见性', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss';
+
+      const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+      const spec = pick(messages, 'MOSS-Image 写实线提示词规范');
+      const thinking = pick(messages, '输出前思考清单（MOSS 写实线）');
+
+      // tag 元素顺序必须有「机位朝向」这一项,且排在景别之后
+      expect(spec).toContain('人数 → 景别（只写一个）→ **机位朝向（见 1.1）**');
+      expect(spec).toContain('front view（正对）/ three-quarter view（四分之三侧）/ side view（正侧');
+      // 可见性对照:细节与机位冲突时必须择一,这是本条修复的核心
+      expect(spec).toContain('看不见**臀缝');
+      expect(spec).toContain('改机位或删细节，绝不两者都写');
+      expect(spec).toContain('bent over / looking back 在训练数据里默认与后视绑定');
+      // 前景/背景不许放同一件家具 —— 实测里「前景扶手 + 背景沙发」直接把构图搞散
+      expect(spec).toContain('同一件家具只能出现在其中一层');
+      // 光位必须先定光源在哪一侧,否则「两头都亮」等于没有光源
+      expect(spec).toContain('先定光源在房间的哪一侧');
+      // 英文身体段不是中文段的翻译:这条缺了,两段会互相加权
+      expect(spec).toContain('这一段不是中文段的翻译');
+
+      // 思维链必须把「定机位」提到写内容之前,并收在一条一致性总检上
+      expect(thinking).toContain('机位定死（本步必须在写任何内容之前完成）');
+      expect(thinking).toContain('改机位，还是删细节');
+      expect(thinking).toContain('自检：交出去之前对一遍');
+
+      // tag 流那两份不带机位条款:那条线 single-CLIP 吃短 tag,写了只是噪声
+      state.preset.specDialect = 'comfy';
+      const comfyMessages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+      const comfySpec = pick(comfyMessages, '【ComfyUI 提示词规范】');
+      expect(comfySpec).not.toContain('机位朝向');
+      expect(comfySpec).not.toContain('改机位或删细节');
+    } finally {
+      state.restore();
+    }
+  });
+
   it('MOSS 方言:外貌归属按库标记分流,不再无条件要求照抄', async () => {
     const state = snapshot();
     try {
@@ -1283,7 +1325,11 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       const contract = messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
 
       // 填了中文外貌的角色:外貌由插件注入,AI 不重描(与 MOSS 规范同口径)
-      expect(contract).toContain('一个外貌词都不要写');
+      expect(contract).toContain('这些固定外貌一个词都不要写');
+      // 年龄与人种不属于固定外貌档案,插件不注入 —— 这条必须留着,否则 zh 角色会失去
+      // chinese / east asian,按英文先验出欧美脸
+      expect(contract).toContain('年龄感与人种');
+      expect(contract).toContain('写了不算重描');
       // 没填的仍然由 AI 补一次 —— 否则没填 zh 的角色会彻底失去外貌
       expect(contract).toContain('外貌由你补一次');
       // 通用条款那句「无条件照抄库字段」在 moss 下必须让位,否则两条相反指令并存
