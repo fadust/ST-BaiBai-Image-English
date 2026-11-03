@@ -8,7 +8,18 @@ import { PLUGIN_VERSION } from '@/version';
 import { reactive } from 'vue';
 
 const CURRENT_VERSION = PLUGIN_VERSION;
-const REMOTE_MANIFEST_URL = 'https://raw.githubusercontent.com/baibai-git/ST-BaiBai-Image/main/manifest.json';
+
+/**
+ * 更新检测的比对源。
+ *
+ * ⚠ 必须指向**本扩展实际推送的那个仓库**(git remote origin),否则检测就是对着一个
+ * 早已停更的副本做比较:baibai-git/ST-BaiBai-Image 停在 0.3.2,而工作副本早已 0.3.5+,
+ * 结果是新版本永远提示不出来、老用户永远收不到更新,而且不会有任何报错——静默失效最难查。
+ *
+ * 换远端仓库时(fork / 改名 / 迁移),这里要跟着一起改;update.test.ts 有一条断言盯着它。
+ */
+export const REMOTE_MANIFEST_URL =
+  'https://raw.githubusercontent.com/yyds-1234/ST-BaiBai-Image/main/manifest.json';
 
 export const updateState = reactive({
   current: CURRENT_VERSION,
