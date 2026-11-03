@@ -32,6 +32,7 @@ import ModalMask from '@/components/ModalMask.vue';
 import {
   activeComfyPreset,
   effectiveComfyConn,
+  LAYOUT_LOCKS,
   newComfyWorkflow,
   ORIENTATION_LOCKS,
   settings,
@@ -306,6 +307,9 @@ const nlHint = computed(() => {
  * 故只在方言层面禁用;切回 comfy 方言立刻恢复可点,存量值原样保留。
  */
 const isMossDialect = computed(() => active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime');
+
+/** 版式锁只对动漫线成立:那条线能画画面内文字与气泡,分镜页是它的强项;其它方言没这套口径。 */
+const showLayoutLock = computed(() => active.value.specDialect === 'moss-anime');
 
 /** MOSS 模板锁死的采样器(目前只有 euler);null = 用户自选,别处模板不受影响。 */
 const fixedSampler = computed(() => meta.value.samplerFixed);
@@ -582,8 +586,32 @@ function applyAssist() {
           <span class="bbi-field-label">提示词规范</span>
           <BbiSelect v-model="specDialectSel" :options="specDialectOptions" aria-label="提示词规范" />
         </div>
+        <!-- 规范提示紧贴它上方的下拉:下面那条版式提示是条件显示的,夹在中间会让这条提示
+             看起来像在解释「版式」而不是「提示词规范」 -->
         <p class="bbi-field-hint wf-switch-hint">
-          这套工作流配哪份规范：MOSS 线强制写英文散文段（nl），且不请求 AI 动态负面词。
+          这套工作流配哪份规范：MOSS 线强制写散文段（写实线英文、动漫线中文），且不请求 AI 动态负面词。
+        </p>
+        <!-- 版式锁紧跟方言:只有动漫线能画画面内文字与气泡,别的方言没有这套口径,故整块 v-if -->
+        <div v-if="showLayoutLock" class="bbi-select-row">
+          <span class="bbi-field-label">版式</span>
+          <div class="bbi-segmented" role="tablist" aria-label="版式">
+            <button
+              v-for="opt in LAYOUT_LOCKS"
+              :key="opt.value"
+              class="bbi-seg"
+              :class="{ 'is-on': active.layoutLock === opt.value }"
+              type="button"
+              role="tab"
+              :aria-selected="active.layoutLock === opt.value"
+              :title="opt.hint"
+              @click="active.layoutLock = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <p v-if="showLayoutLock" class="bbi-field-hint wf-switch-hint">
+          一张图里放几格。分镜条 / 漫画页会让 AI 按格数分段写（每格一句景别机位），漫画页还会要气泡台词；格数有上限，超了脸和材质会一起崩。
         </p>
 
         <div class="bbi-num-row">

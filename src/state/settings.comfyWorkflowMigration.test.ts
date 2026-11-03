@@ -148,4 +148,57 @@ describe('ComfyUI 工作流库迁移', () => {
       landscapeSize: '1024×1024',
     });
   });
+
+  it('版式锁随预设存取:老数据落 auto,脏值落 auto,合法档位原样保留', async () => {
+    const settings = await hydrateWithComfy({
+      workflows: [
+        // 升级前的存量预设:没有 layoutLock 字段,不能变成 undefined 漏进协议
+        { id: 'wf_old', name: '老预设', workflow: '{"1":{}}', specDialect: 'moss-anime' },
+        // 脏值:不认识的档位既不能进协议,也不能让面板出现「一个都没选中」的空档
+        { id: 'wf_dirty', name: '脏值', workflow: '{"2":{}}', specDialect: 'moss-anime', layoutLock: 'comic' },
+        { id: 'wf_page', name: '漫画页', workflow: '{"3":{}}', specDialect: 'moss-anime', layoutLock: 'page' },
+      ],
+      activeWorkflowId: 'wf_page',
+    });
+
+    const byId = Object.fromEntries(settings.comfyui.workflows.map(w => [w.id, w]));
+    expect(byId.wf_old.layoutLock).toBe('auto');
+    expect(byId.wf_dirty.layoutLock).toBe('auto');
+    expect(byId.wf_page.layoutLock).toBe('page');
+  });
+
+  it('activeLayoutLock 只看当前后端与当前预设:非 comfyui 后端恒 auto', async () => {
+    mocks.context = {
+      extensionSettings: {
+        baibai_image: {
+          defaultBackend: 'comfyui',
+          comfyui: {
+            workflows: [
+              { id: 'wf_a', name: 'A', workflow: '{"1":{}}', specDialect: 'moss-anime', layoutLock: 'strip' },
+              { id: 'wf_b', name: 'B', workflow: '{"2":{}}', specDialect: 'moss-anime', layoutLock: 'page' },
+            ],
+            activeWorkflowId: 'wf_a',
+          },
+        },
+      },
+      saveSettingsDebounced: vi.fn(),
+    };
+    const { hydrateSettings, activeLayoutLock, settings, normalizeLayoutLock } = await import('@/state/settings');
+    await hydrateSettings();
+
+    // 判据只此一处:面板与协议都从这里取,切预设就跟着换
+    expect(activeLayoutLock()).toBe('strip');
+    settings.comfyui.activeWorkflowId = 'wf_b';
+    expect(activeLayoutLock()).toBe('page');
+
+    // 切到 NAI 渠道后版式锁不参与(那条线没有分镜口径),存量值不许串过去
+    settings.defaultBackend = 'nai';
+    expect(activeLayoutLock()).toBe('auto');
+
+    // 清洗函数本体:合法档位原样返回,其余一律 auto
+    expect(normalizeLayoutLock('single')).toBe('single');
+    expect(normalizeLayoutLock('page')).toBe('page');
+    expect(normalizeLayoutLock('')).toBe('auto');
+    expect(normalizeLayoutLock(undefined)).toBe('auto');
+  });
 });

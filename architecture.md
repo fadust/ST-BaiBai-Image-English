@@ -629,6 +629,19 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     禁的是「固定外貌」而不是「英文身体段里重描体型」——这条线根本没有英文身体段,照搬写实线那份
     会让模型理解成「中文段也别写外貌」,带标记的角色反而彻底没有外形;③ 年龄感与人种在两族里都明令
     「照常写」,它们不属于固定外貌档案、插件不注入。
+  - **版式锁(`LayoutLock`)= 预设级,不是每次调用现选**:四档 `auto` / `single` / `strip` / `page`,
+    只有 `moss-anime` 方言有意义——别的方言规范里根本没有分镜这套口径,下发一条它无从执行的指令
+    只会稀释规则,所以 `autoTagProfile()` 对非动漫方言**强制回 `auto`**,即使存的是 `strip`。
+    为什么不交给模型自己选:让模型决定版式,同一套预设跑两次会给出一张单图一张四格页,不可复现;
+    而且格数没有硬上限时它会为塞进画面而硬缩,四格以上脸和材质必崩,这个上限必须是死的。
+  - **版式规则是动态的,不能写进静态规范**:规范常量(`DEFAULT_MOSS_ANIME_SPEC`)拿不到当前预设,
+    分叉只能发生在 `prompt.ts`——`layoutRule` 拼进 `fixedContract`(与 `sizeRule` 同层,紧跟其后),
+    `layoutThinking` 追加在思维链末尾(规范讲「怎么写」,思维链讲「交之前检查什么」,版式最容易漏的
+    恰恰是「忘了写页型」这种自查项)。分镜条封顶 3 格、漫画页 2–4 格带气泡,两处措辞必须与
+    `DEFAULT_MOSS_ANIME_SPEC` §六 同口径,否则模型会在两套规则之间折中。
+  - ⚠ **版式改的是 nl 的段落结构,不是「写什么词」**:单张 4–5 段;分镜条 / 漫画页是
+    「页型一段 + 每格一段 + 整页光一段」,每格第一句必须点明景别与机位——不写景别时三格会拍同一张脸。
+    这也是它不能并入 `sizeRule` 的原因:那条只换一个词,这条换整条串的分段方式。
   - **中文外貌通道**(角色库 `zh` → 最终正向):角色库那七个字段是英文 danbooru tag,
     只能进 tag;而 MOSS 线的正向曾是 `nl || prompt`,nl 一非空 tag 整行就被丢掉,
     于是中文外貌**一个词都到不了模型**。补法分两处:
@@ -1083,6 +1096,62 @@ pnpm test        # vitest 单测(与源码同目录 *.test.ts)
 pnpm typecheck   # vue-tsc
 pnpm build       # 产物 dist/(build 前自动 sync manifest 版本)
 ```
+
+### 11.1 构建前必读：Windows 上 TEMP 必须指到工作区内
+
+vite build 的 esbuild 会在系统临时目录建一个 `esbuild-<hash>` 目录，**转换完要删掉它**。
+在 Windows 上这一步会 `Access is denied` —— 不是权限配错，而是 esbuild 的常驻服务进程
+仍握着那个目录的句柄，删除必然失败，于是整个构建在 `rendering chunks` 之前就中断：
+
+```
+[vite:esbuild-transpile] remove C:\Users\...\AppData\Local\Temp\esbuild-<hash>: Access is denied.
+```
+
+更坑的是它**中途失败但 dist/ 原样保留** —— 上一次的旧产物还在，看起来「好像构建过了」，
+实际包里是旧代码。排查特征：源码已改，而 `git status` 里 `dist/` 没有变化。
+
+解法是把临时目录挪到工作区内（pwsh）：
+
+```powershell
+$t = "$PWD\.preview\tmp"; New-Item -ItemType Directory -Force -Path $t | Out-Null
+$env:TEMP = $t; $env:TMP = $t; $env:TMPDIR = $t
+npm run build
+Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue
+```
+
+`.preview/` 已在 `.gitignore` 里，临时目录不会进版本库。
+构建成功的标志是最后一行 `✓ built in N.NNs` 且 `git status` 出现 `dist/index.js` 变更；
+**只有「145 modules transformed」不算成功** —— 那一步在真正写盘之前。
+
+### 11.2 产物验收：三处版本号必须一致
+
+prebuild 钩子（`scripts/sync-version.mjs`）把 `package.json` 的版本写进
+`manifest.json` 的 `version` 与 `js`（`dist/index.js?ver=X.Y.Z`）。
+那个 `?ver=` 是**浏览器缓存戳**：版本不变，装过旧版的用户更新后仍加载旧包，新功能等于没发布
+（0.2.7 那次就是这么翻车的）。
+
+`__BBI_VERSION__` 由 `vite.config.ts` 的 `define` 从 `package.json` 注入，编进产物。
+发版后按这三条核一遍：
+
+```powershell
+(Get-Content package.json -Raw | ConvertFrom-Json).version      # 0.5.0
+(Get-Content manifest.json -Raw | ConvertFrom-Json).version     # 0.5.0（且 js 带 ?ver=0.5.0）
+# 产物里确实编进了新版本与本批新增的文案
+$s = [System.IO.File]::ReadAllText("$PWD\dist\index.js", [System.Text.Encoding]::UTF8)
+$s.Contains('0.5.0')
+```
+
+⚠ **别用 `Get-Content -Raw` 直接判中文**：PowerShell 会按 ANSI 解码，读出来是
+`娉曞垯` 这种乱码，`Contains('分镜条')` 一律 `False`，看起来像功能没打进去。
+判中文必须显式给 `[System.Text.Encoding]::UTF8`。
+
+### 11.3 dist/ 是提交进仓库的
+
+宿主按 `manifest.json` 的 `js` 路径直接加载 `dist/index.js`，没有构建步骤。
+所以**改完源码必须把 `dist/` 一起提交**，否则用户拉到的 manifest 指向的还是旧包。
+版本号 + 产物 + 源码同一次提交，是 0.3.2 以来一直的约定。
+
+### 11.4 测试范围与 node 环境
 
 单测重点覆盖:autoTag 的协议解析/提示词组装(快照)、backends 的参数构造与工作流渲染、
 floor 的存储结构/自动生成标记/运行态与闸门(genState/genQueue 的 token 认领、剪枝、并发)、

@@ -98,6 +98,12 @@ export interface ComfyWorkflowPreset extends SizePair {
   orientationLock: OrientationLock;
   /** 提示词规范方言(见 SpecDialect);老预设缺该字段一律落 'comfy',不做迁移。 */
   specDialect: SpecDialect;
+  /**
+   * 版式锁(见 LayoutLock):只对 MOSS 动漫线生效,其余方言忽略。
+   * 老预设无此字段时落 auto —— 与升级前的行为一致,升级不改动用户的既有产出形态;
+   * auto 在动漫线里是「由 AI 按剧情判断」,要固定形态就在面板里选单张 / 分镜条 / 漫画页。
+   */
+  layoutLock: LayoutLock;
 }
 
 /**
@@ -810,12 +816,49 @@ export const DEFAULT_MOSS_ANIME_SPEC = `【MOSS 动漫线提示词规范】
 - **布料**：写得出织纹、褶皱与垂坠。
 - 写「粗糙的那一面」；**不写**光滑 / 细腻 / 无瑕 / 磨皮 / 陶瓷 —— 和负面里的 plastic skin 打架，出来是假面。
 
-## 六、画幅与版式
+## 六、版式：单张 or 分镜
 
-- 画幅方向（size 键）与 tag 的景别一致：人像、半身、特写写 portrait；横向场景或双人横向构图写 landscape。
-- **本线不出漫画分镜页**：一页多格会把脸和材质一起压碎，多格需求请换线。一张图只画一个瞬间。
+版式由**渠道预设**决定，你的输出要跟着它换形态。三档：
 
-## 七、自检（交出去之前对一遍）
+### 6.1 单张（一张图一个瞬间）
+按第三节的 4–5 段写，nl 里只描述一个瞬间的画面。
+
+### 6.2 分镜条（一页 2–3 格，无气泡）
+nl 改成：**第一段写页型**，之后每格一段，最后一段写整页统一的光与画风。
+
+页型要写成一句可画出来的话，把格位与格线说清，例如：
+「画面是一整页竖向漫画，白色细格线分成三格：上面一整格横长，下面左右并排两格，格间留白。」
+
+然后每格一段，**每格第一句话必须点明「这一格多大、什么景别、什么机位」**——
+不写景别时三格会拍同一张脸，读起来像复制粘贴：
+「第一格：两人全身，侧后方机位交代位置。」
+「第二格：她的脸，近景，四分之三侧面。」
+「第三格：两人交握的手，局部特写。」
+
+- 一格一个瞬间，**同一件事不许跨格重复**。
+- 每格都要重新点名在场角色与关键服装（读者在每一格里都要认得出是谁），但**不重抄一遍完整外貌**——
+  用简短指代承接即可（男生、银发少女），否则整串会被外貌词撑爆。
+- **格数上限 3**：四格以上脸和材质会一起崩，是真崩，不是风格问题。
+
+### 6.3 漫画页（一页 2–4 格，带气泡台词）
+在分镜条的基础上多两件事：**气泡**与**台词**。
+
+- 气泡写成：**位置 + 带尖尾巴的椭圆 + 台词原文**，例如：
+  「右上角一个带尖尾巴的椭圆形气泡，里面写着『你怎么在这里』。」
+- 台词一行 **2–10 个简体汉字**，超出就拆成两个气泡。
+- **气泡不许压脸**：明确写「气泡悬在她头顶左侧的空白处」这类落点。
+- 阅读顺序按日漫：**右上 → 左上 → 右下 → 左下**，格位描述要与这个顺序一致。
+- 台词只能来自正文里真实发生的对白或合理的一句短应声，**不许凭空编剧情**。
+
+⚠ 版式一旦定了，整条串的段数与分段方式就跟着变：单张 4–5 段，分镜条 / 漫画页是「页型 + 每格一段 + 收尾一段」。
+开头不要再重复写一遍版式，结尾也不要总结——画出来的东西会替你把话说清。
+
+## 七、画幅方向
+
+画幅方向（size 键）与 tag 的景别一致：人像、半身、特写写 portrait；横向场景或双人横向构图写 landscape。
+**分镜条 / 漫画页一律写 portrait**：竖向页面才是漫画的载体，横向分格会把格子的高度压到看不清脸。
+
+## 八、自检（交出去之前对一遍）
 
 1. **机位一致性**：tag 的机位词、nl 第一段的第一句、后面提到的人体朝向，说的是同一台机器吗？
 2. **一件东西只写一次**：nl 第二段写了白衬衫，第三段不要再写一遍；tag 写了客厅，nl 不要再复述「在客厅里」。
@@ -823,8 +866,10 @@ export const DEFAULT_MOSS_ANIME_SPEC = `【MOSS 动漫线提示词规范】
 4. **光只有一个来源**：写出谁在亮面、谁在暗面之前，先写清光从哪个方向来。
 5. **画风词一个都没有**：画风由固定正面承担，你写了只会把它拽歪。
 6. **脸看得见**：第一段有没有把脸放到偏正面 / 四分之三侧面 / 半身近景？
+7. **版式与预设一致**：预设是单张就只有一个瞬间，是分镜条 / 漫画页就必须有页型那一句、每格都写了景别与机位、格数没超上限。
+8. **一格一个瞬间**：有没有把同一件事写在两格里？气泡有没有压到脸？
 
-## 八、禁止项
+## 九、禁止项
 
 - **tag 流**（「1girl, solo, large breasts, from above」）：这条线写中文散文，不写 danbooru 短 tag 堆。
 - **画风词与质量词**：二次元 / 插画 / 赛璐璐 / 厚涂 / 韩漫 / 条漫 / 日式动画 / masterpiece / best quality / very aesthetic / 8k。
@@ -1394,6 +1439,7 @@ export function newComfyWorkflow(name = DEFAULT_WORKFLOW_NAME): ComfyWorkflowPre
     landscapeSize: DEFAULT_LANDSCAPE_SIZE,
     orientationLock: 'auto',
     specDialect: 'comfy',
+    layoutLock: 'auto',
   };
 }
 
@@ -1579,6 +1625,30 @@ export function activeComfyPreset(): ComfyWorkflowPreset {
   return list.find(w => w.id === settings.comfyui.activeWorkflowId) ?? list[0] ?? newComfyWorkflow();
 }
 
+/**
+ * 版式锁:一张图里放几格。
+ *
+ * 只对 MOSS 动漫线生效 —— 那条线的底模能画画面内文字与气泡,分镜页是它的强项;
+ * 写实线与 tag 流没有这套口径,取值留着但不参与协议。
+ *
+ * 为什么做成预设上的锁而不是每次临时说:一旦让模型自己决定版式,同一段剧情会时单时多格,
+ * 「这条线默认出什么」就不可预期了;而格数一旦超过 4,脸和材质会一起崩 —— 上限必须硬卡。
+ */
+export type LayoutLock = 'auto' | 'single' | 'strip' | 'page';
+
+/** 版式锁选项(顺序即分段按钮顺序);只有 MOSS 动漫线的面板会显示。 */
+export const LAYOUT_LOCKS: { value: LayoutLock; label: string; hint: string }[] = [
+  { value: 'auto', label: '自动', hint: '由 AI 按剧情判断该出单张还是分镜' },
+  { value: 'single', label: '单张', hint: '一张图一个瞬间,不出格子' },
+  { value: 'strip', label: '分镜条', hint: '一页 2–3 格,不加气泡' },
+  { value: 'page', label: '漫画页', hint: '一页 2–4 格,带气泡台词' },
+];
+
+/** 版式锁的清洗:脏值一律落 auto(与 normalizeOrientationLock 同口径)。 */
+export function normalizeLayoutLock(value: unknown): LayoutLock {
+  return value === 'single' || value === 'strip' || value === 'page' ? value : 'auto';
+}
+
 /** 画幅锁选项(顺序即分段按钮顺序);NAI 渠道与 ComfyUI 每套工作流的面板共用这一份。 */
 export const ORIENTATION_LOCKS: { value: OrientationLock; label: string }[] = [
   { value: 'auto', label: '自动' },
@@ -1593,6 +1663,15 @@ export const ORIENTATION_LOCKS: { value: OrientationLock; label: string }[] = [
  * 提示词编辑弹窗都从这里取——判据只此一处,免得「协议说锁竖、出图却按 tag 出横」。
  * 同样刻意只读不写(在 computed 里被调用)。
  */
+/**
+ * 当前工作流的版式锁。与 activeOrientationLock 同构:判据只此一处,
+ * 协议(prompt.ts 的 layoutRule)与面板都从这里取,免得「面板说漫画页、协议还在要单张」。
+ */
+export function activeLayoutLock(): LayoutLock {
+  if (settings.defaultBackend === 'comfyui') return activeComfyPreset().layoutLock;
+  return 'auto';
+}
+
 export function activeOrientationLock(): OrientationLock {
   if (settings.defaultBackend === 'nai') return settings.nai.orientationLock;
   if (settings.defaultBackend === 'comfyui') return activeComfyPreset().orientationLock;
@@ -1712,6 +1791,7 @@ function normalizeWorkflowPreset(raw: unknown, seq: number): ComfyWorkflowPreset
     // 只有 moss 两族才是新语义,脏值也回落 'comfy'。
     specDialect:
       o.specDialect === 'moss' || o.specDialect === 'moss-anime' ? o.specDialect : 'comfy',
+    layoutLock: normalizeLayoutLock(o.layoutLock),
   };
 }
 
@@ -1735,6 +1815,7 @@ function foldLegacyWorkflow(o: Partial<ComfyUISettings>, conn: BackendConn): Com
     landscapeSize: conn.landscapeSize.trim() || preset.landscapeSize,
     // 存量只有 tag 流,折进来的这条也是 'comfy'(preset 默认值即可,显式写出来是为了不依赖默认)
     specDialect: 'comfy',
+    layoutLock: 'auto',
   };
 }
 

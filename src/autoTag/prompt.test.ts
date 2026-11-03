@@ -1214,11 +1214,23 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.nai.model = 'nai-diffusion-4-5-full';
       settings.nai.naturalLanguage = true;
       settings.nai.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: true, lockedSize: null, dialect: 'comfy' });
+      expect(autoTagProfile()).toEqual({
+        naiCharPrompts: true,
+        nl: true,
+        lockedSize: null,
+        dialect: 'comfy',
+        layoutLock: 'auto',
+      });
 
       settings.nai.naturalLanguage = false;
       settings.nai.orientationLock = 'portrait';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait', dialect: 'comfy' });
+      expect(autoTagProfile()).toEqual({
+        naiCharPrompts: true,
+        nl: false,
+        lockedSize: 'portrait',
+        dialect: 'comfy',
+        layoutLock: 'auto',
+      });
 
       // 单串分支(NAI4)的协议本来就不写 nl,开关对它不起作用
       settings.nai.model = 'nai-diffusion-4-full';
@@ -1229,11 +1241,23 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       settings.defaultBackend = 'comfyui';
       state.preset.naturalLanguage = true;
       state.preset.orientationLock = 'landscape';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: true, lockedSize: 'landscape', dialect: 'comfy' });
+      expect(autoTagProfile()).toEqual({
+        naiCharPrompts: false,
+        nl: true,
+        lockedSize: 'landscape',
+        dialect: 'comfy',
+        layoutLock: 'auto',
+      });
 
       state.preset.naturalLanguage = false;
       state.preset.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: false, lockedSize: null, dialect: 'comfy' });
+      expect(autoTagProfile()).toEqual({
+        naiCharPrompts: false,
+        nl: false,
+        lockedSize: null,
+        dialect: 'comfy',
+        layoutLock: 'auto',
+      });
 
       // MOSS 方言:nl 恒真(那条线的 tag 只锁元素、nl 才是主体),不受「生成自然语言」开关影响
       state.preset.specDialect = 'moss';
@@ -1349,6 +1373,63 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
 
   // 动漫线与写实线共底模但审美相反:前者要中文散文 + 极简元素行,后者要 tag 锁元素 +
   // 英文身体段。两套规范混用会让模型写它那条线根本不存在的段落形态。
+  // 版式锁是预设级的,协议与思维链都要跟着换形态 —— 这条盯着「锁定后协议真的多了一条版式要求、
+  // auto 时一条都不多」,免得锁了却还在要单张(或反过来)。
+  it('MOSS 动漫方言:版式锁按档位改写协议与思维链', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss-anime';
+      const read = async () => {
+        const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+        return {
+          contract: messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content,
+          thinking: messages.filter(m => m.content.includes('输出前思考清单')).pop()!.content,
+        };
+      };
+
+      // auto:协议里一个字都不要提版式
+      state.preset.layoutLock = 'auto';
+      let out = await read();
+      expect(out.contract).not.toContain('版式（已锁定');
+      expect(out.thinking).not.toContain('本次版式已锁定');
+      expect(autoTagProfile().layoutLock).toBe('auto');
+
+      // 单张:明文禁止页型与气泡
+      state.preset.layoutLock = 'single';
+      out = await read();
+      expect(out.contract).toContain('版式（已锁定为单张）');
+      expect(out.contract).toContain('不分格、不写页型');
+      expect(out.thinking).toContain('本次版式已锁定为单张');
+      expect(autoTagProfile().layoutLock).toBe('single');
+
+      // 分镜条:页型 + 每格一段 + 格数上限 + 不写气泡
+      state.preset.layoutLock = 'strip';
+      out = await read();
+      expect(out.contract).toContain('版式（已锁定为分镜条）');
+      expect(out.contract).toContain('格数上限 3');
+      expect(out.contract).toContain('不写气泡、不写台词');
+      expect(out.thinking).toContain('本次版式已锁定为分镜条');
+
+      // 漫画页:气泡 + 台词字数 + 阅读顺序
+      state.preset.layoutLock = 'page';
+      out = await read();
+      expect(out.contract).toContain('版式（已锁定为漫画页）');
+      expect(out.contract).toContain('2–10 个简体汉字');
+      expect(out.contract).toContain('气泡不许压脸');
+      expect(out.contract).toContain('右上→左下');
+      expect(out.thinking).toContain('本次版式已锁定为漫画页');
+
+      // 非动漫方言:版式锁一律不参与(那条线的规范里没有分镜口径)
+      state.preset.specDialect = 'moss';
+      out = await read();
+      expect(out.contract).not.toContain('版式（已锁定');
+      expect(autoTagProfile().layoutLock).toBe('auto');
+    } finally {
+      state.restore();
+    }
+  });
+
   it('MOSS 动漫方言:换规范与思维链、tag 示例改中文元素行、负面同样不请求', async () => {
     const state = snapshot();
     try {
@@ -1372,7 +1453,10 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       expect(spec).toContain('极简中文元素行');
       expect(spec).toContain('tag 流');
       expect(spec).toContain('画风词');
-      expect(spec).toContain('本线不出漫画分镜页');
+      expect(spec).toContain('## 六、版式：单张 or 分镜');
+      expect(spec).toContain('分镜条');
+      expect(spec).toContain('漫画页');
+      expect(spec).toContain('格数上限 3');
       expect(thinking).toContain('机位定死（本步必须在写任何内容之前完成）');
       expect(thinking).toContain('材质三件套');
 
