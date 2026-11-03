@@ -582,7 +582,11 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     空着不是「没配好」而是「一定走形」,让人出一批糊图再回头排查最贵。
   - **提示词规范方言**(`SpecDialect`):同一套 ComfyUI 链路,底模不同则**写串的方式**不同,故方言挂在预设上
     (§7 `ComfyWorkflowPreset.specDialect`)。`comfy` = 原 danbooru 短 tag 流(tag 为主体、nl 可选);
-    `moss` = 写实散文流(tag 只锁元素、nl 是画面主体)。根因在文本编码器:MOSS 那侧是 Qwen3.5 9B,读的是
+    `moss` = 写实散文流(tag 只锁元素、nl 是画面主体);
+    `moss-anime` = 动漫散文流(极简中文元素行 + 4–5 段纯中文,无英文身体段)。
+    后两条是**同一份底模、两套审美**:分界不在编码器(都是 Qwen3.5 9B),而在「画什么」——
+    写实线要解剖与胶片材质,动漫线要平面插画与二次元骨相,两者段落形态互斥,只能各一份规范。
+    根因在文本编码器:MOSS 那侧是 Qwen3.5 9B,读的是
     连贯散文,短 tag 堆给它等于把画面信息砍掉大半;而 danbooru tag 流写给的是 SDXL/Illustrious 那一类短 tag 模型。
     该方言下 `autoTagProfile()` 连带做两件事:① `nl` **恒 true**,不让「生成自然语言」开关参与——这条线关掉
     不等于「少写一段」,等于把画面砍掉一半,留个能关的开关只会让人误解(副作用:runner 里「关掉自然语言就
@@ -608,6 +612,23 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     思维链收一条一致性总检,让模型在交出前把机位词 / 中文段首句 / 英文段部位三者对一遍。
     tag 流那两份规范不带这些条款——那条线 single-CLIP 吃短 tag,不会出现「散文细节压过机位词」
     这种失效模式,写了只是噪声。
+  - **MOSS 动漫模板族**(`moss-anime`):与写实模板共用底模 / CLIP / VAE / latent,**只差模型链**:
+    `UNETLoader(1) → SkipLayerGuidanceDiTSimple(20, 单层 22 / 0–50%) → LoraLoaderModelOnly(300) → KSampler`。
+    SLG 由 `ComfyTemplateMeta.slg` 声明(null = 不建该节点),写实模板为 null —— 跳层引导是拉出
+    二次元骨相的手段,对胶片/皮肤质感是反效果。**顺序不可反**:LoRA 必须挂在 SLG 之后,
+    否则画风权重会被跳过的层一起改掉。节点 id 取 20 是为了不和 applyLoras 的 30x 撞。
+    ⚠ 画风 LoRA 不预置:官方 SFT 不带二次元审美,用户要自己在简易模式的 LoRA 行里填
+    (实测 `Sonsp_Moss_Style_v2` @0.8)。
+  - **两条 MOSS 线的负面不可互换**:`ComfyTemplateMeta.defaultNegative` 让每个模板带自己那份串,
+    `simpleDefaults` 按模板预填。动漫线**去掉 `text` / `logo`**(那条线擅长画面内文字,带着会把要画的字
+    一起压掉),改带 `3d` / `shiny hair`(平面插画最常见的走形方向)。面板切模板时只在
+    「旧串等于旧模板默认值」时才换成新模板那份,用户手改过的不覆盖。
+  - **动漫线的协议差异**(`prompt.ts` 按 dialect 分叉):① tag 不是 danbooru 短 tag 而是「极简中文元素行」,
+    示例 JSON 同步换成中文(`一个人，中景，四分之三侧面，公寓客厅，午后的侧光`)——模型照抄示例的倾向
+    远强于照读规则,留英文 tag 示例会把动漫线带回 tag 流;② 角色库条款单独一份 `animeLibraryRule`,
+    禁的是「固定外貌」而不是「英文身体段里重描体型」——这条线根本没有英文身体段,照搬写实线那份
+    会让模型理解成「中文段也别写外貌」,带标记的角色反而彻底没有外形;③ 年龄感与人种在两族里都明令
+    「照常写」,它们不属于固定外貌档案、插件不注入。
   - **中文外貌通道**(角色库 `zh` → 最终正向):角色库那七个字段是英文 danbooru tag,
     只能进 tag;而 MOSS 线的正向曾是 `nl || prompt`,nl 一非空 tag 整行就被丢掉,
     于是中文外貌**一个词都到不了模型**。补法分两处:
@@ -1043,6 +1064,8 @@ API 对象 `Object.freeze`,一个插件改不动下一个插件拿到的东西�
 | 正文写回(含竞态) | src/st/messageEdit.ts |
 | 请求历史(LLM/生图,内存不持久化) | src/state/history.ts(store)+ src/pages/history/index.vue(页面)+ src/api/client.ts 埋点 |
 | 最终提交的提示词全文(含拼接结果) | `generate.ts` 的 `GenerateOutput.finalPrompt/finalNegative` 与 `GenerateProgress.onPrompt`;拼装口径 = `backends/comfyui.ts` 的 `previewComfyPrompt`(simple 走 compose*、custom 走占位符取值)+ `backends/nai.ts` 的 `fullPositivePrompt`。历史侧 `patchImagePrompt`/`finishImage({finalPrompt})` 落账,`ImageRecord.finalPrompt` 展示;公开接口随结果回传同名字段 |
+| MOSS 动漫线(模板族 / 跳层引导 / 动漫负面) | src/backends/comfyTemplates.ts(`COMFY_TEMPLATES['moss-anime']` 的 `slg` + `MOSS_ANIME_DEFAULT_NEGATIVE` + `isMossTemplate`) |
+| 提示词方言三分(comfy / moss / moss-anime) | src/state/settings.ts 的 `SpecDialect` + `DEFAULT_MOSS_ANIME_SPEC` / `DEFAULT_MOSS_ANIME_THINKING`;分流在 autoTag/prompt.ts 的 `isMossDialect` 与 `backendPromptSpec` / `backendThinkingPrompt` 的 `moss-anime` 分支 |
 | MOSS 线机位契约(朝向进 tag / 可见性对照 / 细节与机位二选一) | src/state/settings.ts 的 `DEFAULT_MOSS_SPEC` §一 + `DEFAULT_MOSS_THINKING` 第 3 步;只在 moss 方言下下发(`autoTag/prompt.ts` 的 `backendPromptSpec` / `backendThinkingPrompt`) |
 | 角色库「有中文外貌」标记 | `autoTag/charAnchors.ts` 的 `ZH_FILLED_MARK`(只声明存在、不输出正文)+ `buildLibraryText` 头部解释;消费在 `autoTag/prompt.ts` 的 `libraryReferenceRule`(moss 方言分叉) |
 | 复制到剪贴板 | src/st/clipboard.ts 的 copyText |

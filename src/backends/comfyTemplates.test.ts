@@ -4,6 +4,7 @@ import {
   buildSimpleWorkflow,
   COMFY_TEMPLATES,
   composePositive,
+  MOSS_ANIME_DEFAULT_NEGATIVE,
   MOSS_DEFAULT_NEGATIVE,
   normalizeSimpleConfig,
   simpleDefaults,
@@ -273,6 +274,64 @@ describe('buildSimpleWorkflow - moss(写实线)', () => {
     expect(simpleDefaults('moss').negative).toBe(MOSS_DEFAULT_NEGATIVE);
     expect(simpleDefaults('checkpoint').negative).toBe('');
     expect(normalizeSimpleConfig({ template: 'moss' }).negative).toBe(MOSS_DEFAULT_NEGATIVE);
+  });
+});
+
+describe('buildSimpleWorkflow - moss-anime(动漫线)', () => {
+  // 与写实线共底模,差别全在模型链:多一层 SkipLayerGuidanceDiTSimple,且画风 LoRA 必须挂在它之后。
+  const animeConfig: ComfySimpleConfig = {
+    ...simpleDefaults('moss-anime'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    loras: [{ name: 'Sonsp_Moss_Style_v2.safetensors', strength: 0.8 }],
+  };
+
+  it('加载链与写实线同源(UNET 直载 + moss_image CLIP + flux2 VAE + Flux2 latent)', () => {
+    const wf = buildSimpleWorkflow(animeConfig, VALUES);
+    expect(node(wf, '1').class_type).toBe('UNETLoader');
+    expect(node(wf, '2').inputs).toMatchObject({ type: 'moss_image' });
+    expect(node(wf, '3').inputs.vae_name).toBe('flux2-vae_small.safetensors');
+    expect(node(wf, '6').class_type).toBe('EmptyFlux2LatentImage');
+  });
+
+  it('叠一层跳层引导(单层 22 / 前 50%),且画风 LoRA 挂在它之后', () => {
+    const wf = buildSimpleWorkflow(animeConfig, VALUES);
+    expect(node(wf, '20').class_type).toBe('SkipLayerGuidanceDiTSimple');
+    expect(node(wf, '20').inputs).toMatchObject({
+      model: ['1', 0],
+      single_layers: '22',
+      start_percent: 0,
+      end_percent: 0.5,
+    });
+    // 顺序不能反:LoRA 挂在 SLG 的输出上,否则画风权重会被跳层一起改掉
+    expect(node(wf, '300').inputs.model).toEqual(['20', 0]);
+    expect(node(wf, '7').inputs.model).toEqual(['300', 0]);
+  });
+
+  it('写实线不建 SLG 节点(加了对胶片质感是反效果)', () => {
+    const wf = buildSimpleWorkflow(
+      {
+        ...simpleDefaults('moss'),
+        model: 'moss_image_sft_int8_convrot.safetensors',
+        vae: 'flux2-vae_small.safetensors',
+        clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+      },
+      VALUES,
+    );
+    expect(Object.values(wf).some(n => n.class_type === 'SkipLayerGuidanceDiTSimple')).toBe(false);
+  });
+
+  it('新建预设预填的是动漫线自己那份负面(不带 text / logo,带 3d / shiny hair)', () => {
+    const neg = simpleDefaults('moss-anime').negative;
+    expect(neg).toBe(MOSS_ANIME_DEFAULT_NEGATIVE);
+    expect(neg).toContain('3d');
+    expect(neg).toContain('shiny hair');
+    // 这条线擅长画面内文字:带着 text / logo 会把要画的字一起压掉
+    expect(neg).not.toMatch(/\btext\b/);
+    expect(neg).not.toContain('logo');
+    // 两条 MOSS 线的负面不可互换
+    expect(neg).not.toBe(simpleDefaults('moss').negative);
   });
 });
 

@@ -27,6 +27,8 @@ import {
   DEFAULT_COMFY_THINKING,
   DEFAULT_JAILBREAK_PROMPT,
   DEFAULT_MOSS_SPEC,
+  DEFAULT_MOSS_ANIME_SPEC,
+  DEFAULT_MOSS_ANIME_THINKING,
   DEFAULT_MOSS_THINKING,
   DEFAULT_NAI_SPEC,
   DEFAULT_NAI_THINKING,
@@ -57,6 +59,17 @@ export interface AutoTagProfile {
   dialect: SpecDialect;
 }
 
+/**
+ * 这条方言属于不属于 MOSS 系(写实线 + 动漫线)。
+ *
+ * 两者是同一份底模、两套审美:都强制写 nl、都由预设的固定负面兜底,
+ * 但规范 / 思维链 / 角色库条款各一份。凡是「MOSS 系都这样」的判据都走这个函数,
+ * 别在各处重复写 `=== 'moss' || === 'moss-anime'` —— 加第三条线时会漏。
+ */
+function isMossDialect(dialect: SpecDialect): boolean {
+  return dialect === 'moss' || dialect === 'moss-anime';
+}
+
 export function autoTagProfile(): AutoTagProfile {
   const backend = settings.defaultBackend;
   const naiCharPrompts = backend === 'nai' && naiSupportsCharacterPrompts(settings.nai.model);
@@ -67,7 +80,7 @@ export function autoTagProfile(): AutoTagProfile {
       ? // MOSS 写实线**强制**写 nl:那条线的 tag 只锁元素、nl 才是画面主体。
         // 它不像 Flux/Illustrious 那样可以靠开关退回纯 tag —— 关掉就等于把画面砍掉一半,
         // 故这里不让「生成自然语言」开关参与,免得用户以为关掉只是「少写一段」。
-        dialect === 'moss' || activeComfyPreset().naturalLanguage
+        isMossDialect(dialect) || activeComfyPreset().naturalLanguage
       : naiCharPrompts && settings.nai.naturalLanguage;
   const lock = activeOrientationLock();
   return { naiCharPrompts, nl, lockedSize: lock === 'auto' ? null : lock, dialect };
@@ -104,6 +117,9 @@ function backendPromptSpec(
   if (settings.defaultBackend === 'comfyui') {
     // MOSS 写实线整份换规范,不挂 {{nl}} 宏也不追加 NL 规范段:那份文本本身就要求必写 nl,
     // 而 DEFAULT_COMFY_NL_SPEC 讲的是「tag 之外再加一段 nl」的 tag 流口径,混进去会自相矛盾。
+    if (dialect === 'moss-anime') {
+      return (options.prompts?.mossAnimeSpec ?? '').trim() || DEFAULT_MOSS_ANIME_SPEC;
+    }
     if (dialect === 'moss') {
       return (options.prompts?.mossSpec ?? '').trim() || DEFAULT_MOSS_SPEC;
     }
@@ -148,6 +164,9 @@ function backendThinkingPrompt(
   }
   // 思维链必须与规范同方言:槽位块要求填的每一项都要在同份规范里有判据,
   // 拿 comfy 那份去指挥 moss 线,模型会被要求填规范从没教过的东西。
+  if (dialect === 'moss-anime') {
+    return (options.prompts?.mossAnimeThinking ?? '').trim() || DEFAULT_MOSS_ANIME_THINKING;
+  }
   if (dialect === 'moss') {
     return (options.prompts?.mossThinking ?? '').trim() || DEFAULT_MOSS_THINKING;
   }
@@ -228,7 +247,7 @@ export async function buildAutoTagMessages(
   // 动态负面词门槛:custom 模式看工作流是否含 %negative_prompt%;
   // simple 模式由模板决定(Flux 无真实负面输入,请求了也没地方写)。
   let negativeOn = false;
-  if (comfyPreset && profile.dialect === 'moss') {
+  if (comfyPreset && isMossDialect(profile.dialect)) {
     // MOSS 写实线的负面**全部**由预设里的固定负面承担(它是必填项,见 comfyTemplates 的
     // negativeRequired)。这里再让 AI 写一段动态负面只会与那条基线打架:
     // AI 写的多是通用质量词,而固定负面已经把这些排干净了,重复只会稀释权重。
@@ -246,12 +265,18 @@ export async function buildAutoTagMessages(
   }
   // 示例一律写实际外貌串:@占位符已撤回(见 charAnchors.ts 文件头),
   // 有库/无库的差别只在「照抄库中字段」还是「自行补基础特征」,示例形态相同。
-  const sampleTag = library
-    ? '1girl, long silver hair, red eyes, white dress'
-    : '1girl, short black hair, white dress';
-  const sampleNl = library
-    ? 'A girl with long silver hair and red eyes wearing a white dress'
-    : 'A girl with short black hair wearing a white dress';
+  // 示例形态要跟方言一致:模型照抄示例的倾向远强于照读规则,动漫线给英文 tag 示例会把它带回 tag 流。
+  const animeDialect = profile.dialect === 'moss-anime';
+  const sampleTag = animeDialect
+    ? '一个人，中景，四分之三侧面，公寓客厅，午后的侧光'
+    : library
+      ? '1girl, long silver hair, red eyes, white dress'
+      : '1girl, short black hair, white dress';
+  const sampleNl = animeDialect
+    ? '中景，四分之三侧面，她站在客厅的窗边回头，脸偏向镜头这一侧，眉眼舒展、嘴角带一点笑意。' + '\n\n' + '十八岁上下的东亚少女，及肩的黑发松松挽在耳后，穿一件洗得发白的短袖衬衫，下摆塞进高腰牛仔裤里。'
+    : library
+      ? 'A girl with long silver hair and red eyes wearing a white dress'
+      : 'A girl with short black hair wearing a white dress';
   // NAI 关掉自然语言时示例里一个 nl 键都不留:模型照抄示例的倾向比照读规则强得多
   const sampleImage: Record<string, unknown> = naiCharPromptsOn
     ? {
@@ -281,7 +306,9 @@ export async function buildAutoTagMessages(
       ? `4. Every image must include Base tag, English Base nl, and characters. Write every nl in English even when the story text is in another language, but keep every character name exactly as in the story: Chinese names stay Chinese (小雪, never Xiaoxue or Snow) in characters[].name, changes[].name, and inside any tag/nl text. Base contains only global counts, scene, composition, lighting, and shared relations — this applies to the Base nl as much as to the Base tag. Give each individual character visible inside the selected frame one Character Prompt ordered left-to-right then top-to-bottom; name/tag/nl are all required. ${naiCharacterRuleTail}`
       : `4. Every image must include Base tag and characters. This output is tag-only: write no nl key anywhere, neither in Base nor in characters[]. Keep every character name exactly as in the story: Chinese names stay Chinese (小雪, never Xiaoxue or Snow) in characters[].name, changes[].name, and inside any tag text. Base contains only global counts, scene, composition, lighting, and shared relations. Give each individual character visible inside the selected frame one Character Prompt ordered left-to-right then top-to-bottom; name and tag are both required. ${naiCharacterRuleTail}`
     : nlOn
-    ? '4. tag 与 nl 是同一画面的两种写法：tag 是 danbooru 短 tag，nl 是连贯的自然语言；二者都只含正面内容，不得包含质量词、负面词、JSON 以外的说明或 <bbi_image>/<tag>/<nl>/<size> 标签。'
+    ? profile.dialect === 'moss-anime'
+      ? '4. tag 与 nl 是同一画面的两种写法：tag 是极简中文元素行（人数 / 景别 / 机位朝向 / 地点 / 光的方向，20 字以内），nl 是 4–5 段中文自然语言；二者都只含正面内容，不得包含质量词、画风词、负面词、JSON 以外的说明或 <bbi_image>/<tag>/<nl>/<size> 标签。'
+      : '4. tag 与 nl 是同一画面的两种写法：tag 是 danbooru 短 tag，nl 是连贯的自然语言；二者都只含正面内容，不得包含质量词、负面词、JSON 以外的说明或 <bbi_image>/<tag>/<nl>/<size> 标签。'
     : '4. tag 只能是该画面的正面内容提示词；不得包含质量词、负面词、JSON 以外的说明或 <bbi_image> 标签。';
   const negativeRule = negativeOn
     ? '\n   negative 是本画面专用的 danbooru 负面短 tag：只排除与正文冲突或本构图特别容易误生成的内容，可为空；禁止输出通用质量、画质、审美或技术性负面词，包括但不限于 worst quality、low quality、blurry、lowres、bad anatomy、bad hands、jpeg artifacts；不要写希望出现的内容，不得使用 @角色占位符。\n   negative 里绝不能出现正文已明确成立的事实，也不能否定你自己刚写进本图 tag/nl 的任何东西：正文写了在下雨、或你自己的 nl 写了 drizzle，就绝不许在 negative 写 rain；写了角色戴眼镜就不许写 glasses——那是在抹掉画面本该有的东西。写完 negative 逐词回看本图的 tag 与 nl，凡是能在里面找到对应内容的词一律删掉。拿不准时留空，空的 negative 永远比抵消正文的 negative 安全。'
@@ -310,6 +337,17 @@ export async function buildAutoTagMessages(
   // (两份外貌条件并存 → 脸漂),而通用条款要求「tag 与 nl 必须照抄库字段值」。两者对同一批
   // 角色给出相反指令,模型会折中成「简短重描一遍」——恰是规范要防的那种状态。
   // 故 moss 下这条按 [中文外貌已填] 标记分成两半,与规范同口径;其余方言保持原样。
+
+  // 动漫线的库条款与写实线**不能共用**:那条线禁的是「英文身体段里再写一遍体型」,
+  // 这条线根本没有英文身体段,外貌全在中文段里 —— 一份写给英文段的禁令挂过来,
+  // 模型只会理解成「中文段也别写外貌」,带标记的角色反而彻底没有外形。
+  const animeLibraryRule =
+    '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，名字必须逐字照抄库中条目名，不得音译或变体。\n' +
+    `   - 条目带 [中文外貌已填] 的：该角色的五官、发色、肤质、体型这些**固定外貌一个词都不要写**——插件会原样拼在正向末尾，你再写一遍就是两套外貌条件，脸会漂。你要写的是：名字 + 本画面特有的服装、动作、表情、视线，以及**年龄感与人种**（它们不属于固定外貌档案，插件不注入，不写就按英文先验出欧美脸）。\n` +
+    '   - 条目**没有**该标记的：外貌由你补一次，且只补一次——年龄感、人种、发型与颜色、身形、五官特征写在 nl 的外貌那一层里。\n' +
+    '   - fandom 字段只作档案记录，画图时不照抄它，同人身份 tag 按下发的 MOSS 动漫线规范现场判定。\n' +
+    '   - 不要向用户索要、也不要猜测插件注入了什么内容：标记只说「有」，正文不可见。';
+
   const mossLibraryRule =
     '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，名字必须逐字照抄库中条目名，不得音译或变体。\n' +
     `   - 条目带 [中文外貌已填] 的：该角色的五官、发色、肤质、体型由插件另行注入，**这些固定外貌一个词都不要写**（既不要写进 tag，也不要写进英文身体段）。你只负责名字、本画面特有的服装、动作、表情、视线，**以及年龄感与人种**——年龄和人种不属于固定外貌档案，插件不会注入，tag 里的 chinese / east asian 与英文身体段首句的年龄由你照常写，写了不算重描。${nlOn ? '中文散文段照常写动作/穿着/环境/光线，不写外貌。' : ''}\n` +
@@ -318,9 +356,11 @@ export async function buildAutoTagMessages(
     '   - 不要向用户索要、也不要猜测插件注入了什么内容：标记只说「有」，正文不可见。';
   const libraryReferenceRule = naiCharPromptsOn
     ? `- If a visible character exists in the fixed appearance library or is created in this changes array, copy the fixed fields into that character own characters[].tag; keep appearance wording verbatim but convert 1girl/1boy to girl/boy. The fandom identity tag (fields.fandom) goes first, verbatim. Do not put them in Base or assign them to another character.${nlOn ? ' Library natural-language notes may inform that character nl.' : ''} Use the library entry name verbatim for characters[].name and for any name inside ${nlOn ? 'tag/nl' : 'tag'} — never transliterate, translate, or vary it.`
-    : profile.dialect === 'moss'
-      ? mossLibraryRule
-      : '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，tag 与 nl 就必须照抄库中/刚建档的字段值，用词一字不改，不得自行改写或增删其固定外貌。fandom 字段只作档案记录，ComfyUI 画图时不照抄它，同人身份 tag 按下发的 ComfyUI 规范现场判定并按规范转义括号。\n   - 同一角色的固定外貌在一张图里只写一遍：同一图内再次提到他时用简短指代（the boy、the silver-haired girl）承接，禁止把整串外貌重复第二遍——重复会让模型以为画面里有多个同样的人，把一个人画成互不相连的几块。';
+    : profile.dialect === 'moss-anime'
+      ? animeLibraryRule
+      : profile.dialect === 'moss'
+        ? mossLibraryRule
+        : '- 画面中的角色只要已在【角色固定外貌库】，或在本次 changes 中建了档，tag 与 nl 就必须照抄库中/刚建档的字段值，用词一字不改，不得自行改写或增删其固定外貌。fandom 字段只作档案记录，ComfyUI 画图时不照抄它，同人身份 tag 按下发的 ComfyUI 规范现场判定并按规范转义括号。\n   - 同一角色的固定外貌在一张图里只写一遍：同一图内再次提到他时用简短指代（the boy、the silver-haired girl）承接，禁止把整串外貌重复第二遍——重复会让模型以为画面里有多个同样的人，把一个人画成互不相连的几块。';
   // 建档 nl 只在协议含 nl 时要求(runner 的验收同一口径,见 autoTagProfile)
   const newCharacterNlRule = !naiCharPromptsOn
     ? ''

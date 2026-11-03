@@ -30,7 +30,7 @@ export type SimpleWorkflow = Record<string, SimpleWorkflowNode>;
 
 export type ComfyPresetMode = 'custom' | 'simple';
 
-export type ComfySimpleTemplateId = 'checkpoint' | 'flux' | 'anima' | 'moss';
+export type ComfySimpleTemplateId = 'checkpoint' | 'flux' | 'anima' | 'moss' | 'moss-anime';
 
 export interface ComfyLoraEntry {
   /** LoRA 文件名(相对 models/loras)。 */
@@ -91,10 +91,22 @@ export interface ComfyTemplateMeta {
    */
   negativeRequired: boolean;
   /**
+   * negativeRequired 时新建预设预填的默认串。写实线与动漫线的负面不是同一份:
+   * 动漫线不能带 text / logo(会把画面内文字一起压掉),要带 3d / shiny hair(防插画滑向 3D)。
+   */
+  defaultNegative: string;
+  /**
    * 采样器被底模锁死(null = 用户自选)。MOSS 官方 SFT 口径是 euler,换别的不是报错而是画质明显劣化,
    * 面板据此禁用选择框——比事后解释「为什么出图变糊」便宜。
    */
   samplerFixed: string | null;
+  /**
+   * SkipLayerGuidanceDiTSimple 参数;null = 不建该节点。
+   *
+   * 只有动漫线要它:官方 SFT 底模本身不带二次元审美,靠「画风 LoRA + 单层跳层引导」一起拉出来。
+   * 写实线不加 —— 加了对胶片质感是反效果(细节被抹平)。
+   */
+  slg: { singleLayers: string; startPercent: number; endPercent: number } | null;
   /** 简易模式画幅默认尺寸(写入新预设的横竖尺寸)。 */
   portraitSize: string;
   landscapeSize: string;
@@ -108,6 +120,36 @@ export interface ComfyTemplateMeta {
   };
 }
 
+/**
+ * MOSS 线的默认固定负面(官方 16 条 + 本机补 4 条)。
+ *
+ * 为什么必填:MOSS 方言下 autoTag 不请求 AI 动态负面(见 SpecDialect 的 moss 分支),
+ * 串里那点题材级负面全靠这一条兜底。补的四条各有来由 —— `western face`/`caucasian`
+ * 防欧美脸(底模的英文先验会把东亚角色画成白人)、`fused bodies`/`deformed genitals`
+ * 防多人贴合处粘连与器官走形,都是实测最容易翻车的两处。
+ */
+export const MOSS_DEFAULT_NEGATIVE =
+  'worst quality, low quality, bad anatomy, deformed hands, extra fingers, malformed limbs, ' +
+  'distorted face, plastic skin, overly smooth skin, waxy skin, oversharpening, ' +
+  'excessive skin retouching, blurry, jpeg artifacts, watermark, text, logo, ' +
+  'western face, caucasian, fused bodies, deformed genitals';
+
+/**
+ * MOSS 动漫线的默认固定负面(动漫线专用口径,自 story-image 的 `moss-anime` 线)。
+ *
+ * 与写实线那份的两处硬差别:
+ * 1. **去掉 `text` / `logo`**:动漫线这条底模擅长画面内文字(海报标题、气泡台词),
+ *    带着这两个词会把要画的字一起压掉 —— 不想要字时正面不写「要字」即可。
+ * 2. **加 `3d` / `shiny hair`**:动漫线要的是平面插画的质感,3D 渲染感和
+ *    塑料高光头发是这条线最常见的走形方向。
+ * 另有 `missing fingers` / `extra toes` / `bad feet` / `artistic error` / `signature` / `username`
+ * 六条是动漫姿态(手指、脚趾、签名角标)特有的翻车点,写实线那份不需要。
+ */
+export const MOSS_ANIME_DEFAULT_NEGATIVE =
+  '3d, worst quality, low quality, bad anatomy, bad hands, extra fingers, missing fingers, ' +
+  'extra toes, bad feet, extra limbs, fused limbs, lowres, blurry, jpeg artifacts, ' +
+  'watermark, signature, username, artistic error, shiny hair, plastic skin';
+
 export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> = {
   checkpoint: {
     id: 'checkpoint',
@@ -120,7 +162,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     clips: [],
     supportsNegative: true,
     negativeRequired: false,
+    defaultNegative: '',
     samplerFixed: null,
+    slg: null,
     portraitSize: '832×1216',
     landscapeSize: '1216×832',
     defaults: { steps: 28, cfg: 5, sampler: 'euler_ancestral', scheduler: 'normal', guidance: 1, shift: 3 },
@@ -139,7 +183,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     ],
     supportsNegative: false,
     negativeRequired: false,
+    defaultNegative: '',
     samplerFixed: null,
+    slg: null,
     portraitSize: '1024×1024',
     landscapeSize: '1344×768',
     defaults: { steps: 20, cfg: 1, sampler: 'euler', scheduler: 'simple', guidance: 3.5, shift: 3 },
@@ -155,7 +201,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     clips: [{ key: 'clip1', label: 'Qwen2.5-VL' }],
     supportsNegative: true,
     negativeRequired: false,
+    defaultNegative: '',
     samplerFixed: null,
+    slg: null,
     portraitSize: '1024×1024',
     landscapeSize: '1344×768',
     defaults: { steps: 28, cfg: 4, sampler: 'euler', scheduler: 'simple', guidance: 1, shift: 3 },
@@ -174,27 +222,37 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     supportsNegative: true,
     // MOSS 线的画质/解剖/水印基线只活在固定负面里,AI 那侧被方言关掉了动态负面(见 SpecDialect)。
     negativeRequired: true,
+    defaultNegative: MOSS_DEFAULT_NEGATIVE,
     // 官方 SFT 口径就是 euler + sgm_uniform,换采样器不是「个人口味」而是画质劣化。
     samplerFixed: 'euler',
+    // 写实线不叠跳层引导:那是动漫线拉出二次元骨相的手段,对胶片/皮肤质感是反效果。
+    slg: null,
+    portraitSize: '832×1216',
+    landscapeSize: '1216×832',
+    defaults: { steps: 30, cfg: 3.5, sampler: 'euler', scheduler: 'sgm_uniform', guidance: 1, shift: 3 },
+  },
+  'moss-anime': {
+    id: 'moss-anime',
+    // 底模与写实线同一份权重;差别全在「叠什么 LoRA、串怎么写」,故 label 要点明这一点。
+    label: 'MOSS-Image 动漫(需画风 LoRA)',
+    modelKind: 'unet',
+    modelLabel: 'MOSS 底模',
+    vaeRequired: true,
+    vaeLabel: 'VAE(flux2)',
+    vaePlaceholder: 'flux2-vae_small.safetensors',
+    clips: [{ key: 'clip1', label: 'CLIP(Qwen3.5 9B)' }],
+    supportsNegative: true,
+    // 底模不带二次元审美,崩手/崩脚/3D 感全靠这条收边,空着同样会走形。
+    negativeRequired: true,
+    defaultNegative: MOSS_ANIME_DEFAULT_NEGATIVE,
+    samplerFixed: 'euler',
+    // 单层 22、前 50% 生效 —— 与 story-image 的 moss-anime 线同口径。
+    slg: { singleLayers: '22', startPercent: 0, endPercent: 0.5 },
     portraitSize: '832×1216',
     landscapeSize: '1216×832',
     defaults: { steps: 30, cfg: 3.5, sampler: 'euler', scheduler: 'sgm_uniform', guidance: 1, shift: 3 },
   },
 };
-
-/**
- * MOSS 线的默认固定负面(官方 16 条 + 本机补 4 条)。
- *
- * 为什么必填:MOSS 方言下 autoTag 不请求 AI 动态负面(见 SpecDialect 的 moss 分支),
- * 串里那点题材级负面全靠这一条兜底。补的四条各有来由 —— `western face`/`caucasian`
- * 防欧美脸(底模的英文先验会把东亚角色画成白人)、`fused bodies`/`deformed genitals`
- * 防多人贴合处粘连与器官走形,都是实测最容易翻车的两处。
- */
-export const MOSS_DEFAULT_NEGATIVE =
-  'worst quality, low quality, bad anatomy, deformed hands, extra fingers, malformed limbs, ' +
-  'distorted face, plastic skin, overly smooth skin, waxy skin, oversharpening, ' +
-  'excessive skin retouching, blurry, jpeg artifacts, watermark, text, logo, ' +
-  'western face, caucasian, fused bodies, deformed genitals';
 
 export const COMFY_TEMPLATE_OPTIONS = (Object.keys(COMFY_TEMPLATES) as ComfySimpleTemplateId[]).map(id => ({
   value: id,
@@ -203,6 +261,16 @@ export const COMFY_TEMPLATE_OPTIONS = (Object.keys(COMFY_TEMPLATES) as ComfySimp
 
 export function isComfyTemplateId(value: unknown): value is ComfySimpleTemplateId {
   return typeof value === 'string' && value in COMFY_TEMPLATES;
+}
+
+/**
+ * 这条模板是不是「MOSS 系」——它决定提示词规范方言、串联写法与负面策略,
+ * 而不是由用户手点的那份下拉决定。
+ *
+ * 写实线与动漫线是同一份底模、两套审美:规范、负面、画风层全不同,所以两条各自成族。
+ */
+export function isMossTemplate(id: ComfySimpleTemplateId): boolean {
+  return id === 'moss' || id === 'moss-anime';
 }
 
 export function templateSupportsNegative(id: ComfySimpleTemplateId): boolean {
@@ -227,9 +295,9 @@ export function simpleDefaults(template: ComfySimpleTemplateId = 'checkpoint'): 
     guidance: meta.defaults.guidance,
     shift: meta.defaults.shift,
     positive: '',
-    // MOSS 的固定负面是必填项(meta.negativeRequired),新建时就填好默认值,
+    // 必填固定负面的模板,新建时就填好**该模板自己的**默认串(写实线与动漫线不是同一份),
     // 让「选完模型点出图」这条路不被一条校验拦下;用户仍可整串替换。
-    negative: meta.negativeRequired ? MOSS_DEFAULT_NEGATIVE : '',
+    negative: meta.negativeRequired ? meta.defaultNegative : '',
   };
 }
 
@@ -329,7 +397,7 @@ function joinParts(...parts: (string | undefined)[]): string {
  */
 export function composePositive(simple: ComfySimpleConfig, values: SimpleGenValues): string {
   const nl = (values.nl ?? '').trim();
-  if (simple.template === 'moss') {
+  if (isMossTemplate(simple.template)) {
     return joinParts(simple.positive, values.prompt, nl, values.appearance);
   }
   return joinParts(simple.positive, nl || values.prompt);
@@ -554,7 +622,14 @@ function buildAnimaWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues):
 }
 
 /**
- * MOSS-Image 写实线(官方 SFT int8 口径)。
+ * MOSS-Image 族(写实线 + 动漫线,官方 SFT int8 口径)。
+ *
+ * 两条线的加载链完全相同,差别只在**模型链上叠什么**:
+ * - 写实线:底模 → LoRA 链 → KSampler;
+ * - 动漫线:底模 → SkipLayerGuidanceDiTSimple(单层 22 / 前 50%)→ 画风 LoRA → KSampler。
+ *   官方 SFT 本身不带二次元审美,单靠 LoRA 拉出来会「形似而骨相不对」,那层跳层引导
+ *   是把它从写实骨相掰成动画骨相的关键;顺序也不能反(LoRA 必须挂在 SLG 之后,
+ *   否则画风权重会被 SLG 的层跳过一起改掉)。
  *
  * 三个与其它模板族**不通用**的地方,照抄 flux/anima 的组装器会直接跑不通:
  * 1. CLIPLoader 的 `type` 必须是 `moss_image`——文本编码器是 Qwen3.5 9B 的 MOSS 定制版,
@@ -575,7 +650,24 @@ function buildMossWorkflow(simple: ComfySimpleConfig, values: SimpleGenValues): 
   };
   nodes['3'] = { class_type: 'VAELoader', inputs: { vae_name: simple.vae.trim() } };
 
-  const chain = applyLoras(nodes, simple.loras, true, ['1', 0], null);
+  // 跳层引导(仅动漫线):插在底模之后、LoRA 之前。节点 id 用 20,和 applyLoras 的 30x 不撞。
+  let modelRef: NodeRef = ['1', 0];
+  const slg = COMFY_TEMPLATES[simple.template].slg;
+  if (slg) {
+    nodes['20'] = {
+      class_type: 'SkipLayerGuidanceDiTSimple',
+      inputs: {
+        model: modelRef,
+        double_layers: '',
+        single_layers: slg.singleLayers,
+        start_percent: slg.startPercent,
+        end_percent: slg.endPercent,
+      },
+    };
+    modelRef = ['20', 0];
+  }
+
+  const chain = applyLoras(nodes, simple.loras, true, modelRef, null);
 
   // 正向固定段(画质串)由 composePositive 拼在 AI 内容之前 —— MOSS 的画质基线在预设的 positive 里。
   nodes['4'] = {
@@ -627,6 +719,7 @@ export function buildSimpleWorkflow(simple: ComfySimpleConfig, values: SimpleGen
     case 'anima':
       return buildAnimaWorkflow(simple, values);
     case 'moss':
+    case 'moss-anime':
       return buildMossWorkflow(simple, values);
     default:
       return buildCheckpointWorkflow(simple, values);

@@ -26,6 +26,8 @@ function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
     naiV5Thinking: '',
     mossSpec: '',
     mossThinking: '',
+    mossAnimeSpec: '',
+    mossAnimeThinking: '',
     ...overrides,
   };
 }
@@ -1340,6 +1342,72 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       const comfyMessages = await buildAutoTagMessages(context(), 1, mossOptions(), null, undefined, library);
       const comfyContract = comfyMessages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
       expect(comfyContract).toContain('用词一字不改，不得自行改写或增删其固定外貌');
+    } finally {
+      state.restore();
+    }
+  });
+
+  // 动漫线与写实线共底模但审美相反:前者要中文散文 + 极简元素行,后者要 tag 锁元素 +
+  // 英文身体段。两套规范混用会让模型写它那条线根本不存在的段落形态。
+  it('MOSS 动漫方言:换规范与思维链、tag 示例改中文元素行、负面同样不请求', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss-anime';
+
+      // nl 同样恒真:动漫线的主体也是散文段,开关不参与
+      state.preset.naturalLanguage = false;
+      expect(autoTagProfile()).toMatchObject({ nl: true, dialect: 'moss-anime' });
+
+      const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
+      const spec = pick(messages, 'MOSS 动漫线提示词规范');
+      const thinking = pick(messages, '输出前思考清单（MOSS 动漫线）');
+      const contract = messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+
+      // 写实线那份不能混进来:两套规范的段落形态互斥
+      expect(messages.some(m => m.content.includes('MOSS-Image 写实线提示词规范'))).toBe(false);
+      expect(messages.some(m => m.content.includes('【ComfyUI 提示词规范】'))).toBe(false);
+
+      // 规范要点:极简中文元素行 + 中文四段 + 禁画风词 + 不出分镜页
+      expect(spec).toContain('极简中文元素行');
+      expect(spec).toContain('tag 流');
+      expect(spec).toContain('画风词');
+      expect(spec).toContain('本线不出漫画分镜页');
+      expect(thinking).toContain('机位定死（本步必须在写任何内容之前完成）');
+      expect(thinking).toContain('材质三件套');
+
+      // 示例必须是中文元素行:给英文 tag 示例会把模型带回 tag 流
+      expect(contract).toContain('"tag":"一个人，中景，四分之三侧面，公寓客厅，午后的侧光"');
+      expect(contract).not.toContain('"tag":"1girl, long silver hair, red eyes, white dress"');
+      // 协议里 tag 的定义也换成了元素行,不再说 danbooru 短 tag
+      expect(contract).toContain('极简中文元素行（人数 / 景别 / 机位朝向 / 地点 / 光的方向，20 字以内）');
+
+      // 负面同样由预设的固定串承担,AI 不写动态负面
+      expect(contract).not.toContain('negative 是本画面专用的 danbooru 负面短 tag');
+    } finally {
+      state.restore();
+    }
+  });
+
+  it('MOSS 动漫方言:角色库条款按标记分流,但不禁中文段写外貌', async () => {
+    const state = snapshot();
+    try {
+      settings.defaultBackend = 'comfyui';
+      state.preset.specDialect = 'moss-anime';
+      const library = [
+        '- 林夏 [中文外貌已填]: 性别=1girl, 头发=long black hair',
+        '- 许梨: 性别=1girl, 头发=short brown hair',
+      ].join('\n');
+
+      const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null, undefined, library);
+      const contract = messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content;
+
+      expect(contract).toContain('这些**固定外貌一个词都不要写');
+      // 动漫线没有英文身体段,外貌全在 nl 的中文层里 —— 这条判据必须点明
+      expect(contract).toContain('年龄感与人种**（它们不属于固定外貌档案');
+      expect(contract).toContain('外貌由你补一次');
+      // 写实线那句「写进英文身体段」不能挂到这条线上
+      expect(contract).not.toContain('不要在英文身体段里再给一遍体型总述');
     } finally {
       state.restore();
     }

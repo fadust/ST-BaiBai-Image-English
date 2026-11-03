@@ -2,6 +2,8 @@
 import {
   COMFY_TEMPLATE_OPTIONS,
   COMFY_TEMPLATES,
+  isMossTemplate,
+  MOSS_ANIME_DEFAULT_NEGATIVE,
   MOSS_DEFAULT_NEGATIVE,
   isComfyTemplateId,
   simpleDefaults,
@@ -144,7 +146,8 @@ const templateOptions = COMFY_TEMPLATE_OPTIONS;
  */
 const specDialectOptions: Array<{ value: SpecDialect; label: string }> = [
   { value: 'comfy', label: 'ComfyUI（动漫 tag 流）' },
-  { value: 'moss', label: 'MOSS（写实散文流）' },
+  { value: 'moss', label: 'MOSS 写实（散文流）' },
+  { value: 'moss-anime', label: 'MOSS 动漫（二次元）' },
 ];
 
 /** BbiSelect 按 string 收发,这里收窄回 SpecDialect(与设置页各 *Sel computed 同款)。 */
@@ -240,19 +243,30 @@ function onTemplateChange(id: string) {
   if (current.template === id) return;
   const prevMeta = COMFY_TEMPLATES[current.template];
   const nextMeta = COMFY_TEMPLATES[id];
-  // 规范方言跟着底模走:MOSS 模板只能配写实散文流,离开时退回 tag 流。
-  // 只做「进出 moss」这两个方向,别处不动用户手动选的值。
-  if (id === 'moss') active.value.specDialect = 'moss';
-  else if (current.template === 'moss' && active.value.specDialect === 'moss') {
+  // 规范方言跟着底模走:两个 MOSS 模板各自只能配自己那份规范(写实散文流 / 二次元散文流),
+  // 离开 MOSS 族时退回 tag 流。只动「进出 MOSS 族」这两个方向,别处不碰用户手动选的值。
+  if (id === 'moss' || id === 'moss-anime') active.value.specDialect = id;
+  else if (
+    isMossTemplate(current.template) &&
+    (active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime')
+  ) {
     active.value.specDialect = 'comfy';
   }
   if (active.value.portraitSize === prevMeta.portraitSize) active.value.portraitSize = nextMeta.portraitSize;
   if (active.value.landscapeSize === prevMeta.landscapeSize) active.value.landscapeSize = nextMeta.landscapeSize;
+  // 固定负面默认「原样带过去」,但两条 MOSS 线的默认串不可互换(动漫线不能带 text/logo)。
+  // 只在用户**没动过**旧模板的默认串时才换成新模板那份;用户自己改过的绝不覆盖。
+  const keptNegative =
+    prevMeta.negativeRequired &&
+    nextMeta.negativeRequired &&
+    current.negative === prevMeta.defaultNegative
+      ? nextMeta.defaultNegative
+      : current.negative;
   active.value.simple = {
     ...simpleDefaults(id),
     loras: current.loras,
     positive: current.positive,
-    negative: current.negative,
+    negative: keptNegative,
   };
 }
 
@@ -275,8 +289,11 @@ const simpleState = computed(() => {
 const nlHint = computed(() => {
   // MOSS 线的 nl 不是"额外加一段"而是画面本体;这个开关在那边连解释都换了口径,
   // 免得用户按 Flux 的经验以为关掉只是少写一段。
+  if (active.value.specDialect === 'moss-anime') {
+    return 'MOSS 动漫线必须写中文散文段(机位/环境分层/光线/人物/材质),它同时充当正向提示词的主体';
+  }
   if (active.value.specDialect === 'moss') {
-    return 'MOSS 线必须写英文散文段(机位/环境分层/光线/人物),它同时充当正向提示词的主体';
+    return 'MOSS 写实线必须写英文散文段(机位/环境分层/光线/人物),它同时充当正向提示词的主体';
   }
   return active.value.mode === 'simple'
     ? '额外生成一段自然语言描述;简易模式下优先于 tag 作为正向提示词(Flux/Anima 建议开启)'
@@ -288,7 +305,7 @@ const nlHint = computed(() => {
  * 勾掉也不会有任何变化。留着能点就是骗人(用户会以为「这次只写 tag」生效了),
  * 故只在方言层面禁用;切回 comfy 方言立刻恢复可点,存量值原样保留。
  */
-const isMossDialect = computed(() => active.value.specDialect === 'moss');
+const isMossDialect = computed(() => active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime');
 
 /** MOSS 模板锁死的采样器(目前只有 euler);null = 用户自选,别处模板不受影响。 */
 const fixedSampler = computed(() => meta.value.samplerFixed);
@@ -297,14 +314,15 @@ const fixedSampler = computed(() => meta.value.samplerFixed);
  * 固定负面是 MOSS 的必填项(见 ComfyTemplates 的 negativeRequired):空着一定出糊图,
  * 而这份串又长到没人愿意手敲。给一个一键填入,只在空着时出现,填过就不再打扰。
  */
-// 一键填入的是 MOSS 那份串,故只在 moss 模板下出现(别的模板即使日后也要必填负面,
-// 该配的是自己的默认串,不该被塞进写实线那 20 条)。
+// 一键填入的是**该模板自己的**默认串:写实线与动漫线两份负面不可互换
+// (动漫线不能带 text/logo,会把画面内文字一起压掉;写实线不能带 3d,会把照片推成 CG)。
 const needMossNegative = computed(
-  () => active.value.simple.template === 'moss' && !active.value.simple.negative.trim(),
+  () => isMossTemplate(active.value.simple.template) && !active.value.simple.negative.trim(),
 );
 
 function fillDefaultNegative() {
-  active.value.simple.negative = MOSS_DEFAULT_NEGATIVE;
+  active.value.simple.negative =
+    active.value.simple.template === 'moss-anime' ? MOSS_ANIME_DEFAULT_NEGATIVE : MOSS_DEFAULT_NEGATIVE;
 }
 
 // BbiCombo 没有 disabled 属性,面板只靠 CSS 拦鼠标;Tab 仍能聚焦到那个框。

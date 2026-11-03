@@ -12,6 +12,8 @@ import {
   DEFAULT_COMFY_THINKING,
   DEFAULT_JAILBREAK_PROMPT,
   DEFAULT_MOSS_SPEC,
+  DEFAULT_MOSS_ANIME_SPEC,
+  DEFAULT_MOSS_ANIME_THINKING,
   DEFAULT_MOSS_THINKING,
   DEFAULT_NAI_V5_SPEC,
   DEFAULT_NAI_V5_THINKING,
@@ -207,6 +209,22 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
     label: 'MOSS 思维链',
     hint: '与「MOSS 规范」配套的输出前思考清单。留空用内置默认。',
     builtin: DEFAULT_MOSS_THINKING,
+    macros: [],
+  },
+  // 动漫线与写实线同底模、不同审美,故规范与思维链各存一份:
+  // 共用一份会让其中一条被要求写它那条线根本不存在的段落形态。
+  {
+    key: 'mossAnimeSpec',
+    label: 'MOSS 动漫规范',
+    hint: '默认后端为 ComfyUI、当前工作流的「提示词规范」选了 MOSS 动漫时使用：定义动漫线的画面串写法（极简中文元素行 + 4–5 段中文散文 + 材质与光线要求，不含英文解剖段与画风词）。留空用内置默认。',
+    builtin: DEFAULT_MOSS_ANIME_SPEC,
+    macros: [],
+  },
+  {
+    key: 'mossAnimeThinking',
+    label: 'MOSS 动漫思维链',
+    hint: '与「MOSS 动漫规范」配套的输出前思考清单。留空用内置默认。',
+    builtin: DEFAULT_MOSS_ANIME_THINKING,
     macros: [],
   },
 ];
