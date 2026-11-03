@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BBI_CHAR_EXTRA_KEY,
   applyCharTagOps,
+  charTagLib,
+  chineseAppearanceForText,
   computeLockedCharTagNames,
   createCharTagNewOp,
   createCharTagSetOp,
@@ -178,6 +180,94 @@ describe('floor-owned character changes', () => {
       desc: '',
     })!;
     expect(deriveCharTags([], [floorMessage([create], 1, 0)])).toEqual([]);
+  });
+});
+
+describe('中文外貌(zh)的认人与拼接', () => {
+  /** 直接往派生库里塞条目:chineseAppearanceForText 读的是 charTagLib,不走 getContext。 */
+  function seed(entries: Array<{ name: string; zh?: string }>): void {
+    charTagLib.entries = entries.map(entry => ({
+      name: entry.name,
+      fields: emptyCharFields(),
+      raw: '1girl',
+      nl: '',
+      ...(entry.zh ? { zh: entry.zh } : {}),
+      source: 'manual' as const,
+      desc: '',
+      history: [],
+    }));
+  }
+
+  it('名字在 tag 或 nl 里字面出现时拼出该角色的中文外貌', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸,单眼皮,皮肤偏白。' }]);
+    expect(chineseAppearanceForText('1girl, 林夏, medium shot')).toBe('鹅蛋脸,单眼皮,皮肤偏白。');
+    expect(chineseAppearanceForText('林夏坐在窗边。')).toBe('鹅蛋脸,单眼皮,皮肤偏白。');
+  });
+
+  it('没出现的角色不拼;没填 zh 的也不拼', () => {
+    seed([
+      { name: '林夏', zh: '鹅蛋脸。' },
+      { name: '苏曼', zh: '圆脸,双眼皮。' },
+      { name: '许梨' },
+    ]);
+    expect(chineseAppearanceForText('1girl, medium shot')).toBe('');
+    expect(chineseAppearanceForText('苏曼站在门口。')).toBe('圆脸,双眼皮。');
+    expect(chineseAppearanceForText('许梨走过来。')).toBe('');
+  });
+
+  it('长名覆盖短名:被测文本只提到「小雪」时不额外拼「雪」那一条', () => {
+    seed([
+      { name: '雪', zh: '短名描述。' },
+      { name: '小雪', zh: '长名描述。' },
+    ]);
+    // "小雪" 包含 "雪":若不做覆盖判断,同一个人会被拼两段
+    expect(chineseAppearanceForText('小雪走过来。')).toBe('长名描述。');
+    // 只有 "雪" 字出现时才轮到短名那条
+    expect(chineseAppearanceForText('雪落在肩上。')).toBe('短名描述。');
+  });
+
+  it('两个不相干的角色都在场时各拼一段,顺序按名字长度降序', () => {
+    seed([
+      { name: '林夏', zh: '鹅蛋脸。' },
+      { name: '苏曼', zh: '圆脸。' },
+    ]);
+    expect(chineseAppearanceForText('林夏和苏曼站在门口。')).toBe('鹅蛋脸。 圆脸。');
+  });
+
+  it('空文本与空库都返回空串', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸。' }]);
+    expect(chineseAppearanceForText('')).toBe('');
+    expect(chineseAppearanceForText('   ')).toBe('');
+    seed([]);
+    expect(chineseAppearanceForText('林夏')).toBe('');
+  });
+
+  it('zh 能经由 set op 写入,并随条目落库', () => {
+    const op = createCharTagSetOp('林夏', 'zh', '鹅蛋脸,单眼皮。', '补中文外貌');
+    expect(op).not.toBeNull();
+    const entries = applyCharTagOps(
+      [{
+        name: '林夏',
+        fields: emptyCharFields(),
+        raw: '1girl',
+        nl: '',
+        source: 'manual',
+        desc: '',
+        history: [],
+      }],
+      [op!],
+      -1,
+    );
+    expect(entries[0].zh).toBe('鹅蛋脸,单眼皮。');
+  });
+
+  it('存量条目没有 zh 键时不会因为读它而崩,也不会凭空多出空键', () => {
+    const [entry] = normalizeCharTagStore({
+      entries: [{ name: '阿黛尔', fields: { hair: 'long black hair' }, raw: '' }],
+    });
+    expect(entry.zh).toBeUndefined();
+    expect('zh' in entry).toBe(false);
+    expect(chineseAppearanceForText('阿黛尔')).toBe('');
   });
 });
 

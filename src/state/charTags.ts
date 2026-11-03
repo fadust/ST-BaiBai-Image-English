@@ -38,7 +38,7 @@ export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
 };
 
 export type CharTagSource = 'book' | 'manual' | 'ai';
-export type CharTagHistoryField = CharTagField | 'new' | 'raw' | 'nl';
+export type CharTagHistoryField = CharTagField | 'new' | 'raw' | 'nl' | 'zh';
 
 export interface CharTagChangeRecord {
   field: CharTagHistoryField;
@@ -55,6 +55,19 @@ export interface CharTagEntry {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /**
+   * 中文外貌描述(自由文本,不是 tag)。与 nl 的区别是**谁来用**:
+   * nl 是发给 AI 当参考、由它决定要不要写进画面串(占位符替换已降级为兜底);
+   * zh 由插件**机械拼进最终正向提示词的 nl 段**,不经 AI、不经 tag/nl 抉择。
+   *
+   * 存在的理由是 MOSS 写实线:那条线的正向拼装是 `nl || prompt`(见 comfyTemplates
+   * 的 composePositive),nl 非空时 tag 整行被丢掉,而角色库七个字段是英文 tag、
+   * 只能进 tag —— 中文外貌因此一个词都到不了模型。zh 就架在这条缝上。
+   *
+   * **可选**:0.3.4 新增,存量条目、老 extra、各处测试夹具都没有这个键。
+   * 读侧一律走 `entry.zh?.trim() ?? ''`,不要假设它一定存在。
+   */
+  zh?: string;
   source: CharTagSource;
   desc: string;
   history: CharTagChangeRecord[];
@@ -66,6 +79,8 @@ export interface CharTagNewOp {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /** 中文外貌描述(见 CharTagEntry.zh)。 */
+  zh?: string;
   source: 'book' | 'ai';
   desc: string;
   reason: string;
@@ -75,7 +90,7 @@ export interface CharTagNewOp {
 export interface CharTagSetOp {
   kind: 'set';
   name: string;
-  field: CharTagField | 'raw' | 'nl';
+  field: CharTagField | 'raw' | 'nl' | 'zh';
   value: string;
   reason: string;
   at: number;
@@ -166,11 +181,22 @@ export function buildEntryTag(entry: Pick<CharTagEntry, 'fields' | 'raw'>): stri
 }
 
 function isHistoryField(value: string): value is CharTagHistoryField {
-  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'new' || value === 'raw' || value === 'nl';
+  return (
+    (CHAR_TAG_FIELDS as readonly string[]).includes(value) ||
+    value === 'new' ||
+    value === 'raw' ||
+    value === 'nl' ||
+    value === 'zh'
+  );
 }
 
 function isSetField(value: string): value is CharTagSetOp['field'] {
-  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'raw' || value === 'nl';
+  return (
+    (CHAR_TAG_FIELDS as readonly string[]).includes(value) ||
+    value === 'raw' ||
+    value === 'nl' ||
+    value === 'zh'
+  );
 }
 
 function normalizeHistory(raw: unknown): CharTagChangeRecord[] {
@@ -212,7 +238,7 @@ function normalizeEntry(raw: unknown): CharTagEntry | null {
   const legacyTags = typeof value.tags === 'string' ? value.tags.trim() : '';
   const rawTag = typeof value.raw === 'string' ? value.raw.trim() : legacyTags;
   if (!rawTag && charFieldsEmpty(fields)) return null;
-  return {
+  const entry: CharTagEntry = {
     name,
     fields,
     raw: rawTag,
@@ -221,9 +247,16 @@ function normalizeEntry(raw: unknown): CharTagEntry | null {
     desc: typeof value.desc === 'string' ? value.desc : '',
     history: normalizeHistory(value.history),
   };
+  // 空串不写这个键:zh 是 0.3.4 新增的可选字段,存量条目归一化后不该多出一个
+  // 空字段(会把 equality 断言、导出的 JSON 一并改形)。有内容才落。
+  const zh = typeof value.zh === 'string' ? value.zh.trim() : '';
+  if (zh) entry.zh = zh;
+  return entry;
 }
 
 function cloneEntry(entry: CharTagEntry): CharTagEntry {
+  // zh 是可选字段:没有就保持"没有",不补空串——补了会让每个存量条目都多出一个键,
+  // 序列化/相等比较跟着改形。读侧一律 zh ?? '' 兜底。
   return {
     ...entry,
     fields: { ...entry.fields },
@@ -263,6 +296,7 @@ function normalizeAutoOp(raw: unknown): CharTagAutoOp | null {
       fields,
       raw: rawTag,
       nl: typeof value.nl === 'string' ? value.nl.trim() : '',
+      zh: typeof value.zh === 'string' ? value.zh.trim() : '',
       source: value.source === 'book' ? 'book' : 'ai',
       desc: typeof value.desc === 'string' ? value.desc : '',
       reason: typeof value.reason === 'string' ? value.reason : '',
@@ -302,7 +336,7 @@ function pushHistory(entry: CharTagEntry, record: CharTagChangeRecord): void {
 }
 
 export function createCharTagNewOp(
-  entry: Pick<CharTagEntry, 'name' | 'fields' | 'raw' | 'nl' | 'source' | 'desc'>,
+  entry: Pick<CharTagEntry, 'name' | 'fields' | 'raw' | 'nl' | 'source' | 'desc'> & { zh?: string },
   reason = '',
   at = Date.now(),
 ): CharTagNewOp | null {
@@ -314,6 +348,7 @@ export function createCharTagNewOp(
     fields: normalized.fields,
     raw: normalized.raw,
     nl: normalized.nl,
+    zh: normalized.zh ?? '',
     source: normalized.source === 'book' ? 'book' : 'ai',
     desc: normalized.desc,
     reason,
@@ -351,6 +386,7 @@ export function applyCharTagOps(
         fields: { ...op.fields },
         raw: op.raw,
         nl: op.nl,
+        zh: op.zh ?? '',
         source: op.source,
         desc: op.desc,
         history: [],
@@ -369,11 +405,27 @@ export function applyCharTagOps(
 
     const entry = out.find(candidate => candidate.name === op.name);
     if (!entry) continue;
-    if (op.field !== 'raw' && op.field !== 'nl' && entry.raw.trim() && charFieldsEmpty(entry.fields)) continue;
-    const current = op.field === 'raw' ? entry.raw : op.field === 'nl' ? entry.nl : entry.fields[op.field];
+    if (
+      op.field !== 'raw' &&
+      op.field !== 'nl' &&
+      op.field !== 'zh' &&
+      entry.raw.trim() &&
+      charFieldsEmpty(entry.fields)
+    ) {
+      continue;
+    }
+    const current =
+      op.field === 'raw'
+        ? entry.raw
+        : op.field === 'nl'
+          ? entry.nl
+          : op.field === 'zh'
+            ? (entry.zh ?? '')
+            : entry.fields[op.field];
     if (current === op.value) continue;
     if (op.field === 'raw') entry.raw = op.value;
     else if (op.field === 'nl') entry.nl = op.value;
+    else if (op.field === 'zh') entry.zh = op.value;
     else entry.fields[op.field] = op.value;
     entry.source = 'ai';
     entry.desc = '';
@@ -488,6 +540,45 @@ export function findCharTag(name: string): CharTagEntry | undefined {
   return charTagLib.entries.find(entry => entry.name === name);
 }
 
+/**
+ * 从画面串里认出在场角色,取他们的**中文外貌**拼成一段。
+ *
+ * 这是「中文外貌(zh)」唯一的消费口径:由插件机械拼接,不经 AI、不经 tag/nl 抉择。
+ * 为什么需要这条旁路:角色库七个字段是英文 danbooru tag,只能进 tag;而 MOSS 写实线的
+ * 正向是 `nl || prompt`(comfyTemplates 的 composePositive),nl 一非空 tag 整行就被丢掉——
+ * 英文字段在那边天然到不了模型,中文外貌若也只走 tag 就同样到不了。
+ *
+ * 认人靠**名字字面出现**:传进来的是本图最终的 tag + nl 原文,库里每个名字去文本里找一次。
+ * 不用 characters[] 是因为 ComfyUI 链路根本不产出那一段(supportsCharacters=false),
+ * 而自动 tag 的协议也不会为它额外输出角色清单。名字匹配是这条链路上唯一机械可靠的信号;
+ * 认错了最坏结果只是多拼一段同作者描述,不会改人数、不会增删元素。
+ *
+ * 匹配按名字长度降序:库里同时有「小雪」与「雪」时,先命中长的那个,
+ * 免得短名把长名的角色也拉进来拼一遍。
+ *
+ * 拼的是 zh 原文:给人看的中文描述,交给中文原生的文本编码器,不做任何改写。
+ */
+export function chineseAppearanceForText(text: string): string {
+  const source = (text ?? '').trim();
+  if (!source) return '';
+  const candidates = charTagLib.entries
+    .filter(entry => entry.name.trim() && (entry.zh ?? '').trim())
+    // 长名优先:库里同时有「雪」与「小雪」时先命中长的那个
+    .sort((left, right) => right.name.trim().length - left.name.trim().length);
+  const parts: string[] = [];
+  const accepted: string[] = [];
+  for (const entry of candidates) {
+    const name = entry.name.trim();
+    if (!source.includes(name)) continue;
+    // 已被更长且已命中的名字覆盖:那是同一个人的另一条档案,不重复拼。
+    // (「雪」是「小雪」的子串,而「小雪」已经命中并拼过一段了。)
+    if (accepted.some(longer => longer.includes(name))) continue;
+    accepted.push(name);
+    parts.push((entry.zh ?? '').trim());
+  }
+  return parts.join(' ');
+}
+
 export interface UpsertOptions {
   recordChanges?: boolean;
 }
@@ -505,6 +596,7 @@ export function upsertCharTag(
     fields: normalizeFields(entry.fields),
     raw: entry.raw.trim(),
     nl: entry.nl.trim(),
+    zh: (entry.zh ?? '').trim(),
     source: entry.source,
     desc: entry.desc,
     history: entry.history.length
@@ -564,6 +656,7 @@ export function rollbackCharTag(name: string, record: CharTagChangeRecord): bool
   const next = cloneEntry(current);
   if (record.field === 'raw') next.raw = record.from;
   else if (record.field === 'nl') next.nl = record.from;
+  else if (record.field === 'zh') next.zh = record.from;
   else next.fields[record.field] = record.from;
   next.source = 'manual';
   next.desc = '';

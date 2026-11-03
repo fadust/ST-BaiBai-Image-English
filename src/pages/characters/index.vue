@@ -45,6 +45,8 @@ interface Draft {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /** 中文外貌:插件机械拼进最终正向的 nl 段,不经 AI(见 CharTagEntry.zh)。 */
+  zh: string;
 }
 
 // editingName:正在编辑的已有条目名;null = 新建。弹窗开关以 draft 是否存在为准。
@@ -124,6 +126,7 @@ function openEntry(entry: CharTagEntry, scope: Scope) {
     fields: { ...emptyCharFields(), ...entry.fields },
     raw: entry.raw,
     nl: entry.nl,
+    zh: entry.zh ?? '',
   };
   draftSource.value = entry.source;
   draftDesc.value = entry.desc;
@@ -134,7 +137,7 @@ function addEntry(scope: Scope = 'chat') {
   editingName.value = null;
   editingScope.value = scope;
   draftScope.value = scope;
-  draft.value = { name: '', fields: emptyCharFields(), raw: '', nl: '' };
+  draft.value = { name: '', fields: emptyCharFields(), raw: '', nl: '', zh: '' };
   draftSource.value = 'manual';
   draftDesc.value = '';
   historyOpen.value = false;
@@ -203,6 +206,7 @@ function confirmEntry() {
     fields: d.fields,
     raw: d.raw,
     nl: d.nl,
+    zh: d.zh,
     source: draftSource.value,
     desc: draftDesc.value,
     history: [],
@@ -296,6 +300,7 @@ function fieldLabel(field: CharTagChangeRecord['field']): string {
   if (field === 'new') return '建档';
   if (field === 'raw') return '整串';
   if (field === 'nl') return '自然语言';
+  if (field === 'zh') return '中文外貌';
   return CHAR_TAG_FIELD_LABELS[field];
 }
 
@@ -541,6 +546,21 @@ function sourceLabel(entry: CharTagEntry): string {
             @input="markManual"
           />
         </label>
+
+        <label class="bbi-modal-field">
+          <span class="bbi-modal-label">中文外貌(可选)</span>
+          <BbiTextarea
+            v-model="draft.zh"
+            :rows="2"
+            :max-rows="4"
+            placeholder="中文写一段:脸型、五官、发色、肤色、体型。出图时由插件原样拼进画面描述,不经 AI 改写"
+            @input="markManual"
+          />
+        </label>
+        <span class="bbi-field-hint">
+          给 MOSS 这类吃中文自然语言的底模用。上面七个字段是英文 tag,在 MOSS 线下会被自然语言顶掉;
+          这一栏直接拼进提示词,不受影响。不写则不拼。
+        </span>
 
         <div class="bbi-char-preview">
           <span class="bbi-field-label">最终 tag 预览</span>

@@ -558,6 +558,9 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
   - **simple**(comfyTemplates.ts):选模型/LoRA + 填参数,按架构模板族组装 JSON,**无占位符**。
     模板族刻意收敛为 checkpoint 系 / Flux / Anima(Qwen 链路) / MOSS 写实,新架构 = 加一条模板数据 + 一个组装分支;
     正向 = 固定正面 + (nl 优先 || tag),负面 = 固定负面 + AI 动态负面(Flux 无真实负面输入,恒空)。
+    ⚠ **MOSS 模板例外**:正向是「固定正面 + tag + nl + 中文外貌」四段全留,不走 `nl || tag`——
+    MOSS 方言下 nl 恒非空,按旧口径 tag 会被整个丢掉,而人数/景别/人种这些承重墙只写在 tag 里。
+    第四段见下方「中文外貌通道」。
   - **MOSS 写实模板族**(`COMFY_TEMPLATES.moss` / `buildMossWorkflow`)走官方 SFT int8 口径:
     加载链 = UNETLoader → LoraLoaderModelOnly 链 → CLIPLoader(type 固定 `moss_image`) → VAELoader(flux2-vae_small)。
     三处**与其它模板族不通用**,照抄 flux/anima 的组装器会直接跑不通:
@@ -591,6 +594,19 @@ genState 同构(chatId|messageId|swipeId|seq),重建后按 key 认领。手动�
     后者讲的是「tag 之外再加一段 nl」的 tag 流口径,混进散文流规范里自相矛盾。
     ⚠ nl 里的换行会被折叠成空格(既有行为,`protocol.ts` 的 `sanitizeContent`),故 MOSS 规范明令
     **用句号分句、不依赖换行分段**——照 tag 流习惯写成多行,发出去就是一句连到底。
+  - **中文外貌通道**(角色库 `zh` → 最终正向):角色库那七个字段是英文 danbooru tag,
+    只能进 tag;而 MOSS 线的正向曾是 `nl || prompt`,nl 一非空 tag 整行就被丢掉,
+    于是中文外貌**一个词都到不了模型**。补法分两处:
+    ① `composePositive` 在 moss 模板下改为 tag 与 nl 全留(见上);
+    ② 角色库条目新增可选 `zh` 字段(中文自由文本,不是 tag),`state/charTags.ts` 的
+    `chineseAppearanceForText` 按**名字字面出现**认出在场角色、拼成一段,由 `Card.vue` 在
+    **发请求前**现取(库可能在本楼出图后才被补上,固化进 tag 原文就再也不会更新),
+    经 `generate.ts` → `ComfyTemplateValues.appearance` 一路透传到组装器。
+    认人不用 `characters[]`:ComfyUI 链路 `supportsCharacters` 恒 false,协议也不为它产出角色清单;
+    名字匹配是这条链路上唯一机械可靠的信号。长名优先并跳过被长名覆盖的短名
+    (库里同时有「雪」与「小雪」时不能把同一个人拼两遍)。**只在 moss 模板下并入**——
+    其余模板的文本编码器对中文几乎无响应,拼了只是噪声。custom 模式没有独立槽位,
+    该段并进 `%prompt%`(工作流必有此占位符,`%nl%` 则可有可无)。
   请求通道自动选择 —— **浏览器直连优先,仅网络级失败(CORS/拒连)回退 ST 服务端转发**;
   排队拿到 prompt_id 后轮询失败不重发(避免重复生图)。
   入参类型是收窄后的 `ComfyRunConn`(url + 单套预设的 mode/workflow/simple + 横竖尺寸),
@@ -958,6 +974,7 @@ API 对象 `Object.freeze`,一个插件改不动下一个插件拿到的东西�
 | 世界书/角色卡/persona 装配 | src/autoTag/context.ts |
 | 柏宝书状态读取 | src/autoTag/bookMemory.ts |
 | 角色库 v3(基线+楼层增量/changes ops/@占位符兜底/历史回滚) | src/autoTag/charAnchors.ts + src/state/charTags.ts + src/autoTag/runner.ts |
+| 角色中文外貌(zh → 拼进最终正向) | src/state/charTags.ts 的 `CharTagEntry.zh` + `chineseAppearanceForText`;消费在 backends/comfyTemplates.ts 的 `composePositive`(moss 模板)与 floor/Card.vue(发请求前现取) |
 | Vibe 分组 / 搜索 / 启用集合判定 | src/backends/vibeGroups.ts(纯逻辑)+ NaiPanel.vue(交互) |
 | 副 API 请求(代理/SSE/超时/测试) | src/api/client.ts |
 | 思考强度(渠道弹窗 + custom 源请求体) | src/state/settings.ts 的 `ApiChannel.reasoningEffort` + api/client.ts 的 `buildRequestBody`(UI 在 settings/index.vue) |

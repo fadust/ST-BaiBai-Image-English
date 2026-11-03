@@ -37,6 +37,11 @@ export interface GenerateInput {
   prompt: string;
   /** 自然语言部分(可空)。 */
   nl?: string;
+  /**
+   * 角色中文外貌(插件从角色库机械拼接,不来自 AI;可空)。
+   * ComfyUI 链路并进正向;NAI 忽略——那边没有中文原生的文本编码器。
+   */
+  appearance?: string;
   /** 本画面动态负面(可空)。ComfyUI 走 %negative_prompt%;NAI 的负面取渠道配置,不吃这个。 */
   negative?: string;
   /** NAI 4.5/V5 原生多角色提示;ComfyUI 不支持(见 charactersApplied)。 */
@@ -214,6 +219,7 @@ export async function generateImage(
         {
           prompt: input.prompt,
           nl: input.nl ?? '',
+          appearance: input.appearance ?? '',
           negative_prompt: input.negative ?? '',
           seed: input.seed,
           size,
@@ -229,6 +235,7 @@ export async function generateImage(
       const simpleValues: SimpleGenValues = {
         prompt: input.prompt,
         nl: input.nl,
+        appearance: input.appearance,
         negative: input.negative,
         seed: input.seed,
         width,

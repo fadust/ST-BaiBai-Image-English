@@ -347,4 +347,25 @@ describe('generateImage', () => {
     expect(out.meta.negative).toBe('bad');
     expect(out.meta.positive).toBe('1girl');
   });
+
+  it('中文外貌在 ComfyUI 链路上随正向透传,落进 meta.positive', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.template = 'moss';
+    preset.simple.model = 'moss_image_sft_int8_convrot.safetensors';
+    preset.simple.vae = 'flux2-vae_small.safetensors';
+    preset.simple.clip1 = 'qwen3.5_9b_int8_convrot.safetensors';
+    // MOSS 的固定负面是必填项(negativeRequired),空着会被闸门拦在请求之前
+    preset.simple.negative = 'worst quality, bad anatomy';
+
+    const out = await generateImage({
+      prompt: '1girl, 林夏, medium shot',
+      nl: '她坐在窗边。',
+      appearance: '鹅蛋脸,单眼皮。',
+      seed: 1,
+    });
+    // moss 模板:固定正面 + tag + nl + 中文外貌四段全留
+    expect(out.meta.positive).toBe('1girl, 林夏, medium shot, 她坐在窗边。, 鹅蛋脸,单眼皮。');
+  });
 });

@@ -36,6 +36,7 @@ import {
 import { isTagPlanning } from '@/floor/tagPlanState';
 import { formatGenerationMeta } from '@/generationMeta';
 import { activeComfyPreset, activeOrientationLock, imageDisplayMaxHeight, settings } from '@/state/settings';
+import { chineseAppearanceForText } from '@/state/charTags';
 import { beginImage, failImage, finishImage, safeHistory } from '@/state/history';
 import { copyText } from '@/st/clipboard';
 import { getContext } from '@/st/context';
@@ -269,6 +270,9 @@ async function generate(): Promise<void> {
     tag: props.tag,
     prompt: props.prompt,
     nl: props.nl,
+    // 中文外貌在**发请求前**从角色库现取:库可能在本楼出图之后才被手动补上,
+    // 固化进 tag 原文就再也不会更新。认人靠名字在 tag+nl 里字面出现(见该函数注释)。
+    appearance: chineseAppearanceForText(`${props.prompt} ${props.nl}`),
     negative: props.negative,
     characters: props.characters.map(character => ({ ...character })),
     size: effectiveSize.value,

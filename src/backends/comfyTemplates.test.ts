@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSimpleWorkflow,
   COMFY_TEMPLATES,
+  composePositive,
   MOSS_DEFAULT_NEGATIVE,
   normalizeSimpleConfig,
   simpleDefaults,
@@ -272,6 +273,53 @@ describe('buildSimpleWorkflow - moss(写实线)', () => {
     expect(simpleDefaults('moss').negative).toBe(MOSS_DEFAULT_NEGATIVE);
     expect(simpleDefaults('checkpoint').negative).toBe('');
     expect(normalizeSimpleConfig({ template: 'moss' }).negative).toBe(MOSS_DEFAULT_NEGATIVE);
+  });
+});
+
+describe('composePositive - moss 的中文外貌通道', () => {
+  const simple: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    positive: 'moodyrealism, photorealistic',
+  };
+
+  it('moss 下 tag 与 nl 同时进条件(nl 不再顶掉 tag)', () => {
+    const text = composePositive(simple, {
+      ...VALUES,
+      nl: '她坐在窗边,午后斜光落在桌面。',
+    });
+    expect(text).toBe('moodyrealism, photorealistic, 1girl, silver hair, 她坐在窗边,午后斜光落在桌面。');
+  });
+
+  it('moss 下中文外貌拼在 nl 之后、固定正面与 tag 之后', () => {
+    const text = composePositive(simple, {
+      ...VALUES,
+      nl: '她坐在窗边。',
+      appearance: '鹅蛋脸,单眼皮,皮肤偏白。',
+    });
+    expect(text).toBe(
+      'moodyrealism, photorealistic, 1girl, silver hair, 她坐在窗边。, 鹅蛋脸,单眼皮,皮肤偏白。',
+    );
+  });
+
+  it('中文外貌留空时不产生多余分隔符', () => {
+    expect(composePositive(simple, { ...VALUES, appearance: '' }).endsWith('1girl, silver hair')).toBe(true);
+    expect(composePositive(simple, { ...VALUES, appearance: '   ' })).toBe(
+      'moodyrealism, photorealistic, 1girl, silver hair',
+    );
+  });
+
+  it('非 moss 模板保持旧口径:nl 优先,中文外貌不并入', () => {
+    const checkpoint = config({ model: 'm.safetensors', positive: 'masterpiece' });
+    const text = composePositive(checkpoint, {
+      ...VALUES,
+      nl: 'A girl sits by the window.',
+      appearance: '鹅蛋脸,单眼皮。',
+    });
+    // 其余模板的文本编码器对中文几乎无响应,拼进去只是噪声
+    expect(text).toBe('masterpiece, A girl sits by the window.');
   });
 });
 

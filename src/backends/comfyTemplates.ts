@@ -296,6 +296,11 @@ export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
 export interface SimpleGenValues {
   /** AI 生成的正向 tag。 */
   prompt: string;
+  /**
+   * 角色的**中文外貌**段落(插件机械拼接,不来自 AI)。见 composePositive 的说明:
+   * 只在 moss 模板下并入正向——其余模板的文本编码器对中文几乎无响应,拼了只是噪声。
+   */
+  appearance?: string;
   /** AI 生成的自然语言(预设开启「生成自然语言」时才有);简易模式下优先于 tag。 */
   nl?: string;
   /** AI 生成的动态负面 tag。 */
@@ -313,9 +318,21 @@ function joinParts(...parts: (string | undefined)[]): string {
 /**
  * 正向 = 固定正面 + 生成内容;生成内容有 nl 优先用 nl(Flux/Anima 吃自然语言),
  * 没有才退回短 tag。开关在预设上,用户自己决定模板与开关的搭配。
+ *
+ * MOSS 模板额外并进两段:
+ * - tag 行(values.prompt):MOSS 方言下 nl 恒非空,按旧口径 tag 会被整个丢掉,
+ *   而人数、景别、人种这些承重墙只写在 tag 里。故 moss 走「tag + nl」全留。
+ * - 中文外貌(values.appearance):角色库那七个字段是英文 tag、只能进 tag,
+ *   中文外貌没处可去;由 state/charTags 的 chineseAppearanceForText 认人后
+ *   原样拼在 nl 之后,不参与任何 tag/nl 抉择。
+ * 其余模板不动:它们的文本编码器对中文几乎无响应,拼进去只是噪声。
  */
 export function composePositive(simple: ComfySimpleConfig, values: SimpleGenValues): string {
-  return joinParts(simple.positive, (values.nl ?? '').trim() || values.prompt);
+  const nl = (values.nl ?? '').trim();
+  if (simple.template === 'moss') {
+    return joinParts(simple.positive, values.prompt, nl, values.appearance);
+  }
+  return joinParts(simple.positive, nl || values.prompt);
 }
 
 /** 负面 = 固定负面 + AI 动态负面追加。 */

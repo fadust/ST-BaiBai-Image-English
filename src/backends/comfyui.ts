@@ -8,6 +8,12 @@ export type ComfyWorkflow = Record<string, JsonObject>;
 
 export interface ComfyTemplateValues {
   prompt: string;
+  /**
+   * 角色的中文外貌(插件机械拼接,不来自 AI)。简易模式交给模板组装器;
+   * 自定义模式追加在 %prompt% 尾部——那是这条链路上唯一"总是会被用上"的槽。
+   * 空串 = 不拼,行为与改动前逐字一致。
+   */
+  appearance?: string;
   negative_prompt?: string;
   seed?: number;
   /** 自然语言部分;仅写入显式含 %nl% 的工作流,不自动拼进 %prompt%。 */
@@ -496,6 +502,7 @@ export async function generateComfyImage(
       workflow = buildSimpleWorkflow(conn.simple, {
         prompt: values.prompt,
         nl: values.nl,
+        appearance: values.appearance,
         negative: values.negative_prompt,
         seed: values.seed ?? randomSeed(),
         width: size?.width ?? 0,
@@ -505,7 +512,14 @@ export async function generateComfyImage(
       throw new ComfyUIError(error instanceof Error ? error.message : String(error));
     }
   } else {
-    workflow = renderWorkflowTemplate(conn.workflow, { ...values, ...size });
+    // 自定义模式没有"角色外貌"这个槽位,只能并进 %prompt%:它至少在工作流里一定存在
+    // (renderWorkflowTemplate 强制要求),而 %nl% 是可有可无的。
+    const appearance = (values.appearance ?? '').trim();
+    workflow = renderWorkflowTemplate(conn.workflow, {
+      ...values,
+      prompt: appearance ? [values.prompt.trim(), appearance].filter(Boolean).join(', ') : values.prompt,
+      ...size,
+    });
   }
 
   // 通道自动选择:浏览器直连优先;仅当请求根本没送达 ComfyUI(网络级失败)时回退 ST 后端转发。
