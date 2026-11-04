@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { autoTagProfile, buildAutoTagMessages, expandNlSections } from '@/autoTag/prompt';
 import {
   activeComfyPreset,
+  DEFAULT_COMFY_THINKING,
+  DEFAULT_MOSS_ANIME_THINKING,
+  DEFAULT_MOSS_THINKING,
   DEFAULT_NAI_V5_SPEC,
   DEFAULT_NAI_V5_THINKING,
   settings,
@@ -1808,6 +1811,34 @@ describe('英文身体段改条件段 + 人种收成一处', () => {
       save.restore();
     }
   });
+
+
+describe('思维链必须收得住', () => {
+  // 出图前的 tag 生成是一条串行链路:思考块每多写一段,后面每个字都要等。
+  // 实测一次失败的 tag 生成 23.9s,规范与思维链加起来 17.6k 字符塞进 5 条 system。
+  // 这里钉住的是「三份思维链都得自己声明预算」——漏一份,那条线就回到无上限的自我复述。
+  const chains: [string, string][] = [
+    ['comfy', DEFAULT_COMFY_THINKING],
+    ['moss', DEFAULT_MOSS_THINKING],
+    ['moss-anime', DEFAULT_MOSS_ANIME_THINKING],
+  ];
+
+  for (const [name, value] of chains) {
+    it(name + ' 的思维链声明了字数预算', () => {
+      expect(value).toMatch(/thinking[\s\S]{0,40}(?:字以内|不超过\s*\d{2,4}\s*字)/);
+    });
+  }
+
+  it('MOSS 写实线的思维链明说这是检查清单,并禁止复述规范', () => {
+    expect(DEFAULT_MOSS_THINKING).toContain('这是检查清单，不是推理题');
+    expect(DEFAULT_MOSS_THINKING).toContain('不要把规范再抄一遍');
+  });
+
+  it('MOSS 写实线的思维链不超过 3600 字符', () => {
+    // 上一版 4088。每一段都是模型要逐字读的输入,涨回去就是又慢回去。
+    expect(DEFAULT_MOSS_THINKING.length).toBeLessThan(3600);
+  });
+});
 
   // 协议侧的库条款(不是规范)也在提英文段:这两句原先把「年龄写法」指到英文段首句,
   // 新口径下那句已经不存在,条款不跟着改就会指向一个不存在的槽位。

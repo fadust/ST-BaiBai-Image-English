@@ -22,6 +22,7 @@ export type ShotSizeId =
   | 'full'
   | 'medium'
   | 'medium-close'
+  | 'upper-body'
   | 'close'
   | 'extreme-close';
 
@@ -86,6 +87,17 @@ export const SIZE_TABLE: readonly SizeDef[] = [
     id: 'medium-close',
     zh: '中近景',
     aliases: ['中近景', 'medium close-up', 'medium closeup', 'mcu'],
+    capacity: 2,
+    layers: 2,
+  },
+  {
+    id: 'upper-body',
+    zh: '半身',
+    // upper body 是各线规范与破限词里**实际在用**的词(见 settings.ts 的景别词表),
+    // 而这张表原先认不出它 —— 模型照着规范写 upper body,构图闸就当没看见,
+    // 「半身里塞了三个人的空间关系」这类问题一条都报不出来。半身装得下两个人的
+    // 上半身,装不下三层纵深,故与中近景同档。
+    aliases: ['半身', '上半身', 'upper body', 'upper-body', 'bust shot'],
     capacity: 2,
     layers: 2,
   },
@@ -282,7 +294,13 @@ export function inspectFrame(
   const issues: ShotIssue[] = [];
 
   // ① 同一张图里出现两个互斥景别:模型会折中成一个既不是 A 也不是 B 的构图。
-  const sizeIds = parsed.sizes.filter((id) => id !== 'medium' || !parsed.sizes.includes('medium-close'));
+  // medium / medium-close / upper-body 三者是同一档的三种写法(规范里的景别词表本身就把
+  // 「medium shot, upper body」当同类),同时出现不算互斥;其余组合才判冲突。
+  const nearDupe = new Set<string>(['medium', 'medium-close', 'upper-body']);
+  const sizeIds = parsed.sizes.filter((id, index) => {
+    if (!nearDupe.has(id)) return true;
+    return parsed.sizes.findIndex(other => nearDupe.has(other)) === index;
+  });
   if (parsed.sizes.length > 1) {
     const labels = parsed.sizes
       .map((id) => SIZE_TABLE.find((entry) => entry.id === id)?.zh ?? id)
