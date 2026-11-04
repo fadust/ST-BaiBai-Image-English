@@ -273,6 +273,55 @@ describe('auditLayers 与 formatLayerAudits', () => {
   });
 });
 
+describe('回归:tag 自身的年龄冲突与外貌段的越界复述', () => {
+  // 2026-11-04 的一次真实崩图:tag 里 young adult 与 twenty-eight years old 并排,
+  // 角色库外貌段写着 an 18-year-old Chinese boy。跨层闸当时一条都报不出来,
+  // 因为 ageIssue 只比对 tag ↔ nl,而这两处重复都不在 nl 里。
+  const tag =
+    '1boy, 1girl, medium close-up, three-quarter view, chinese, east asian, young adult, ' +
+    '小宇, sleeping, twenty-eight years old';
+  const appearance = '小宇：an 18-year-old Chinese boy, east asian, a soft boyish charm';
+
+  it('tag 里笼统年龄词与具体年龄并排 → age-conflict', () => {
+    const codes = findCrossLayerDuplicates({ tag, nl: '镜头在床的近侧。' }).map(issue => issue.code);
+    expect(codes).toContain('age-conflict');
+  });
+
+  it('only:"tag" 时只做与其它层无关的判定', () => {
+    const codes = findCrossLayerDuplicates({ tag, nl: '', only: 'tag' }).map(issue => issue.code);
+    expect(codes).toEqual(['age-conflict']);
+  });
+
+  it('外貌段里年龄与 tag 对不上 → age-in-appearance（block）', () => {
+    const issues = findCrossLayerDuplicates({ tag, nl: '镜头在床的近侧。', appearance });
+    const hit = issues.find(issue => issue.code === 'age-in-appearance');
+    expect(hit?.level).toBe('block');
+    expect(hit?.message).toContain('28');
+    expect(hit?.message).toContain('18');
+  });
+
+  it('外貌段里复述人种 → race-in-appearance（warn）', () => {
+    const issues = findCrossLayerDuplicates({ tag, nl: '', appearance });
+    expect(issues.map(issue => issue.code)).toContain('race-in-appearance');
+  });
+
+  it('把笼统词与年龄删掉后零结论', () => {
+    const clean = '1boy, 1girl, full shot, three-quarter view, chinese, east asian, 小宇, sleeping';
+    const cleanAppearance = '小宇：a soft boyish charm with a shy edge';
+    expect(findCrossLayerDuplicates({ tag: clean, nl: '镜头在床的近侧。', appearance: cleanAppearance }))
+      .toEqual([]);
+  });
+
+  it('missing-exclusion 与新增判定可以同时给出', () => {
+    const issues = findCrossLayerDuplicates({
+      tag: '1girl, chinese, twenty years old',
+      nl: '她在窗边。',
+      appearance: '苏曼：a soft oval face',
+    });
+    expect(issues.map(issue => issue.code)).toContain('missing-exclusion');
+  });
+});
+
 describe('回归:合规的 MOSS 写实串不得误报', () => {
   // 这段是 MOSS 写实线的规范口径(settings.ts 的 DEFAULT_MOSS_SPEC 第二、三节):
   // 人种与年龄只写在 tag,nl 只写机位/环境/光线,不复述人种年龄、不复述服装。

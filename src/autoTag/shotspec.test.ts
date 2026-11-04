@@ -214,6 +214,38 @@ describe('inferContact 接触紧密度', () => {
   });
 });
 
+describe('portrait-lying:横躺的身体塞进竖幅', () => {
+  // 2026-11-04 的真实崩图:832×1216 竖幅 + 侧躺,主角少了一条腿。
+  // 规范第五节写着「横向展开的身体塞进竖构图会被压扁」,但此前没有任何代码执行它。
+  const lying = { tag: '1boy, 1girl, medium close-up', nl: '小宇侧躺在画面左侧,胯部朝镜头。' };
+
+  it('竖幅 + 卧姿 → portrait-lying(warn)', () => {
+    const codes = inspectFrame(lying, { orientation: 'portrait' }).issues.map(issue => issue.code);
+    expect(codes).toContain('portrait-lying');
+  });
+
+  it('横幅 + 卧姿不报', () => {
+    const codes = inspectFrame(lying, { orientation: 'landscape' }).issues.map(issue => issue.code);
+    expect(codes).not.toContain('portrait-lying');
+  });
+
+  it('竖幅 + 站立不报:长轴本来就是竖的', () => {
+    const codes = inspectFrame(
+      { tag: '1girl, medium shot', nl: '她站在窗边,身体是竖直的。' },
+      { orientation: 'portrait' },
+    ).issues.map(issue => issue.code);
+    expect(codes).not.toContain('portrait-lying');
+  });
+
+  it('英文写法 lying on his side 也认', () => {
+    const codes = inspectFrame(
+      { tag: '1boy, full shot', nl: 'He is lying on his side with his hips angled toward the camera.' },
+      { orientation: 'portrait' },
+    ).issues.map(issue => issue.code);
+    expect(codes).toContain('portrait-lying');
+  });
+});
+
 describe('auditFrames 非阻断体检', () => {
   it('逐张给结论,block 只体现在 hasBlocking 上,不抛错', () => {
     const audits = auditFrames([

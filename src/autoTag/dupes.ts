@@ -36,6 +36,12 @@ export interface LayerInput {
   nl?: string;
   /** 插件机械拼进来的中文外貌段(形如「林夏:鹅蛋脸… 苏曼:圆脸…」)。 */
   appearance?: string;
+  /**
+   * 判定范围。'tag' = 只做**不依赖其它层**的判定(目前是 tag 自身的年龄冲突),
+   * 由 generate 链路使用 —— 那条链路里 appearance 是下游现算的(LayerInput 注释见 runner.ts
+   * 的 508-511),而 tag 自身的矛盾与它无关,不该因为握手不上就一起放过。
+   */
+  only?: 'tag';
 }
 
 /** 一手数据来自模型:任何非字符串一律当空,绝不让类型噪声变成异常。 */
@@ -222,6 +228,68 @@ function ageIssue(tag: string, nl: string): LayerIssue | undefined {
   };
 }
 
+/** tag 里的年龄写法(含 twenty-eight 这种连字符词形,TAG_AGE_ANCHOR 认不出它)。 */
+const TAG_AGE_ANY =
+  /\b(?:(?:eighteen|nineteen|twenty(?:[\s-](?:one|two|three|four|five|six|seven|eight|nine))?|thirty|forty|fifty)|\d{1,3})[\s-]*years?[\s-]*old\b/gi;
+
+/** tag 里的**笼统**年龄词:与具体年龄同时出现时,等于给了模型两个人设。 */
+const TAG_AGE_VAGUE = /\b(?:young adult|middle[\s-]aged|teenager|teen|adult|elderly|child)\b/i;
+
+const WORD_AGE: Record<string, number> = {
+  eighteen: 18, nineteen: 19, twenty: 20, 'twenty-one': 21, 'twenty-two': 22, 'twenty-three': 23,
+  'twenty-four': 24, 'twenty-five': 25, 'twenty-six': 26, 'twenty-seven': 27, 'twenty-eight': 28,
+  'twenty-nine': 29, thirty: 30, forty: 40, fifty: 50,
+};
+
+/** 从任意文本里抠出一个年龄数字(`twenty-eight years old` / `18-year-old`)。 */
+function parseAge(text: string): number | undefined {
+  const digits = /\b(\d{1,3})[\s-]*years?[\s-]*old\b/i.exec(text);
+  if (digits) return Number(digits[1]);
+  const words = new RegExp(TAG_AGE_ANY.source, 'i').exec(text);
+  if (!words) return undefined;
+  const head = words[0]
+    .toLowerCase()
+    .replace(/[\s-]*years?[\s-]*old$/, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  return WORD_AGE[head] ?? WORD_AGE[head.replace(/-.*$/, '')];
+}
+
+/**
+ * tag **内部**的年龄冲突:同一行里出现两个年龄。
+ *
+ * 跨层闸(ageIssue)只比对 tag 与 nl,**tag 自己矛盾它一律看不见** —— 而模型会把这个矛盾
+ * 折中成一个不属于任何人的年龄,连带脸一起漂。两种真实形态:
+ *   - 笼统词 + 具体年龄:`young adult` 与 `twenty-eight years old` 并排;
+ *   - 两个不同的具体年龄。
+ * `young adult` 这类词在底模里几乎没有信息量,只会稀释具体年龄。
+ */
+function tagAgeConflict(tag: string): LayerIssue | undefined {
+  const numeric = [...new Set(
+    [...tag.matchAll(new RegExp(TAG_AGE_ANY.source, 'gi'))].map(match => match[0].toLowerCase()),
+  )];
+  const vague = TAG_AGE_VAGUE.exec(tag)?.[0]?.toLowerCase();
+  if (numeric.length > 1) {
+    return {
+      code: 'age-conflict',
+      level: 'block',
+      message: '同一条 tag 里出现了两个不同年龄(' + numeric.join(' 与 ') + ')。' +
+        '模型会把它折中成一个不属于任何人的年龄,脸跟着一起漂。',
+      fix: '只留一个年龄,写在 tag 的「人种与年龄感」位;nl 两段都不写。',
+    };
+  }
+  if (vague && numeric.length === 1) {
+    return {
+      code: 'age-conflict',
+      level: 'block',
+      message: '同一条 tag 里既有笼统的年龄词(' + vague + '),又有具体年龄(' + numeric[0] + '):' +
+        '这是两个人设,模型只能折中。',
+      fix: '删掉笼统词,只留具体年龄 —— young adult / adult 这类词在底模里几乎没信息量,只会稀释。',
+    };
+  }
+  return undefined;
+}
+
 /**
  * 服装复述:**颜色与品类必须同时命中**才算一条。
  *
@@ -268,6 +336,42 @@ function garmentIssues(tag: string, nl: string): LayerIssue[] {
 function appearanceIssues(tag: string, nl: string, appearance: string): LayerIssue[] {
   if (!appearance) return [];
   const haystack = tag + '\n' + nl;
+  const issues: LayerIssue[] = [];
+
+  // ① 外貌段与 tag/nl 的**内容**重复:人种 / 年龄 / 体型总述。
+  //
+  // 跨层闸原有的三条(race / age / garment)只比对 tag ↔ nl,外貌段是第四条层,
+  // 一直没有参与比对 —— 而它恰恰是最大的一条(实测一条串里能占到 63% 字符)。
+  // 外貌段里重写人种或年龄,等于把同一个人设叠成两层;模型不知道哪层说了算,脸就漂。
+  // 只判**高置信、无歧义**的写法:人种要求带指人后缀(同 NL_RACE_ZH 的口径),
+  // 年龄要求带 year/岁 且与 tag 那个数字**不同**(相同不算冲突,只是复述,降为提示)。
+  const raceZh = firstOf(appearance, NL_RACE_ZH);
+  const raceEn = NL_RACE_EN.exec(appearance)?.[0]?.trim();
+  if (raceZh || raceEn) {
+    issues.push({
+      code: 'race-in-appearance',
+      level: 'warn',
+      message:
+        '人种在中文外貌段里又写了一遍(「' + (raceZh ?? raceEn) + '」)。tag 里已有 chinese / east asian,' +
+        '外貌段再写一次等于同一约束叠两层权重,而且这一层不由 AI 掌控、改不动。',
+      fix: '从角色库的中文外貌里删掉人种词;外貌只写五官、发、肤质、体型,人种留给 tag。',
+    });
+  }
+  const tagAge = parseAge(tag);
+  const apAge = /(\d{1,3})[\s-]*(?:year|岁)/i.exec(appearance);
+  if (tagAge !== undefined && apAge) {
+    const apValue = Number(apAge[1]);
+    if (apValue !== tagAge) {
+      issues.push({
+        code: 'age-in-appearance',
+        level: 'block',
+        message:
+          '年龄对不上:tag 写的是 ' + tagAge + ' 岁,中文外貌段写的是 ' + apValue + ' 岁。' +
+          '这两层都会进正向,模型只能在两个年龄之间折中 —— 脸就是这么漂掉的。',
+        fix: '把角色库的中文外貌里的年龄删掉(年龄只归 tag),或把 tag 的年龄改成与档案一致。',
+      });
+    }
+  }
   const orphans: string[] = [];
   const pattern = /(?:^|\s)([^\s:：]{1,16})[:：]/g;
   for (let match = pattern.exec(appearance); match; match = pattern.exec(appearance)) {
@@ -276,15 +380,17 @@ function appearanceIssues(tag: string, nl: string, appearance: string): LayerIss
     if (haystack.includes(name)) continue;
     orphans.push(name);
   }
-  if (!orphans.length) return [];
-  return [{
-    code: 'missing-exclusion',
-    level: 'warn',
-    message:
-      '中文外貌段给了「' + orphans.join('、') + '」的外貌,但这个名字在 tag 与 nl 里都没有出现:' +
-      '这一段不会被任何角色认领,等于白占一段权重,模型可能把它摊到别人身上(脸就漂了)。',
-    fix: '把角色名写进 tag 或 nl(名字是认人的唯一锚点),或从角色库里去掉这条空转的外貌。',
-  }];
+  if (orphans.length) {
+    issues.push({
+      code: 'missing-exclusion',
+      level: 'warn',
+      message:
+        '中文外貌段给了「' + orphans.join('、') + '」的外貌,但这个名字在 tag 与 nl 里都没有出现:' +
+        '这一段不会被任何角色认领,等于白占一段权重,模型可能把它摊到别人身上(脸就漂了)。',
+      fix: '把角色名写进 tag 或 nl(名字是认人的唯一锚点),或从角色库里去掉这条空转的外貌。',
+    });
+  }
+  return issues;
 }
 
 /**
@@ -296,6 +402,7 @@ export function findCrossLayerDuplicates(input: LayerInput = {}): LayerIssue[] {
   const tag = text(source.tag).toLowerCase();
   const nl = text(source.nl);
   const appearance = text(source.appearance);
+  const only = text(source.only);
   if (!tag && !nl) return [];
   const issues: LayerIssue[] = [];
   // 顺序 = 承重墙优先(人种 > 年龄 > 服装 > 外貌空转),与 shotspec 的「block 在前」同口径。
@@ -303,6 +410,10 @@ export function findCrossLayerDuplicates(input: LayerInput = {}): LayerIssue[] {
   if (race) issues.push(race);
   const age = ageIssue(tag, nl);
   if (age) issues.push(age);
+  // 只查 tag 自身矛盾时(调用方手里没有真正同源的外貌段),这里就给全量 —— 它不依赖任何其他层。
+  const own = tagAgeConflict(tag);
+  if (own) issues.push(own);
+  if (only === 'tag') return issues;
   issues.push(...garmentIssues(tag, nl));
   issues.push(...appearanceIssues(tag, nl, appearance));
   return issues;
@@ -313,6 +424,8 @@ export interface AuditableLayerFrame {
   tag?: string;
   nl?: string;
   appearance?: string;
+  /** 见 LayerInput.only:'tag' = 只做不依赖其它层的判定。 */
+  only?: 'tag';
 }
 
 export interface LayerAudit {

@@ -618,6 +618,8 @@ export const DEFAULT_MOSS_SPEC = `【MOSS-Image 写实线提示词规范】
 机位是整条串的骨架。**先定机位，再写任何内容**，且全程只定一次。
 
 1.1 朝向四选一，写进 tag 行（紧跟景别）：front view（正对）/ three-quarter view（四分之三侧）/ side view（正侧，镜头与身体成直角）/ from behind（后视）。中文段第一句与它同口径，**不许改口**。
+1.1.5 **画幅先定，再定姿势**：横躺、侧卧、横跨画面的身体配 landscape；竖幅只装得下"竖着的那一段"（头肩、躯干上半身、两个人的上半身）。把横躺的全身关系塞进 832×1216 竖幅，模型只能二选一——把身体折起来，或者把伸出画面的那一截裁掉，**被裁掉的永远是腿**。要竖幅就收景别，要全身就换画幅，两样都要必然丢东西。
+
 1.2 机位定了，就只写这个机位物理上看得见的部位：
 - side view：看得见一侧脸廓与一只眼、一侧肩胸、一侧臀的轮廓、腿的侧线。**看不见**臀缝、看不见两片臀肉、看不见阴部正面、看不见整条后背。
 - from behind：看得见后脑、背、臀、臀缝。**看不见**脸（回头只露一只眼与半张脸）。
@@ -638,6 +640,7 @@ export const DEFAULT_MOSS_SPEC = `【MOSS-Image 写实线提示词规范】
 - 表情与视线每张都写，用标准词：smile / grin / blush / embarrassed / frown / surprised / crying / angry / serious / sad / worried / scared / smug / seductive smile / expressionless / half-closed eyes / open mouth；视线写 looking at viewer / looking at another / looking away / looking down / looking up / looking back。禁止把中文感受直译成自创词组（tented shorts 这类自造复合词也算）。
 - **唯一例外**：面部占比过小、判定这一张不画脸的镜头（见「五、自检」第 5 条），表情与视线都写 "-"。给一个看不见的脸填 smile，等于要求模型把脸转回来。
 - 人种是硬约束：东亚角色一律写 chinese / east asian，不写就按英文先验出欧美脸。**这里是全串唯一一处该写人种的地方**——nl 的中文段和英文段都不许再复述人种；同一条信息写两处等于叠两层权重。
+- 年龄同理，**且 tag 里只许出现一个年龄**：young adult 与 twenty-eight years old 并排 = 两个人设，模型会折中成一个不属于任何人的年龄，脸跟着漂。young adult / adult / middle-aged 这类笼统词在底模里几乎没有信息量，一律不写，只写具体年龄。
 - **不限英文段落**：tag 行在本线会和 nl 一起进模型（不是二选一），所以人数、景别、机位、人种这些承重墙必须写全，别指望散文里补。
 - **每个动作和每件服装都要有归属**：多人画面写成「谁 + 做什么」（小静 leaning forward, 小宇 sitting cross-legged），不要写成 leaning forward, sitting cross-legged 这种飘着两截——模型会把它俩揉到同一个人身上。姿势与场景也要分开：sitting cross-legged 归动作，long sofa 归场景位。
 
@@ -658,6 +661,7 @@ export const DEFAULT_MOSS_SPEC = `【MOSS-Image 写实线提示词规范】
 - **先判要不要这一节**：画面里有裸露的躯干或性器官、或两人身体大面积贴合到需要交代接触面 → 写；衣着完整的日常、多人对话、环境镜头 → 整节跳过，不要为了凑格式硬写。日常镜头多写这一节的唯一效果，是凭空多一段和中文段抢注意力的文本——nl 会被折叠成一行、四层拼成一条，越长的同一画面描述越容易把机位拽走。
 - **人种与年龄不在这一段写**：它们已经在 tag 里写过一次（chinese / east asian / twenty years old），nl 的任何一段都不许复述——同一信息写两处等于叠两层权重。这一段从身体写起，不写 She is a Chinese woman of twenty 这类身份句。
 - **这一段不是中文段的翻译。** 中文段写过的姿势、场景、光线、介质，这里一个字都不要复述；这里只写身体：轮廓 → 穿着或赤裸到什么程度 → 器官与贴合处 → 姿势造成的形变。
+- **侧躺 / 卧姿必须交代两条腿的方位**：the near leg bent, the far leg trailing behind it 这一类。只写 hip / thigh 而不说两条腿各在哪，模型默认把远侧那条腿并进近侧——成品就是少一条腿。这不是裁切，是它从来没被要求画。
 - 选词必须落在 1.2 的可见范围内：side view 下写 one buttock pushing through the thin fabric、the elastic edge pressing a shallow line into the near hip；不要写 both buttocks / the crease / over her vulva —— 这三样要求后视，写着写着机位就被拽过去了。
 - 器官用英文实词：breasts, areolae, nipples, waist, hips, vulva, clitoris, labia, penis, shaft, glans, testicles, anus；不要 down there / her sex 这类委婉语。
 - 轮廓与体型（肩背圆润、胸饱满自然下坠、腰细胯宽、大腿根有软肉、小腹平但有薄脂、臀圆而宽；胸型三选一 high and firm / slightly pendulous / full and wide-set；阴部三选一 clean-shaven / trimmed / natural bush）——**体型总述这几句是可选的，判据见下面的「角色外貌」**：角色带 [中文外貌已填] 标记时，他的体型与脸已由插件注入，你不要在英文段里再写一遍体型总述，只写本画面**此刻的状态**（穿着/赤裸程度、器官与贴合处、姿势造成的形变）。没有该标记时才按上面这套完整写一次。
@@ -732,7 +736,9 @@ export const DEFAULT_MOSS_THINKING = `【输出前思考清单（MOSS 写实线�
    - **占比过小就改成不画脸**，把脸交给画外：from behind、侧后方、低头低到看不见、被前景或道具挡住、直接裁到下巴以下只拍躯干 / 手 / 交握处 / 腿。这是**正当取景，不是偷懒**：该发生的事一件不少，只是镜头不往脸上放。
    - 一旦决定不画脸，**表情与视线两槽就写 "-"，不许硬填**（见第 4 步的例外）；nl 里明说「脸在画外 / 背对镜头」，不要把看不见的脸也写进描写去。
 
-4. 元素清单（进 tag，全英文）：人数、景别（只一个）、**机位朝向（第 3 步定下的那个）**、人种与年龄感、外貌锚点、逐件服装、动作、表情、视线、场景、光线。每项都要能在 tag 里找到对应词；表情与视线不得留空（**唯一例外**：第 3 步判定不画脸的镜头，这两项写 "-"，写了反而会把脸硬拉回画面）；视线全串只留一个方向；每个动作和每件服装都要带归属（小静 leaning forward, 小宇 sitting cross-legged），不许飘着。东亚角色必须有 chinese / east asian——**这是全串唯一写人种与年龄感的地方，nl 两段都不复述**。画质串由渠道预设的「固定正面」承担，tag 里不要再写一遍，也不要写 masterpiece / best quality / very aesthetic。
+3.5 **画幅与姿势对一次**：这一张的身体长轴是横的还是竖的？横躺 / 侧卧 / 横跨画面的身体配 landscape；竖幅只装得下「竖着的那一段」。两者冲突时改画幅，不要指望竖幅装下横躺的全身——那样被裁掉的永远是腿。卧姿还要在英文身体段里交代两条腿各在哪（见第 5 步 B）。
+
+4. 元素清单（进 tag，全英文）：人数、景别（只一个）、**机位朝向（第 3 步定下的那个）**、人种与年龄感、外貌锚点、逐件服装、动作、表情、视线、场景、光线。每项都要能在 tag 里找到对应词；表情与视线不得留空（**唯一例外**：第 3 步判定不画脸的镜头，这两项写 "-"，写了反而会把脸硬拉回画面）；视线全串只留一个方向；每个动作和每件服装都要带归属（小静 leaning forward, 小宇 sitting cross-legged），不许飘着。东亚角色必须有 chinese / east asian——**这是全串唯一写人种与年龄感的地方，nl 两段都不复述**。画质串由渠道预设的「固定正面」承担，tag 里不要再写一遍，也不要写 masterpiece / best quality / very aesthetic。**年龄只写一个**：年轻角色的 young adult 与 twenty years old 并排 = 两个人设，模型只能折中，脸跟着漂；笼统词一律删掉，只留具体年龄。
 
 5. nl 默认只写 A 中文散文段（2–4 句）。**先判这一张要不要英文身体段**：画面里有裸露的躯干或性器官、或两人身体大面积贴合到需要交代接触面 → 写 B；衣着完整的日常、多人对话、环境镜头 → 不写，A 写完就直接进第 6 步（第 7 步的材质层并进中文段末尾，不另起一段；第 11 步里英文段那半句一并跳过）。判据与规范第三节 B 同一条，不许自己另立。
 

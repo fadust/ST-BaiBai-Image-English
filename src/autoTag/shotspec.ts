@@ -234,6 +234,15 @@ export interface InspectOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
+/**
+ * 卧姿:身体长轴**横向展开**的姿势。竖画幅判定(⑥½)靠它。
+ *
+ * 只收明确写了「躺着」的写法:standing / kneeling / crouching 这些都不算
+ * —— 它们的长轴本来就是竖的,竖幅没问题。
+ */
+const LYING_BODY =
+  /(?:侧躺|侧卧|仰躺|平躺|趴着|趴在床|卧在床|躺在床|躺倒)|\b(?:lying (?:on|with|beside|in)|laid out|supine|prone|reclining|sprawled (?:across|on))\b/i;
+
 function countLayers(text: string): number {
   const raw = String(text ?? '');
   let layers = 0;
@@ -335,6 +344,22 @@ export function inspectFrame(
         '接触点会被近侧那一具身体挡住,模型只能改构图(最常见的是把两个人挪到床上去、或干脆不画接触点)。',
       fix: '机位转成四分之三侧面(约 45°),或把机位沿垂直方向错开 15°–30°(略俯 / 略仰);' +
         '要留在正侧,就把这一格改成"交代两人相对位置"的长格,接触点另起一格特写。',
+    });
+  }
+
+  // ⑥½ 横躺的身体塞进竖画幅:模型只能把身体折起来、或者把伸出画面的那一截裁掉。
+  //
+  // 这条是从一次真实崩图里长出来的:侧躺在床上的两个人,画幅 832×1216(竖),景别中近景,
+  // 出来时主角少了一条腿。规范第五节自己写着「横向展开的身体塞进竖构图会被压扁」,
+  // 但此前没有任何代码把这句话变成判据 —— 它只对 AI 生效,而在手写串的链路里没有 AI。
+  if (options.orientation === 'portrait' && LYING_BODY.test(nl)) {
+    issues.push({
+      code: 'portrait-lying',
+      level: 'warn',
+      message: '横躺/侧卧的身体配上竖画幅:身体的长轴与画面的长轴垂直,模型只能折起身体或者裁掉伸出画面的那一截,' +
+        '最先掉的永远是腿。',
+      fix: '这一个镜头改 landscape;必须竖幅时,把取景收到「竖着的那一段」(头肩、躯干上半、两个人的上半身),' +
+        '不要指望竖幅同时装下横躺的全身关系。',
     });
   }
 

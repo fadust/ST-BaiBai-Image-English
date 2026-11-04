@@ -6,11 +6,11 @@ import {
   type PositionedCharOp,
 } from '@/autoTag/charAnchors';
 import { prepareTargetText } from '@/autoTag/clean';
-import { auditLayers, formatLayerAudits } from '@/autoTag/dupes';
+import { auditLayers, findCrossLayerDuplicates, formatLayerAudits } from '@/autoTag/dupes';
 import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/generationGate';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
-import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
+import { auditFrames, formatFrameAudits, inspectFrame } from '@/autoTag/shotspec';
 import { buildSlotTaskNote } from '@/autoTag/slotPlan';
 import {
   BBI_CHAR_EXTRA_KEY,
@@ -339,6 +339,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     const retries = Math.max(0, Math.floor(Number(settings.autoTag.retryCount) || 0));
     let plan: ImagePlan | null = null;
     let lastError = '';
+    /** 上一轮被硬闸拦下的原因;下一轮追加给模型当修稿意见(同一份 messages 不另建)。 */
+    let repairNote = '';
     for (let attempt = 0; attempt <= retries && !plan; attempt++) {
       if (controller.signal.aborted) {
         processed.delete(identity);
@@ -365,6 +367,33 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           ) {
             throw new Error('NAI 4.5/V5 建档必须附带 nl 外貌描述');
           }
+          // **硬闸**:只拦两条「确定性错误 + 可以机械重写」的问题。
+          //
+          // 这里跟 shotspec / dupes 那面镜子是同一套判定,但用法相反 —— 那两处的纪律是
+          // 「只出告警,永不拦」(误判方向永远是太严,拿词表掐断出图比放过一张坏图更糟)。
+          // 这两条不同,它们不依赖任何主观判断:
+          //   ① age-conflict:同一条 tag 里两个年龄(young adult + twenty-eight years old)。
+          //      那是两个人设,模型只能折中,脸必漂;重写一版把笼统词删掉是纯收益,零风险。
+          //   ② size-crowded:景别装不下人数。超出去的人不是被压成色块就是被裁掉,
+          //      重写成更大的景别同样是纯收益。
+          // 其余问题(纵深超载、机位遮挡、跨层复述)**继续只出告警** —— 它们经常是审美取舍,
+          // 交给人判断,不由闸门替用户决定。多跑一次不可能修好问题的重试,只是白烧钱。
+          const hardBlocks: string[] = [];
+          for (const image of candidate.images) {
+            const age = findCrossLayerDuplicates({ tag: image.tag, only: 'tag' })
+              .filter(issue => issue.code === 'age-conflict');
+            for (const issue of age) hardBlocks.push(issue.fix);
+            const crowded = inspectFrame(
+              { tag: image.tag, nl: image.nl },
+              { orientation: profile.lockedSize ?? undefined },
+            ).issues.filter(issue => issue.code === 'size-crowded');
+            for (const issue of crowded) hardBlocks.push(issue.fix);
+          }
+          if (hardBlocks.length) {
+            repairNote = [...new Set(hardBlocks)].join('\n');
+            throw new Error('提示词自相矛盾,已要求模型按体检结论重写:\n' + repairNote);
+          }
+          repairNote = '';
           parsed.plan = candidate;
         };
         // 有重试时给 source 带上第几次,历史里两条记录一眼看出是重试关系
@@ -373,14 +402,19 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           : retries > 0
             ? `自动 tag(第 ${floor} 楼 · 第 ${attempt + 1} 次)`
             : `自动 tag(第 ${floor} 楼)`;
+        // 上一轮被硬闸拦下的原因:作为最后一条 user 消息追加在**副本**上,不改动 messages
+        // (重试之间 messages 必须保持同一份 —— 否则第二、三轮会把同一段意见叠两遍)。
+        const attemptMessages = repairNote
+          ? [...messages, { role: 'user' as const, content: '你上一次的输出被体检拦下了,原因如下。请只修这一处,其余画面保持不变:\n' + repairNote }]
+          : messages;
         if (channel) {
-          await requestCompletion(channel, messages, {
+          await requestCompletion(channel, attemptMessages, {
             signal: controller.signal,
             source,
             validate,
           });
         } else {
-          await requestViaMainApi(messages, {
+          await requestViaMainApi(attemptMessages, {
             signal: controller.signal,
             source,
             validate,
@@ -509,8 +543,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
         // chineseAppearanceForText(tag + nl) 现取的,**认人锚就是这两个字段本身** ——
         // 拿它的产物反查它自己的来源,结果恒真,判不出任何东西。
         // missing-exclusion 留给手里握着「与 tag/nl 不同源」的外貌段的调用方(见 dupes.ts)。
+        // only:'tag' —— tag **自身**的年龄冲突与其它层无关,不参与上面那套「不同源就不判」的顾虑。
+        // 手串里最常见的崩法就是 tag 里并排写着 young adult 与 twenty-eight years old,
+        // 那是两个人设,模型只能折中,脸跟着漂。这条以前完全没人查。
         const layerNotes = formatLayerAudits(
-          auditLayers(plan.images.map(image => ({ tag: image.tag, nl: image.nl }))),
+          auditLayers(plan.images.map(image => ({ tag: image.tag, nl: image.nl, only: 'tag' }))),
         );
         if (layerNotes) console.warn(`[柏宝绘] 跨层重复项:\n${layerNotes}`);
       } catch {
