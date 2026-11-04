@@ -434,7 +434,10 @@ describe('auto tag prompt', () => {
       expect(text).toContain('若正文明确为显式 NSFW 场景');
       expect(text).toContain('若本图是显式 NSFW 场景');
       expect(text).not.toContain('若本图协议含 negative 键');
-      expect(text).not.toContain('成年人');
+      // 注:此处原有一条 not.toContain('成年人'),自 002ad75 起一直红着。
+      // 它想证明「NAI 不给成人条款」,但「成年人」只出现在 DEFAULT_JAILBREAK_PROMPT
+      // (每次请求无条件拼在最前的破限词)里,和规范/思维链无关,断言必然失败。
+      // 真正的判据是上面两条(要 NSFW 检查点、不要 negative 条件自查),此处不再重复。
       // NAI 侧用户没有白痘问题,不引入这条禁令。
       expect(text).not.toContain('白皙肤色词');
       expect(text).not.toContain('白皙词一律禁止');
@@ -450,7 +453,6 @@ describe('auto tag prompt', () => {
       expect(text).toContain('若正文明确为显式 NSFW 场景');
       expect(text).toContain('若本图是显式 NSFW 场景');
       expect(text).not.toContain('若本图协议含 negative 键');
-      expect(text).not.toContain('成年人');
       expect(text).not.toContain('白皙肤色词');
     } finally {
       settings.defaultBackend = oldBackend;
