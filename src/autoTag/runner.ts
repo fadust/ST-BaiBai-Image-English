@@ -6,9 +6,11 @@ import {
   type PositionedCharOp,
 } from '@/autoTag/charAnchors';
 import { prepareTargetText } from '@/autoTag/clean';
+import { auditLayers, formatLayerAudits } from '@/autoTag/dupes';
 import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/generationGate';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
+import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
 import { buildSlotTaskNote } from '@/autoTag/slotPlan';
 import {
   BBI_CHAR_EXTRA_KEY,
@@ -475,6 +477,37 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       const names = [...unknownNames].join('、');
       console.warn('[柏宝绘] AI 引用了库里没有的角色占位符,已剥除:', names);
       toastr.warning(`角色「${names}」没有建档，本次画面中缺少其外貌`, '柏宝绘');
+    }
+
+    // 出图前体检:只读文本,只出告警,不进任何分支(见 autoTag/shotspec 与 autoTag/dupes)。
+    // 放在占位符替换之后,是因为替换会把角色外貌注回 tag —— 要在最终形态上判,才能在
+    // 出图前看到「这一格到底会被提交成什么样」。整段 try/catch:体检自身出错绝不影响出图。
+    if (plan.images.length) {
+      try {
+        const shotNotes = formatFrameAudits(
+          auditFrames(
+            plan.images.map(image => ({ tag: image.tag, nl: image.nl, size: image.size })),
+            // 每张图的 size 在上面已按渠道锁改写过(runner.ts 的 profile.lockedSize 那行),
+            // 体检优先用它;没有就退回渠道锁,再没有就不判「竖幅横排多人」。
+            { orientation: profile.lockedSize ?? undefined },
+          ),
+        );
+        if (shotNotes) console.warn(`[柏宝绘] 构图体检:\n${shotNotes}`);
+
+        // 跨层重复项:四层拼成一条之前先查它们有没有互相复述(人种/年龄/服装)。
+        // 与构图体检并列、同一个 try/catch、同样只出告警 —— block 级也只降级成一行日志。
+        //
+        // 只传 tag / nl,不传中文外貌段:那一层是 Card.vue 在发请求前用
+        // chineseAppearanceForText(tag + nl) 现取的,**认人锚就是这两个字段本身** ——
+        // 拿它的产物反查它自己的来源,结果恒真,判不出任何东西。
+        // missing-exclusion 留给手里握着「与 tag/nl 不同源」的外貌段的调用方(见 dupes.ts)。
+        const layerNotes = formatLayerAudits(
+          auditLayers(plan.images.map(image => ({ tag: image.tag, nl: image.nl }))),
+        );
+        if (layerNotes) console.warn(`[柏宝绘] 跨层重复项:\n${layerNotes}`);
+      } catch {
+        // 体检是锦上添花,不是出图的前置条件。
+      }
     }
 
     // 单槽重写没给出新提示词:保留原提示词与原图,不替换(空 images 不是错误)。

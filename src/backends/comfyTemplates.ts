@@ -91,10 +91,27 @@ export interface ComfyTemplateMeta {
    */
   negativeRequired: boolean;
   /**
+   * 新建预设预填的固定正面(与 defaultNegative 同一套写法)。
+   *
+   * 两条 MOSS 线必须填:那条线的画质串/画风串**只能**由固定正面承担(规范明令 AI 不许写
+   * 画质词与画风词),留空则整条链路没人承担底子且全程没有报错。
+   * 其余模板留空:它们的 AI 生成内容本来就带着质量词(见 aiProvidesStyle)。
+   */
+  defaultPositive: string;
+  /**
    * negativeRequired 时新建预设预填的默认串。写实线与动漫线的负面不是同一份:
    * 动漫线不能带 text / logo(会把画面内文字一起压掉),要带 3d / shiny hair(防插画滑向 3D)。
    */
   defaultNegative: string;
+  /**
+   * AI 生成的内容里是否**自带**画质词/画风词(checkpoint / flux / anima 的 tag 流就是这种:
+   * AI 那侧本来就会写质量词、写画风),此时固定正面空着只是「少一层加固」。
+   *
+   * MOSS 两条线相反:规范把画质词与画风词**从 AI 那侧拿走了**,固定正面是唯一承担者。
+   * 故这个标记的真正用途只有一个 —— 让 simpleConfigWarnings 只对「没人兜底」的模板告警,
+   * 不对 checkpoint/flux/anima 误报。它**不参与校验**,也永远不拦出图。
+   */
+  aiProvidesStyle: boolean;
   /**
    * 采样器被底模锁死(null = 用户自选)。MOSS 官方 SFT 口径是 euler,换别的不是报错而是画质明显劣化,
    * 面板据此禁用选择框——比事后解释「为什么出图变糊」便宜。
@@ -147,8 +164,63 @@ export const MOSS_DEFAULT_NEGATIVE =
  */
 export const MOSS_ANIME_DEFAULT_NEGATIVE =
   '3d, worst quality, low quality, bad anatomy, bad hands, extra fingers, missing fingers, ' +
-  'extra toes, bad feet, extra limbs, fused limbs, lowres, blurry, jpeg artifacts, ' +
+  'extra toes, bad feet, fused limbs, extra limbs, lowres, blurry, jpeg artifacts, ' +
   'watermark, signature, username, artistic error, shiny hair, plastic skin';
+
+/**
+ * MOSS 写实线的默认固定正面(画质串)。新建预设预填,面板「填入默认正面」一键写回同一串。
+ *
+ * 取值不是自拟:规范 src/state/settings.ts 的 DEFAULT_MOSS_SPEC「二、tag」那一条把画质词的归属
+ * 写死了 ——「画质串由渠道预设的『固定正面』承担(moodyrealism, photorealistic, photograph,
+ * high detail, sharp focus, natural skin texture)。tag 里**不要**再写 masterpiece / best quality」。
+ * 也就是说这条线上**AI 那一侧被明令禁止写画质词**,固定正面是唯一承担者:它空着不是
+ * 「少一层加固」,是画质词彻底缺位且全程零报错 —— 正是本常量要堵的口子。
+ *
+ * 与 {@link MOSS_DEFAULT_NEGATIVE} 的关系(逐条对过,不是随手拼的):
+ * - `natural skin texture` vs 负面 `plastic skin` / `waxy skin` / `overly smooth skin` /
+ *   `excessive skin retouching`:这几对是**同一根轴的两头**,不是自相矛盾 —— 与
+ *   `high detail` vs `blurry`、`sharp focus` vs `blurry` 同理,CFG 下正负两边各自加码,
+ *   出来的才是「有纹理但不糙」的那一段。真正的自相矛盾是正面也要求光滑
+ *   (`smooth skin` / `airbrushed` / `flawless`),那才会和负面互相抵消,故本串一个都没有,
+ *   **也不要**往里加。
+ * - `sharp focus` vs 负面 `oversharpening`:前者说焦点落在哪儿,后者说边缘过冲的锐化光晕,两回事。
+ * - 规范禁的「皮肤反光词」(glossy / shiny / oily / greasy):本串写的是纹理(natural skin
+ *   texture),不是油光,一个反光词都没进串。
+ * - 规范禁的「拍摄介质参数词」(HDR / 计算摄影 / 高分辨率):`photograph` 是介质名词
+ *   (这一张是照片而不是插画),不是参数词;那三个参数词也一个都没进串。
+ *
+ * 想换质感就整串替换(例如不要胶片味就去掉 moodyrealism),但别把它清空 ——
+ * 清空了出图仍然会照常进行,只是画质基线没人承担(simpleConfigWarnings 会提示,不拦)。
+ */
+export const MOSS_DEFAULT_POSITIVE =
+  'moodyrealism, photorealistic, photograph, high detail, sharp focus, natural skin texture';
+
+/**
+ * MOSS 动漫线的默认固定正面(画风层两句)。
+ *
+ * 取值照抄 story-image 工作区 moss-anime 配置集的「### 画风层」一节(2026-11-02 定稿:
+ * 「这一段固定收尾,每张都写这两句,整套照抄,不要自己改写」):一句整体上色/线/材质,
+ * 一句脸部单独刻画。柏宝绘这条线的规范(DEFAULT_MOSS_ANIME_SPEC「二、tag」)写的是
+ * 「这条线的画风由渠道预设的『固定正面』承担,**你不要写任何画风词**」,且这条线的负面里
+ * **没有** text / logo(要留画面内文字)—— 所以这两句是这条线唯一的画风承担者,
+ * 空着等于让底模自己猜审美(会把二次元脸推回照片)。
+ *
+ * `sonsp` 是画风 LoRA(Sonsp_Moss_Style_v2 @0.8)的触发词,必须留在串里;
+ * 但不要写成 `<lora:…>` 语法 —— LoRA 由简易模式的 LoRA 链挂载,不是串里的语法。
+ *
+ * 与 {@link MOSS_ANIME_DEFAULT_NEGATIVE} 的两处近似冲突,逐条对过:
+ * - 负面 `3d`:针对三维渲染感;正面的「厚涂的笔触感」是平面绘画的笔触,不是 3D。
+ * - 负面 `shiny hair`:针对整片塑料高光;正面的「头发一缕一缕分出高光与暗部」是结构分层,
+ *   不是高光糊成一片。
+ * 另外**不要**自己补「韩漫/赛璐璐/日式动画」这类风格名:story-image 同一节的实测结论是
+ * 加了反而会把 sonsp 的画风拽歪。
+ */
+export const MOSS_ANIME_DEFAULT_POSITIVE =
+  '画面是 sonsp 那样的二次元插画（a 2D anime illustration），光影通透、明暗层次分明、有厚涂的笔触感；' +
+  '上色通透精致，色块边界干净，暗部里再压一层冷色，皮肤透出淡淡的血色，头发一缕一缕分出高光与暗部，' +
+  '布料有清楚的织纹和褶皱阴影，线条细而精、轮廓干净利落，人体曲线画得修长好看。' +
+  '人物脸部单独精细刻画：眼白、虹膜、瞳孔和睫毛分开画，眼睑分出层次，脸颊透出淡淡的血色，' +
+  '唇上带一层薄薄的高光，鼻尖与下颌的转折干净利落，光先落在脸上、眼睛里点出细小的反光。';
 
 export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> = {
   checkpoint: {
@@ -163,6 +235,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     supportsNegative: true,
     negativeRequired: false,
     defaultNegative: '',
+    // 空着出生是对的:checkpoint 的 tag 流本来就是 AI 自己写质量词(masterpiece / best quality)。
+    defaultPositive: '',
+    aiProvidesStyle: true,
     samplerFixed: null,
     slg: null,
     portraitSize: '832×1216',
@@ -184,6 +259,8 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     supportsNegative: false,
     negativeRequired: false,
     defaultNegative: '',
+    defaultPositive: '',
+    aiProvidesStyle: true,
     samplerFixed: null,
     slg: null,
     portraitSize: '1024×1024',
@@ -202,6 +279,8 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     supportsNegative: true,
     negativeRequired: false,
     defaultNegative: '',
+    defaultPositive: '',
+    aiProvidesStyle: true,
     samplerFixed: null,
     slg: null,
     portraitSize: '1024×1024',
@@ -223,6 +302,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     // MOSS 线的画质/解剖/水印基线只活在固定负面里,AI 那侧被方言关掉了动态负面(见 SpecDialect)。
     negativeRequired: true,
     defaultNegative: MOSS_DEFAULT_NEGATIVE,
+    // 画质串的唯一承担者:规范禁止 AI 写画质词,tag 里再写 masterpiece 会把照片推回插画。
+    defaultPositive: MOSS_DEFAULT_POSITIVE,
+    aiProvidesStyle: false,
     // 官方 SFT 口径就是 euler + sgm_uniform,换采样器不是「个人口味」而是画质劣化。
     samplerFixed: 'euler',
     // 写实线不叠跳层引导:那是动漫线拉出二次元骨相的手段,对胶片/皮肤质感是反效果。
@@ -245,6 +327,9 @@ export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> =
     // 底模不带二次元审美,崩手/崩脚/3D 感全靠这条收边,空着同样会走形。
     negativeRequired: true,
     defaultNegative: MOSS_ANIME_DEFAULT_NEGATIVE,
+    // 画风层的唯一承担者:规范禁止 AI 写任何画风词,负面里也没有 text/logo(要画面内文字)。
+    defaultPositive: MOSS_ANIME_DEFAULT_POSITIVE,
+    aiProvidesStyle: false,
     samplerFixed: 'euler',
     // 单层 22、前 50% 生效 —— 与 story-image 的 moss-anime 线同口径。
     slg: { singleLayers: '22', startPercent: 0, endPercent: 0.5 },
@@ -294,7 +379,9 @@ export function simpleDefaults(template: ComfySimpleTemplateId = 'checkpoint'): 
     scheduler: meta.defaults.scheduler,
     guidance: meta.defaults.guidance,
     shift: meta.defaults.shift,
-    positive: '',
+    // 默认正面与默认负面同一口径:填好**该模板自己的**那一份(写实线是画质串、动漫线是画风层),
+    // 用户仍可整串替换或清空。MOSS 线上这不是加固而是必需品 —— 画质/画风词只活在这条串里。
+    positive: meta.defaultPositive,
     // 必填固定负面的模板,新建时就填好**该模板自己的**默认串(写实线与动漫线不是同一份),
     // 让「选完模型点出图」这条路不被一条校验拦下;用户仍可整串替换。
     negative: meta.negativeRequired ? meta.defaultNegative : '',
@@ -334,9 +421,12 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
     scheduler: asText(o.scheduler) || base.scheduler,
     guidance: asNumber(o.guidance, base.guidance),
     shift: asNumber(o.shift, base.shift),
-    positive: asText(o.positive),
+    // 与下面 negative 同一口径(两条串共用一个归一规则,别再分叉):
     // 字段**缺失**(老数据/新键)才用模板默认值;显式空串是用户自己清掉的,原样保留。
-    // 这条区分对 MOSS 有意义:它的默认负面是必填项,但用户仍有权整串删掉再自己写。
+    // 为什么不能「空串也回填默认值」:老用户既存预设里存的就是 positive: '' —— 升级后当场把它
+    // 改成默认正面,等于替用户改了他一直在用的串,而他再也看不出自己清过、也调不回来。
+    // 为什么空着也不报错:那正是 simpleConfigWarnings 存在的理由(见下),不是这里漏了。
+    positive: typeof o.positive === 'string' ? o.positive : base.positive,
     negative: typeof o.negative === 'string' ? o.negative : base.negative,
   };
 }
@@ -357,7 +447,36 @@ export function validateSimpleConfig(simple: ComfySimpleConfig): string | null {
   if (meta.negativeRequired && !simple.negative.trim()) {
     return `${meta.label} 必须填写固定负面（可点「填入默认负面」一键填好）`;
   }
+  // 注意:这里**故意不校验**固定正面。空正面不会让请求失败,只是画质基线没人承担;
+  // 把「效果差」升格成「不能出图」会锁死老用户(他们的既存预设存的正是 positive:'')。
+  // 正面缺失走的是下面 simpleConfigWarnings 那条非阻断通道,两条通道互不相交。
   return null;
+}
+
+/**
+ * **非阻断**告警:固定正面空着、而该模板的 AI 那侧又不写画质/画风词时,给一句能照着做的提示。
+ * 返回 null = 无需提示。**永远不拦出图**,也不参与 validateSimpleConfig 的判定。
+ *
+ * 为什么不写进 validateSimpleConfig:
+ * 1. 老用户既存预设里存的就是显式空串(normalizeSimpleConfig 原样保留,那是用户的权利),
+ *    一升级就被校验拦下 = 把整条出图链锁死,而他要的可能只是「这次先不写画质串」。
+ * 2. 空正面**不会让请求失败**:ComfyUI 照常出图,只是画质基线缺位。拿更重的手段
+ *    (报错拦住)去解决更轻的问题(效果差)不划算。
+ * 故只给一行中文提示:面板显示在状态药丸附近,不弹窗、不阻塞。
+ *
+ * 判据是 meta.aiProvidesStyle 而不是模板 id:AI 那侧自带画质/画风词的模板
+ * (checkpoint / flux / anima 的 tag 流)固定正面空着只是少一层加固,不提示;
+ * 只有两条 MOSS 线(规范禁止 AI 写画质词与画风词)才提示。
+ */
+export function simpleConfigWarnings(simple: ComfySimpleConfig): string | null {
+  const meta = COMFY_TEMPLATES[simple.template] ?? COMFY_TEMPLATES.checkpoint;
+  if (meta.aiProvidesStyle) return null;
+  if (simple.positive.trim()) return null;
+  const fill = meta.id === 'moss-anime' ? '画风层' : '画质串';
+  return (
+    `${meta.label} 的固定正面是空的：这条线的${fill}只能由固定正面承担（规范禁止 AI 自己写），` +
+    '空着出图不会报错，但画质基线没人兜底。点「填入默认正面」一键填好。'
+  );
 }
 
 /** 组装入参:与占位符体系同源,只是不走宏替换。 */

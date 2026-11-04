@@ -5,8 +5,11 @@ import {
   COMFY_TEMPLATES,
   composePositive,
   MOSS_ANIME_DEFAULT_NEGATIVE,
+  MOSS_ANIME_DEFAULT_POSITIVE,
   MOSS_DEFAULT_NEGATIVE,
+  MOSS_DEFAULT_POSITIVE,
   normalizeSimpleConfig,
+  simpleConfigWarnings,
   simpleDefaults,
   templateSupportsNegative,
   validateSimpleConfig,
@@ -410,3 +413,121 @@ describe('moss 模板的元数据', () => {
     expect(validateSimpleConfig(moss)).toBeNull();
   });
 });
+
+/* ============ 固定正面(defaultPositive):空着不报错的口子 ============ */
+
+describe('defaultPositive - 两条 MOSS 线的默认固定正面', () => {
+  it('写实线的画质串取自规范点名的那一条,且与规范禁区不打架', () => {
+    expect(MOSS_DEFAULT_POSITIVE).toBe(
+      'moodyrealism, photorealistic, photograph, high detail, sharp focus, natural skin texture',
+    );
+    // 规范禁 AI 写动漫画质词:正面这边也不能有
+    expect(MOSS_DEFAULT_POSITIVE).not.toContain('masterpiece');
+    expect(MOSS_DEFAULT_POSITIVE).not.toContain('best quality');
+    // 规范禁的皮肤反光词,一个都不许进正面串
+    for (const word of ['glossy', 'shiny', 'oily', 'greasy']) {
+      expect(MOSS_DEFAULT_POSITIVE).not.toContain(word);
+    }
+    // 规范禁的拍摄介质参数词
+    for (const word of ['HDR', '计算摄影', '高分辨率']) {
+      expect(MOSS_DEFAULT_POSITIVE).not.toContain(word);
+    }
+  });
+
+  it('动漫线的画风层是固定两句:sonsp 触发词 + 单独刻脸,且不带 LoRA 语法', () => {
+    const pos = MOSS_ANIME_DEFAULT_POSITIVE;
+    // sonsp 是画风 LoRA 的触发词,必须留在串里
+    expect(pos).toContain('sonsp');
+    // 一句整体上色/线/材质 + 一句脸部单独刻画
+    expect(pos).toContain('二次元插画');
+    expect(pos).toContain('人物脸部单独精细刻画');
+    // 不要写成 <lora:…> 语法:LoRA 由简易模式的 LoRA 链挂载
+    expect(pos).not.toContain('<lora:');
+    // 规范禁 AI 写的风格名:实测加了反而把 sonsp 的画风拽歪
+    for (const word of ['韩漫', '条漫', '赛璐璐', '日式动画']) {
+      expect(pos).not.toContain(word);
+    }
+    // 两条 MOSS 线的默认正面不可互换(写实是画质串、动漫是画风层)
+    expect(pos).not.toBe(MOSS_DEFAULT_POSITIVE);
+  });
+
+  it('非 MOSS 模板不预填正面(AI 那侧本来就自带质量词)', () => {
+    for (const id of ['checkpoint', 'flux', 'anima'] as const) {
+      expect(simpleDefaults(id).positive).toBe('');
+      expect(simpleDefaults(id).negative).toBe('');
+    }
+  });
+
+  it('新建 moss / moss-anime 预设的正面非空(画质/画风串真的进得了串)', () => {
+    expect(simpleDefaults('moss').positive).toBe(MOSS_DEFAULT_POSITIVE);
+    expect(simpleDefaults('moss-anime').positive).toBe(MOSS_ANIME_DEFAULT_POSITIVE);
+    // 两端打通:默认正面确实被 composePositive 拼在最前面,而不是躺在配置里
+    const moss: ComfySimpleConfig = {
+      ...simpleDefaults('moss'),
+      model: 'moss_image_sft_int8_convrot.safetensors',
+      vae: 'flux2-vae_small.safetensors',
+      clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    };
+    const wf = buildSimpleWorkflow(moss, VALUES);
+    expect(node(wf, '4').inputs.text).toBe(`${MOSS_DEFAULT_POSITIVE}, 1girl, silver hair`);
+  });
+});
+
+describe('normalizeSimpleConfig - 正面的「缺失」与「显式空串」', () => {
+  it('字段缺失 → 用该模板的 defaultPositive', () => {
+    expect(normalizeSimpleConfig({ template: 'moss' }).positive).toBe(MOSS_DEFAULT_POSITIVE);
+    expect(normalizeSimpleConfig({ template: 'moss-anime' }).positive).toBe(MOSS_ANIME_DEFAULT_POSITIVE);
+    // 缺字段与「新建预设」是同一个结果(既有等价断言因此继续成立)
+    expect(normalizeSimpleConfig({ template: 'moss' })).toEqual(simpleDefaults('moss'));
+  });
+
+  it('显式空串 → 原样保留(用户有权清掉),与 negative 同一口径', () => {
+    expect(normalizeSimpleConfig({ template: 'moss', positive: '' }).positive).toBe('');
+    expect(normalizeSimpleConfig({ template: 'moss-anime', positive: '' }).positive).toBe('');
+    // 两边口径必须一致:legacy 预设正负两面都是显式空串,谁也不回填
+    const legacy = normalizeSimpleConfig({ template: 'moss', positive: '', negative: '' });
+    expect(legacy.positive).toBe('');
+    expect(legacy.negative).toBe('');
+    // 非字符串(老数据里可能是 null / 数字)按「缺失」处理
+    expect(normalizeSimpleConfig({ template: 'moss', positive: null }).positive).toBe(MOSS_DEFAULT_POSITIVE);
+  });
+});
+
+describe('simpleConfigWarnings - 非阻断告警', () => {
+  const mossReady: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+  };
+
+  it('MOSS 两条线正面为空时给出告警,并点名「填入默认正面」', () => {
+    const real = simpleConfigWarnings({ ...mossReady, positive: '' });
+    expect(real).toContain('固定正面');
+    expect(real).toContain('填入默认正面');
+    // 写实线说的是画质串,动漫线说的是画风层:措辞各说各的承担物
+    expect(real).toContain('画质串');
+    const anime = simpleConfigWarnings({ ...simpleDefaults('moss-anime'), positive: '  ' });
+    expect(anime).toContain('画风层');
+  });
+
+  it('正面非空时无告警', () => {
+    expect(simpleConfigWarnings(mossReady)).toBeNull();
+    expect(simpleConfigWarnings(simpleDefaults('moss-anime'))).toBeNull();
+  });
+
+  it('对非 MOSS 模板不误报(AI 那侧自带质量词)', () => {
+    for (const id of ['checkpoint', 'flux', 'anima'] as const) {
+      expect(simpleConfigWarnings({ ...simpleDefaults(id), model: 'm.safetensors' })).toBeNull();
+    }
+  });
+
+  it('告警**不阻断**出图:正面空着的 MOSS 预设照样能组装工作流', () => {
+    // 这是本组最关键的一条:非阻断的承诺必须可执行,而不是只写在注释里
+    expect(validateSimpleConfig({ ...mossReady, positive: '' })).toBeNull();
+    const wf = buildSimpleWorkflow({ ...mossReady, positive: '' }, VALUES);
+    // 固定正面缺位时正向串只剩 AI 那侧的内容,但请求本身照常成立
+    expect(node(wf, '4').inputs.text).toBe('1girl, silver hair');
+  });
+});
+

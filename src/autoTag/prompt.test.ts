@@ -1553,3 +1553,281 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
     }
   });
 });
+
+describe('构图闸:协议里的构图约束', () => {
+  function options(overrides: Partial<AutoTagPrompts> = {}): AutoTagSettings {
+    return {
+      enabled: true,
+      contextMessages: 2,
+      minImages: 0,
+      maxImages: 2,
+      retryCount: 1,
+      autoGenerate: true,
+      prompts: prompts(overrides),
+    };
+  }
+
+  /** 协议 = 那条以「你是严谨的剧情画面规划」开头的 system 消息。 */
+  async function contractOf(cfg: AutoTagSettings): Promise<string> {
+    const messages = await buildAutoTagMessages(context(), 1, cfg, null);
+    return messages.find(m => m.content.startsWith('你是严谨的剧情画面规划'))!.content;
+  }
+
+  const state = () => {
+    const preset = activeComfyPreset();
+    const saved = {
+      backend: settings.defaultBackend,
+      model: settings.nai.model,
+      dialect: preset.specDialect,
+      presetNl: preset.naturalLanguage,
+      naiNl: settings.nai.naturalLanguage,
+    };
+    return {
+      preset,
+      restore() {
+        settings.defaultBackend = saved.backend;
+        settings.nai.model = saved.model;
+        preset.specDialect = saved.dialect;
+        preset.naturalLanguage = saved.presetNl;
+        settings.nai.naturalLanguage = saved.naiNl;
+      },
+    };
+  };
+
+  it('每个方言都拿到同一份承重墙顺序(人数 → 景别 → 机位朝向 → 机位高度)', async () => {
+    const save = state();
+    try {
+      for (const backend of ['comfyui', 'nai'] as const) {
+        for (const dialect of ['comfy', 'moss', 'moss-anime'] as const) {
+          settings.defaultBackend = backend;
+          if (backend === 'nai') settings.nai.model = 'nai-diffusion-4-full';
+          save.preset.specDialect = dialect;
+          save.preset.naturalLanguage = true;
+          const contract = await contractOf(options());
+          // 规则正文来自 SHOT_ORDER_RULE 本身,不在这里另抄一份词表
+          expect([backend, dialect, contract.includes('构图先于其它一切')]).toEqual([backend, dialect, true]);
+          expect(contract).toContain('景别只许出现一个');
+          expect(contract).toContain('机位高度');
+          expect(contract).toContain('**构图闸');
+        }
+      }
+    } finally {
+      save.restore();
+    }
+  });
+
+  it('动漫线额外强调:景别只许一个、nl 第一段与 tag 同口径,且与规范第二节不矛盾', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'moss-anime';
+      save.preset.naturalLanguage = true;
+      const contract = await contractOf(options());
+
+      expect(contract).toContain('极简中文元素行是**同一条**规则，不是第二套');
+      expect(contract).toContain('**景别与机位朝向各只许出现一个**');
+      expect(contract).toContain('nl 的第一段必须与 tag 同口径');
+      expect(contract).toContain('每格第一句各自点明景别与机位');
+
+      // 规范第二节的元素行顺序必须与这条规则同口径(两处一旦漂,模型两头都不认)
+      const spec = (await buildAutoTagMessages(context(), 1, options(), null)).find(m =>
+        m.content.includes('MOSS 动漫线提示词规范'),
+      )!.content;
+      expect(spec).toContain('人数 → 景别 → 机位朝向 → 地点 → 光的方向');
+    } finally {
+      save.restore();
+    }
+  });
+
+  it('写实线与 tag 流各自的口径补充不串线', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.naturalLanguage = true;
+
+      save.preset.specDialect = 'moss';
+      let contract = await contractOf(options());
+      expect(contract).toContain('机位朝向紧跟景别，不得挪到外貌锚点之后');
+      expect(contract).not.toContain('极简中文元素行是**同一条**规则');
+
+      save.preset.specDialect = 'comfy';
+      contract = await contractOf(options());
+      expect(contract).toContain('写在人数之后、外貌之前，不要挪到串尾');
+      expect(contract).not.toContain('机位朝向紧跟景别，不得挪到外貌锚点之后');
+    } finally {
+      save.restore();
+    }
+  });
+
+  it('纯 tag 协议声明 nl 那条不适用,且只声明一次', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'nai';
+      settings.nai.model = 'nai-diffusion-5-full';
+      settings.nai.naturalLanguage = false;
+      const contract = await contractOf(options());
+
+      const note = '本次输出不含 nl 段：上面关于 nl 的那一条本次不适用';
+      expect(contract).toContain(note);
+      expect(contract.split(note).length - 1).toBe(1);
+    } finally {
+      save.restore();
+    }
+  });
+
+  it('含 nl 的协议里不出现那条「不含 nl」的声明', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'comfy';
+      save.preset.naturalLanguage = true;
+      const contract = await contractOf(options());
+      expect(contract).not.toContain('本次输出不含 nl 段');
+    } finally {
+      save.restore();
+    }
+  });
+
+  it('机位词表只给标准词,不放手让模型自造词组', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'comfy';
+      save.preset.naturalLanguage = true;
+      const contract = await contractOf(options());
+      expect(contract).toContain('机位词只用模型认识的标准词，不得自造词组');
+      expect(contract).toContain('front view（正面）');
+      expect(contract).toContain('three-quarter view（四分之三侧面）');
+      expect(contract).toContain('side view（正侧）');
+      expect(contract).toContain('from behind（背面）');
+      expect(contract).toContain('high angle（俯拍）');
+      expect(contract).toContain('low angle（仰拍）');
+    } finally {
+      save.restore();
+    }
+  });
+});
+
+
+describe('英文身体段改条件段 + 人种收成一处', () => {
+  /** 外层 describe 里的 pick 不在这个作用域:本块自带一份同口径的取消息。 */
+  function pick(messages: { content: string }[], mark: string): string {
+    const found = messages.find(m => m.content.includes(mark));
+    expect(found, mark).toBeTruthy();
+    return found!.content;
+  }
+
+  const state = () => {
+    const preset = activeComfyPreset();
+    const saved = { backend: settings.defaultBackend, dialect: preset.specDialect };
+    return {
+      preset,
+      restore() {
+        settings.defaultBackend = saved.backend;
+        preset.specDialect = saved.dialect;
+      },
+    };
+  };
+
+  async function specOf(dialect: 'moss' | 'moss-anime', library?: string) {
+    const messages = await buildAutoTagMessages(context(), 1, mossOptions(), null, undefined, library);
+    return {
+      spec: pick(messages, dialect === 'moss' ? 'MOSS-Image 写实线提示词规范' : 'MOSS 动漫线提示词规范'),
+      thinking: pick(messages, dialect === 'moss' ? '输出前思考清单（MOSS 写实线）' : '输出前思考清单（MOSS 动漫线）'),
+      contract: messages.find(m => m.content.includes('你是严谨的剧情画面规划与生图提示词编写员'))!.content,
+    };
+  }
+
+  // 英文身体段曾经是**无条件必写**的一段(规范第三节 B 与思维链第 5 步同口径写死),
+  // 而规范自己在开头就写明「同一件事写几遍 = 叠几层权重」。两处同口径地改成
+  // 「题材条件段」后,这段话的判据必须让模型自己能判,不能只留一句「可选」。
+  it('MOSS 方言:英文身体段改成题材条件段,判据规范与思维链逐条同口径', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'moss';
+      const { spec, thinking } = await specOf('moss');
+
+      // 1) 无条件的两段结构必须消失 —— 这是本次改动的因:旧条文自己打自己
+      expect(spec).not.toContain('由「中文散文段 + 英文身体段」两部分组成');
+      expect(spec).not.toContain('缺一段都算没写完');
+      expect(thinking).not.toContain('缺一段都算没写完');
+      expect(thinking).not.toContain('由两段组成');
+      // 2) 条件式判据:正例与反例都要写出来,只给一边模型只会一律加或一律不加
+      expect(spec).toContain('画面里出现了裸露的躯干或性器官');
+      expect(spec).toContain('衣着完整的日常、多人对话、环境镜头 → 不加');
+      expect(thinking).toContain('画面里有裸露的躯干或性器官');
+      expect(thinking).toContain('衣着完整的日常、多人对话、环境镜头 → 不写');
+      // 思维链必须点名规范的判据是**同一条**,不许自己另立
+      expect(thinking).toContain('判据与规范第三节 B 同一条');
+      // 3) 条件段要写在标题上,否则模型读到「60–120 词」仍会当必做项
+      expect(spec).toContain('### B. 英文身体段（**条件段**');
+      expect(thinking).toContain('B. 英文身体段（**条件段**');
+
+      // 4) 日常镜头(不加英文段)时,所有「写英文段才有」的下游条文都要有跳过口径,
+      //    否则模型会把「没写」当成遗漏:自检、材质层、总检三处最容易漏。
+      expect(spec).toContain('本图没写英文段时，这条整条不适用');
+      expect(spec).toContain('本图没写英文段时跳过');
+      expect(thinking).toContain('第 7 步的材质层并进中文段末尾');
+      expect(thinking).toContain('没写英文段就只查前两项');
+    } finally {
+      save.restore();
+    }
+  });
+
+  // 人种与年龄被写了三遍(tag / 英文段首句 / 中文段的禁令又提一遍),正是规范自己
+  // 点名的「同一信息叠两层权重」。收成只写一处后,三份条文不再互指:
+  // tag 是唯一负责方,中文段与英文段都被明确排除。
+  it('MOSS 方言:人种与年龄只在 tag 写一次,规范与思维链都不再要求复述', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'moss';
+      const { spec, thinking } = await specOf('moss');
+
+      // 旧口径要求英文段首句给年龄 + 人种 —— 与 tag 的 chinese / twenty years old 打架
+      expect(spec).not.toContain('年龄与人种你永远要写');
+      expect(spec).not.toContain('英文身体段仍需写：年龄 + 人种（必写）');
+      expect(thinking).not.toContain('第一句必须给年龄 + 人种');
+      // 新口径三处齐备:tag 独家负责、中文段排除、英文段排除
+      expect(spec).toContain('全串唯一一处该写人种的地方');
+      expect(spec).toContain('年龄感与人种只归 tag');
+      expect(spec).toContain('人种与年龄不在这一段写');
+      expect(thinking).toContain('全串唯一写人种与年龄感的地方');
+      expect(thinking).toContain('不从年龄与人种写起');
+      // tag 的元素顺序里那一格还在(人种仍然要写,只是只写这一处)
+      expect(spec).toContain('→ 人种与年龄感 →');
+
+      // 动漫线本来就没有英文身体段,条件段的条文一个字都不该跟过去
+      save.preset.specDialect = 'moss-anime';
+      const anime = await specOf('moss-anime');
+      expect(anime.spec).not.toContain('条件段');
+      expect(anime.spec).not.toContain('裸体、裸露、性行为');
+      expect(anime.thinking).not.toContain('英文身体段（**条件段**');
+    } finally {
+      save.restore();
+    }
+  });
+
+  // 协议侧的库条款(不是规范)也在提英文段:这两句原先把「年龄写法」指到英文段首句,
+  // 新口径下那句已经不存在,条款不跟着改就会指向一个不存在的槽位。
+  it('MOSS 方言:库条款把年龄人种指回 tag,英文段相关表述改成条件式', async () => {
+    const save = state();
+    try {
+      settings.defaultBackend = 'comfyui';
+      save.preset.specDialect = 'moss';
+      const library = ['- 林夏 [中文外貌已填]: 性别=1girl, 头发=long black hair'].join('\n');
+      const { contract } = await specOf('moss', library);
+
+      // 指向新槽位:只在 tag 里写一次,并且点名 nl 两段都不复述
+      expect(contract).toContain('但**只在 tag 里写一次**');
+      expect(contract).toContain('nl 的任何一段都不复述');
+      // 旧的「英文身体段首句的年龄由你照常写」必须消失(那个槽位已不存在)
+      expect(contract).not.toContain('英文身体段首句的年龄');
+      // B 类(没有标记)的补外貌改成条件式:没写英文段就只靠 tag 一处
+      expect(contract).toContain('没写就只靠 tag 那一处，不要为补外貌硬加一段');
+    } finally {
+      save.restore();
+    }
+  });
+});

@@ -4,8 +4,11 @@ import {
   COMFY_TEMPLATES,
   isMossTemplate,
   MOSS_ANIME_DEFAULT_NEGATIVE,
+  MOSS_ANIME_DEFAULT_POSITIVE,
   MOSS_DEFAULT_NEGATIVE,
+  MOSS_DEFAULT_POSITIVE,
   isComfyTemplateId,
+  simpleConfigWarnings,
   simpleDefaults,
   validateSimpleConfig,
   type ComfyPresetMode,
@@ -263,10 +266,16 @@ function onTemplateChange(id: string) {
     current.negative === prevMeta.defaultNegative
       ? nextMeta.defaultNegative
       : current.negative;
+  // 固定正面同理,但判据放得更宽一点:正面在多数模板上默认就是空串,若照负面那样要求
+  // 「旧模板也得有默认值」,checkpoint → MOSS 这条最常见的路会留下一个空正面(正是要堵的口子)。
+  // 故「空着」与「还是旧模板的默认串」都算没动过,换成新模板那份;用户自己写的一律不动。
+  // 两条 MOSS 线的默认正面完全不可互换(写实是画质串、动漫是画风层),拿错等于换错审美。
+  const untouchedPositive =
+    !current.positive.trim() || current.positive === prevMeta.defaultPositive;
   active.value.simple = {
     ...simpleDefaults(id),
     loras: current.loras,
-    positive: current.positive,
+    positive: untouchedPositive ? nextMeta.defaultPositive : current.positive,
     negative: keptNegative,
   };
 }
@@ -279,13 +288,32 @@ function removeLora(index: number) {
   active.value.simple.loras.splice(index, 1);
 }
 
-/** 简易模式状态药丸:与出图组装同一口径(validateSimpleConfig)。 */
+/**
+ * 简易模式状态药丸:与出图组装同一口径(validateSimpleConfig)。
+ *
+ * 「警告」是**非阻断**通道(simpleConfigWarnings):它绝不改药丸的 tone —— 出图照常放行。
+ * 让人看懂的处理是把两件事显示在两处,而不是混成一个颜色:
+ * 药丸只答「能不能出图」,警告另起一行挂在它下方,说「能出,但少了什么」。
+ */
 const simpleState = computed(() => {
   const invalid = validateSimpleConfig(active.value.simple);
   return invalid
     ? { tone: 'error', text: '未就绪', detail: invalid }
     : { tone: 'ok', text: '有效', detail: '' };
 });
+
+const simpleWarning = computed(() => simpleConfigWarnings(active.value.simple));
+
+/** 固定正面空着、而这条线只能靠它承担画质/画风词(判据在 simpleConfigWarnings,面板不重复判)。 */
+const needMossPositive = computed(
+  () => isMossTemplate(active.value.simple.template) && !active.value.simple.positive.trim(),
+);
+
+// 一键填入的是**该模板自己的**默认正面:写实线是画质串,动漫线是画风层两句,不可互换。
+function fillDefaultPositive() {
+  active.value.simple.positive =
+    active.value.simple.template === 'moss-anime' ? MOSS_ANIME_DEFAULT_POSITIVE : MOSS_DEFAULT_POSITIVE;
+}
 
 const nlHint = computed(() => {
   // MOSS 线的 nl 不是"额外加一段"而是画面本体;这个开关在那边连解释都换了口径,
@@ -568,6 +596,11 @@ function applyAssist() {
             {{ simpleState.text }}
           </span>
         </div>
+        <!-- 非阻断告警:紧贴状态药丸下方,与它同宽的一句话。药丸答「能不能出图」,
+             这一行答「能出,但少了什么」——两者刻意分开,警告绝不把药丸染成红色制造「不能出图」的错觉。 -->
+        <p v-if="active.mode === 'simple' && simpleWarning" class="wf-note is-warn">
+          {{ simpleWarning }}
+        </p>
 
         <label class="bbi-switch-row" :class="{ 'is-locked': isMossDialect }">
           <span class="bbi-field-label">生成自然语言</span>
@@ -839,6 +872,15 @@ function applyAssist() {
                 placeholder="固定负面:通用负面词;AI 生成的动态负面追加在后"
               />
             </div>
+            <!-- MOSS 线的画质串/画风层只能由这条固定正面承担(规范禁止 AI 写),
+                 而它空着**不会**被校验拦下(那会锁死老用户),故这里只给一键填入。
+                 空着时才出现,填过就不打扰。 -->
+            <div v-if="needMossPositive" class="wf-negative-hint">
+              <span class="bbi-field-hint">这条线的画质/画风串只能由固定正面承担，空着出图不会报错但底子没人兜。</span>
+              <button class="bbi-btn bbi-btn-sm" type="button" @click="fillDefaultPositive">
+                填入默认正面
+              </button>
+            </div>
             <!-- MOSS 线的动态负面被方言关掉了,这条固定负面是唯一的负面来源,
                  空着必然走形(validateSimpleConfig 也会拦)。空着时才出现,填过就不打扰。 -->
             <div v-if="needMossNegative" class="wf-negative-hint">
@@ -1088,6 +1130,17 @@ function applyAssist() {
 .wf-prompts {
   display: grid;
   gap: 8px;
+}
+/* 非阻断告警:挂在状态药丸正下方,与它同列。用 warning 色而不是 danger 色 ——
+   它答的是「能出图,但少了什么」,不是「不能出图」(那个由药丸的 is-error 说)。 */
+.wf-note {
+  margin: 0 0 6px;
+  color: var(--bbi-ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.wf-note.is-warn {
+  color: var(--bbi-warning);
 }
 /* 负面对填提示:说明在左、按钮在右(说明自带 12px 与 1.6 行高,
    与按钮同一行时垂直居中才不显歪)。 */
