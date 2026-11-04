@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import type { ImageCharacterPrompt } from '@/autoTag/protocol';
+import { MAX_INSTRUCTION } from '@/autoTag/slotPlan';
 import type { Orientation } from '@/backends/size';
 import BbiTextarea from '@/components/BbiTextarea.vue';
 import Icon from '@/components/Icon.vue';
@@ -51,8 +52,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 应用;regenerate=true 表示写回后直接开跑出图。 */
   (e: 'apply', value: ImageTagContent, regenerate: boolean): void;
-  /** 请求 AI 重写这一张的提示词(落盘与出图由调用方做,本组件只负责把结果读回草稿)。 */
-  (e: 'rewrite'): void;
+  /**
+   * 请求 AI 重写这一张的提示词(落盘与出图由调用方做,本组件只负责把结果读回草稿)。
+   * instruction 是用户在「修改意见」框里写的原文(可能为空串 = 纯重写);调用方原样透传给
+   * runner,由 slotPlan.buildSlotTaskNote 决定怎么进任务备注,这里不做任何加工。
+   */
+  (e: 'rewrite', instruction: string): void;
   /** 取消在途的 AI 重写。 */
   (e: 'cancel-rewrite'): void;
   /** 草稿是否已改动(调用方据此决定关窗前要不要问「放弃修改?」)。 */
@@ -74,6 +79,23 @@ const size = ref<Orientation>(props.content.size);
 const characters = ref<ImageCharacterPrompt[]>(
   props.content.characters.map(character => ({ ...character })),
 );
+
+/**
+ * 「AI 重写提示词」的修改意见(可选)。**不属于草稿**:不进 draft / 不参与 dirty 判定
+ * (它改的不是提示词本身,是这次重写的一句话要求),也不写进 tag/nl。
+ *
+ * 所以:
+ * - 重写落盘后 content 被换掉,这个框**不清空** —— 用户可能想按同一条意见再重一遍;
+ * - 关窗前的「放弃修改?」也不该因为它弹出来(它没改正文里任何东西);
+ * - 忙碌时只禁用(disabled),绝不清空。
+ */
+const instruction = ref('');
+
+/**
+ * 意见超出上限:超过部分会被 slotPlan 静默截断,所以明说一句(上限值与截断逻辑同源,
+ * 不在前端再写一个数字)。只在超限时出现,平时不占版面。
+ */
+const instructionOver = computed(() => instruction.value.length > MAX_INSTRUCTION);
 
 /**
  * 当前渠道的画幅锁(null = 未锁,见 settings.ts 的 activeOrientationLock)。
@@ -187,7 +209,8 @@ function apply(regenerate: boolean): void {
 
 function rewrite(): void {
   if (props.busy || props.rewriting || !props.configured) return;
-  emit('rewrite');
+  // 原样带出去:trim / 截断只在 slotPlan.buildSlotTaskNote 一处做,两边不各算一次口径
+  emit('rewrite', instruction.value);
 }
 
 /**
@@ -247,6 +270,24 @@ onBeforeUnmount(() => {
 
       <!-- AI 重写:手改与 AI 改是同一件事的两种手段,故聚在同一个弹窗里。
            跑完直接落盘并出图(见 promptEditor.ts),结果回填到下面的输入框。 -->
+      <div class="bbi-modal-field">
+        <span class="bbi-modal-label">修改意见(可选,告诉 AI 这次要改哪里)</span>
+        <BbiTextarea
+          v-model="instruction"
+          class="bbi-prompt-area"
+          :rows="2"
+          :max-rows="4"
+          :disabled="busy || rewriting"
+          placeholder="例如：机位别贴这么近，改成半身；裙子是浅灰不是白色"
+        />
+        <span class="bbi-field-hint">
+          填了就只按这条意见改，没提到的部分保持原样；留空 = 让 AI 按正文自行重写。
+          重写完成后这段意见会留在框里，方便照着同一条意见再改一次。
+          <span v-if="instructionOver" class="bbi-instruction-over">
+            已超过 {{ MAX_INSTRUCTION }} 字，超出的部分在发给 AI 时会被截断。
+          </span>
+        </span>
+      </div>
       <div class="bbi-rewrite-row">
         <button
           v-if="!rewriting"
@@ -255,7 +296,7 @@ onBeforeUnmount(() => {
           :disabled="busy || !configured"
           :title="
             configured
-              ? '让 AI 重读本楼正文，把这一张的提示词重写一遍'
+              ? '让 AI 重读本楼正文，把这一张的提示词重写一遍（按上面的修改意见改）'
               : '请先在柏宝绘「渠道」页完成配置'
           "
           @click="rewrite"
@@ -514,6 +555,11 @@ onBeforeUnmount(() => {
   font-size: 12px;
   line-height: 1.7;
   color: var(--bbi-ink-soft);
+}
+
+/* 意见超限提示:沿用 .bbi-field-hint 的排版,只把它染成警示色(不新造字号/间距) */
+.bbi-instruction-over {
+  color: var(--bbi-danger);
 }
 
 .bbi-editor-error {

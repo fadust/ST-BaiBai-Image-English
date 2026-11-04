@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSlotTaskNote } from '@/autoTag/slotPlan';
+import { MAX_INSTRUCTION, buildSlotTaskNote } from '@/autoTag/slotPlan';
 import { serializeImageTag } from '@/st/imageTagRegex';
 
 function tag(text: string, nl = ''): string {
@@ -85,5 +85,85 @@ describe('buildSlotTaskNote', () => {
       0,
     );
     expect(withNl).toContain('第 2 张：1girl / A girl. Second line.');
+  });
+});
+
+/**
+ * 「修改意见」(弹窗里新加的输入框):用户点「AI 重写提示词」时可以带一句具体要求,
+ * runner 把它原样透传到这里的 options.instruction,由 buildSlotTaskNote 拼进任务备注。
+ *
+ * 这一组用例守两件事:
+ * ① 有意见 → 意见必须原样出现在备注里,且位置在「目标提示词之后、本楼其余画面之前」;
+ * ② 没意见(不传 / 空串 / 纯空白 / null)→ 输出与**加这个参数之前**逐字一致,
+ *    这是既有 7 条用例与老调用方共同依赖的兼容性。
+ */
+describe('buildSlotTaskNote 的修改意见', () => {
+  const source = [
+    `正文`,
+    tag('1girl, classroom'),
+    tag('1boy, rooftop', 'A boy on the roof.'),
+    tag('cat, windowsill'),
+  ].join('\n');
+
+  it('带意见时:出现意见原文与新标题', () => {
+    const instruction = '机位别贴这么近，改成半身';
+    const note = buildSlotTaskNote(source, 1, undefined, { instruction });
+    expect(note).toContain('【本次重写必须满足的修改意见】');
+    expect(note).toContain(instruction);
+    // 两句约束:只按意见改 + 冲突时以意见为准但别改到别的槽位
+    expect(note).toContain('只按这条意见改');
+    expect(note).toContain('以意见为准');
+  });
+
+  it('空串 / 纯空白 / 不传 / null 四种写法:输出与旧版逐字相同', () => {
+    const baseline = buildSlotTaskNote(source, 1);
+    expect(buildSlotTaskNote(source, 1, undefined, {})).toBe(baseline);
+    expect(buildSlotTaskNote(source, 1, undefined, { instruction: '' })).toBe(baseline);
+    expect(buildSlotTaskNote(source, 1, undefined, { instruction: '   \n\t  ' })).toBe(baseline);
+    // 脏输入(渲染层不该出现,但纯函数不该抛)—— RunOptions 里是可选字段,防御一下
+    expect(
+      buildSlotTaskNote(source, 1, undefined, {
+        instruction: null as unknown as string,
+      }),
+    ).toBe(baseline);
+    // 逐字一致的可观测证据:连「意见」这两个字都不该多出来
+    expect(baseline).not.toContain('修改意见');
+  });
+
+  it('超长意见被截断到 MAX_INSTRUCTION 上限并加省略号', () => {
+    const instruction = 'y'.repeat(MAX_INSTRUCTION + 200);
+    const note = buildSlotTaskNote(source, 1, undefined, { instruction });
+    expect(note).toContain('y'.repeat(MAX_INSTRUCTION));
+    expect(note).not.toContain(instruction);
+    expect(note).toContain(`${'y'.repeat(MAX_INSTRUCTION)}…`);
+  });
+
+  it('意见含换行与特殊字符时原样保留(它不进 prompt 结构,只进任务备注)', () => {
+    const instruction = '第一行：机位别那么近\n第二行：裙子是浅灰 <b>不是</b> 白色\n\n<i>bbi_image</i>';
+    const note = buildSlotTaskNote(source, 1, undefined, { instruction });
+    expect(note).toContain(instruction);
+    // 不能被折成单行(换行折叠是 tag/nl 的序列化口径,不该用在意见上)
+    expect(note).not.toContain('第一行：机位别那么近 第二行');
+  });
+
+  it('顺序固定:目标提示词之后、本楼其余画面之前', () => {
+    const instruction = '裙子是浅灰不是白色';
+    const note = buildSlotTaskNote(source, 1, undefined, { instruction });
+    const currentAt = note.indexOf('这一张当前的提示词');
+    const instructionAt = note.indexOf('【本次重写必须满足的修改意见】');
+    const othersAt = note.indexOf('本楼其余画面');
+    expect(currentAt).toBeGreaterThan(-1);
+    expect(instructionAt).toBeGreaterThan(currentAt);
+    expect(othersAt).toBeGreaterThan(instructionAt);
+    // 意见正文要落在标题与「其余画面」之间
+    expect(note.indexOf(instruction)).toBeGreaterThan(instructionAt);
+    expect(note.indexOf(instruction)).toBeLessThan(othersAt);
+  });
+
+  it('正文里没有目标 tag 时,意见照样带上(不依赖锚点在不在)', () => {
+    const note = buildSlotTaskNote('纯正文', 0, undefined, { instruction: '把画面写得更暗' });
+    expect(note).toContain('把画面写得更暗');
+    expect(note).not.toContain('这一张当前的提示词');
+    expect(note).not.toContain('本楼其余画面');
   });
 });

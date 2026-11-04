@@ -111,8 +111,12 @@ interface RunOptions {
    * **画面不变**——写回按 seq 原位替换,模型返回的 position 压根不参与写回,措辞口径见
    * slotPlan.buildSlotTaskNote。分析基底同样剔除全部旧 tag,但强制输出恰好 1 张,
    * 且忽略本次 AI 的 changes(首次全量分析已为整楼建过档)。
+   *
+   * instruction:用户在重写弹窗里写的**修改意见**(「机位别贴这么近」),原样拼进任务备注
+   * (slotPlan.buildSlotTaskNote 的 options.instruction)。不传 / 空串 = 纯重写,备注与旧版逐字一致。
+   * 它只影响这次请求的措辞,不落进正文的 tag/nl,也不参与任何写回内容。
    */
-  slot?: { seq: number };
+  slot?: { seq: number; instruction?: string };
 }
 
 /** 放弃写入的用户可读原因。文本变化已不在其中——那是正常情况,会 rebase 后照常写入。 */
@@ -184,6 +188,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     manual: Boolean(opts.manual),
     replace: Boolean(opts.replace),
     slotSeq: opts.slot?.seq ?? null,
+    // 只记长度:意见是用户原文,不该整段进诊断日志
+    slotInstructionLength: opts.slot?.instruction?.trim().length ?? 0,
     chatId: context?.getCurrentChatId?.() ?? '',
     extensionEnabled: settings.enabled,
     autoTagEnabled: settings.autoTag.enabled,
@@ -306,8 +312,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // 纯本地渲染:建档由主请求在同一次输出里完成(changes 的 field="new")
     const anchors = resolveCharAnchors(entriesBefore, lockedNames);
     // 单槽重写:协议强制「恰好 1 张」,并把该槽位当前提示词与其余槽位摘要带给模型
-    // (锚住同一个画面、别抢别人的画面)。min/max 要同时覆盖 build 的规则文案与下面的
-    // parse 校验,只改一处会自相矛盾。
+    // (锚住同一个画面、别抢别人的画面)。用户填了修改意见时一并带上(见 slotPlan 的同名参数)。
+    // min/max 要同时覆盖 build 的规则文案与下面的 parse 校验,只改一处会自相矛盾。
     const promptOptions = slot
       ? { ...settings.autoTag, minImages: 1, maxImages: 1 }
       : settings.autoTag;
@@ -320,7 +326,9 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       memory,
       preparedTarget,
       anchors.text,
-      slot ? buildSlotTaskNote(rawSource, slot.seq) : '',
+      // 第三参保持 maxSummary 的位置(默认值),意见走第四参的 options 对象:
+      // 既有调用与单测都按位置用到第三参数,不能把 instruction 塞进那个数字位。
+      slot ? buildSlotTaskNote(rawSource, slot.seq, undefined, { instruction: slot.instruction }) : '',
       profile,
     );
     const channel = getTagGenChannel();
@@ -660,9 +668,13 @@ export async function requestFloorTags(floor: number, opts: { replace?: boolean 
  * slotPlan.buildSlotTaskNote(把该槽位当前提示词喂回去当锚点)。
  * 分析基底剔除全部旧 tag(AI 不该把 tag 当正文),强制输出 1 张;本楼其它 tag 与图片
  * 一字不动,旧图留在该槽位历史里。本次 AI 输出的 changes 一律忽略(首次全量分析时已建档)。
+ *
+ * 第三参 instruction 是用户在弹窗里写的修改意见(「机位别贴这么近」),会拼进任务备注的
+ * 【本次重写必须满足的修改意见】一段。**可选**:不传 / 空串 = 纯重写,与加这个参数之前完全一致
+ * (备注内容逐字不变),这是既有单测与老调用方都在依赖的行为。
  */
-export async function requestSlotTag(floor: number, seq: number): Promise<void> {
-  await runForFloor(floor, { manual: true, slot: { seq } });
+export async function requestSlotTag(floor: number, seq: number, instruction?: string): Promise<void> {
+  await runForFloor(floor, { manual: true, slot: { seq, instruction } });
 }
 
 /** 中止某楼在途的 tag 请求(全量分析与单槽重写共用同一把「每楼一把」的锁)。 */
