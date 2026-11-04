@@ -5,6 +5,7 @@ import {
   findCrossLayerDuplicates,
   formatLayerAudit,
   formatLayerAudits,
+  repairTagAges,
 } from '@/autoTag/dupes';
 
 /**
@@ -270,6 +271,49 @@ describe('auditLayers 与 formatLayerAudits', () => {
     expect(issues.map(issue => issue.level)[0]).toBe('block');
     expect(issues.filter(issue => issue.level === 'block').map(issue => issue.code))
       .toEqual(['race-duplicated', 'age-duplicated']);
+  });
+});
+
+describe('repairTagAges:机械修年龄,不赌模型重写', () => {
+  // 上一版把 age-conflict 做成硬闸 → 重试 → 还失败,用户拿不到图。
+  // 修法本来就完全确定,这里守住它:只删独立成段的年龄成分,不碰画面内容。
+  it('笼统词 + 具体年龄:删笼统词,留具体年龄', () => {
+    const { tag, removed } = repairTagAges(
+      '1girl, young adult, medium shot, chinese, twenty-eight years old, standing',
+    );
+    expect(tag).toBe('1girl, medium shot, chinese, twenty-eight years old, standing');
+    expect(removed).toEqual(['young adult']);
+  });
+
+  it('多个具体年龄:留第一个', () => {
+    const { tag, removed } = repairTagAges('1girl, twenty years old, medium shot, thirty years old');
+    expect(tag).toBe('1girl, twenty years old, medium shot');
+    expect(removed).toEqual(['thirty years old']);
+  });
+
+  it('只有一个具体年龄时不动:那是正常的', () => {
+    const { tag, removed } = repairTagAges('1girl, medium shot, twenty years old, standing');
+    expect(tag).toBe('1girl, medium shot, twenty years old, standing');
+    expect(removed).toEqual([]);
+  });
+
+  it('年龄词夹在画面内容里时整段不动,交给告警', () => {
+    // 「young adult leaning forward」一段里既有人又有年龄,删掉会丢动作。
+    const { tag, removed } = repairTagAges('1girl, young adult leaning forward, medium shot');
+    expect(tag).toBe('1girl, young adult leaning forward, medium shot');
+    expect(removed).toEqual([]);
+  });
+
+  it('脏输入不抛错', () => {
+    expect(repairTagAges('')).toEqual({ tag: '', removed: [] });
+    expect(repairTagAges(undefined as never)).toEqual({ tag: '', removed: [] });
+  });
+
+  it('修完的结果不再触发 age-conflict', () => {
+    const dirty = '1girl, young adult, chinese, twenty-eight years old, standing';
+    const { tag } = repairTagAges(dirty);
+    expect(findCrossLayerDuplicates({ tag, only: 'tag' }).map(issue => issue.code))
+      .not.toContain('age-conflict');
   });
 });
 

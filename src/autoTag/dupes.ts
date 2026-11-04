@@ -291,6 +291,52 @@ function tagAgeConflict(tag: string): LayerIssue | undefined {
 }
 
 /**
+ * 机械修掉 tag 里的年龄冲突,**不交给模型重写**。
+ *
+ * 上一版把 age-conflict 做成硬闸(判失败 → 重试 → 让模型自己改):实测重试两次仍可能交出
+ * 两个年龄,最后整条链路直接失败,用户拿不到图 —— 等于用一个**确定能修**的文本问题
+ * 挡住了一次出图。修法本来就完全确定:删掉笼统词、多个具体年龄只留第一个。
+ * 这是几行字符串操作,不该赌模型。
+ *
+ * 只动「独立成段」的成分:按逗号切段后**整段命中**才删,不做子串删除 ——
+ * `young adult leaning forward` 这种一段里既有人又有年龄的,原样留着交给告警。
+ */
+export function repairTagAges(tag: string): { tag: string; removed: string[] } {
+  const source = typeof tag === 'string' ? tag : '';
+  if (!source.trim()) return { tag: source, removed: [] };
+
+  const segments = source.split(',').map(part => part.trim()).filter(Boolean);
+  const ageWords = /^(?:young adult|middle[\s-]aged|teenager|teen|adult|elderly|child)$/i;
+  const drop = new Set<number>();
+  const removed: string[] = [];
+
+  // ① 多个具体年龄:保留第一个,其余删掉。
+  const numericAt: number[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    if (new RegExp(TAG_AGE_ANY.source, 'i').test(segments[index])) numericAt.push(index);
+  }
+  for (const index of numericAt.slice(1)) {
+    drop.add(index);
+    removed.push(segments[index]);
+  }
+
+  // ② 笼统年龄词:只要有具体年龄在,它就是纯噪声(底模里几乎没信息量)。
+  if (numericAt.length) {
+    for (let index = 0; index < segments.length; index += 1) {
+      if (!ageWords.test(segments[index])) continue;
+      drop.add(index);
+      removed.push(segments[index]);
+    }
+  }
+
+  if (!drop.size) return { tag: source, removed: [] };
+  return {
+    tag: segments.filter((_, index) => !drop.has(index)).join(', '),
+    removed,
+  };
+}
+
+/**
  * 服装复述:**颜色与品类必须同时命中**才算一条。
  *
  * 只命中一件(只有颜色、只有品类)一律不算 —— 「她穿着裙子」跟在 white camisole 后面完全可能是在说

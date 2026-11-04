@@ -6,11 +6,11 @@ import {
   type PositionedCharOp,
 } from '@/autoTag/charAnchors';
 import { prepareTargetText } from '@/autoTag/clean';
-import { auditLayers, findCrossLayerDuplicates, formatLayerAudits } from '@/autoTag/dupes';
+import { auditLayers, formatLayerAudits, repairTagAges } from '@/autoTag/dupes';
 import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/generationGate';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
-import { auditFrames, formatFrameAudits, inspectFrame } from '@/autoTag/shotspec';
+import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
 import { buildSlotTaskNote } from '@/autoTag/slotPlan';
 import {
   BBI_CHAR_EXTRA_KEY,
@@ -339,8 +339,6 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     const retries = Math.max(0, Math.floor(Number(settings.autoTag.retryCount) || 0));
     let plan: ImagePlan | null = null;
     let lastError = '';
-    /** 上一轮被硬闸拦下的原因;下一轮追加给模型当修稿意见(同一份 messages 不另建)。 */
-    let repairNote = '';
     for (let attempt = 0; attempt <= retries && !plan; attempt++) {
       if (controller.signal.aborted) {
         processed.delete(identity);
@@ -367,33 +365,34 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           ) {
             throw new Error('NAI 4.5/V5 建档必须附带 nl 外貌描述');
           }
-          // **硬闸**:只拦两条「确定性错误 + 可以机械重写」的问题。
+          // **机械修,不判失败**。
           //
-          // 这里跟 shotspec / dupes 那面镜子是同一套判定,但用法相反 —— 那两处的纪律是
-          // 「只出告警,永不拦」(误判方向永远是太严,拿词表掐断出图比放过一张坏图更糟)。
-          // 这两条不同,它们不依赖任何主观判断:
-          //   ① age-conflict:同一条 tag 里两个年龄(young adult + twenty-eight years old)。
-          //      那是两个人设,模型只能折中,脸必漂;重写一版把笼统词删掉是纯收益,零风险。
-          //   ② size-crowded:景别装不下人数。超出去的人不是被压成色块就是被裁掉,
-          //      重写成更大的景别同样是纯收益。
-          // 其余问题(纵深超载、机位遮挡、跨层复述)**继续只出告警** —— 它们经常是审美取舍,
-          // 交给人判断,不由闸门替用户决定。多跑一次不可能修好问题的重试,只是白烧钱。
-          const hardBlocks: string[] = [];
+          // 上一版这里是个硬闸:查出年龄冲突就判失败、让模型重写。实测下来模型重试两次照样
+          // 能交出两个年龄,最后整条链路失败,用户拿不到图 —— 用一个**几行字符串就能修对**的
+          // 问题挡住了一次出图,代价与收益完全不成比例。
+          //
+          // 现在的口径分三档,判定本身不因链接入方式改变:
+          //   ① 能机械修的(tag 里多余/矛盾的年龄)→ 当场改掉,记一条日志,照常出图;
+          //   ② 只能提醒的(纵深超载、机位遮挡、跨层复述、景别装不下人数)→ 出图前只出告警;
+          //   ③ 一条都不许变成「失败」—— 出图这一环只有「模型没按协议返回」才值得重试烧钱,
+          //      构图审美这类取舍永远不该由闸门替用户决定。
+          //
+          // 为什么不连 size-crowded 也机械修:把中近景改成中景/全景是**改画面**,不是改错别字;
+          // 改完这一格已经不是用户要的那个镜头了。它留在 ②。
+          const repairs: string[] = [];
           for (const image of candidate.images) {
-            const age = findCrossLayerDuplicates({ tag: image.tag, only: 'tag' })
-              .filter(issue => issue.code === 'age-conflict');
-            for (const issue of age) hardBlocks.push(issue.fix);
-            const crowded = inspectFrame(
-              { tag: image.tag, nl: image.nl },
-              { orientation: profile.lockedSize ?? undefined },
-            ).issues.filter(issue => issue.code === 'size-crowded');
-            for (const issue of crowded) hardBlocks.push(issue.fix);
+            const fixed = repairTagAges(image.tag);
+            if (!fixed.removed.length) continue;
+            image.tag = fixed.tag;
+            repairs.push(fixed.removed.join('、'));
           }
-          if (hardBlocks.length) {
-            repairNote = [...new Set(hardBlocks)].join('\n');
-            throw new Error('提示词自相矛盾,已要求模型按体检结论重写:\n' + repairNote);
+          if (repairs.length) {
+            console.warn('[柏宝绘] 已自动修掉 tag 里重复/矛盾的年龄:', [...new Set(repairs)].join(' / '));
+            toastr.info(
+              `提示词里有重复或矛盾的年龄（${[...new Set(repairs)].join('、')}），已自动删掉，画面不受影响`,
+              '柏宝绘',
+            );
           }
-          repairNote = '';
           parsed.plan = candidate;
         };
         // 有重试时给 source 带上第几次,历史里两条记录一眼看出是重试关系
@@ -402,19 +401,14 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           : retries > 0
             ? `自动 tag(第 ${floor} 楼 · 第 ${attempt + 1} 次)`
             : `自动 tag(第 ${floor} 楼)`;
-        // 上一轮被硬闸拦下的原因:作为最后一条 user 消息追加在**副本**上,不改动 messages
-        // (重试之间 messages 必须保持同一份 —— 否则第二、三轮会把同一段意见叠两遍)。
-        const attemptMessages = repairNote
-          ? [...messages, { role: 'user' as const, content: '你上一次的输出被体检拦下了,原因如下。请只修这一处,其余画面保持不变:\n' + repairNote }]
-          : messages;
         if (channel) {
-          await requestCompletion(channel, attemptMessages, {
+          await requestCompletion(channel, messages, {
             signal: controller.signal,
             source,
             validate,
           });
         } else {
-          await requestViaMainApi(attemptMessages, {
+          await requestViaMainApi(messages, {
             signal: controller.signal,
             source,
             validate,
