@@ -1326,6 +1326,17 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       expect(thinking).toContain('改机位，还是删细节');
       expect(thinking).toContain('自检：交出去之前对一遍');
 
+      // 面部占比过小时允许「不画脸」:占比估不出来就会硬画一张崩坏脸。
+      // 这条同时必须给出**例外**——否则「表情与视线不得留空」会把它顶回去。
+      expect(spec).toContain('面部占比与「不画脸」');
+      expect(spec).toContain('面积不到 2%');
+      expect(spec).toContain('表情与视线两槽就写 "-"');
+      expect(thinking).toContain('面部占比估一次，它决定这一张到底画不画脸');
+      expect(thinking).toContain('占比过小就改成不画脸');
+      expect(thinking).toContain('表情与视线不得留空（**唯一例外**');
+      // 总检条目数跟着加了一条,数字不同步会让模型按旧条目数核对
+      expect(thinking).toContain('「自检：交出去之前对一遍」五条过一遍');
+
       // tag 流那两份不带机位条款:那条线 single-CLIP 吃短 tag,写了只是噪声
       state.preset.specDialect = 'comfy';
       const comfyMessages = await buildAutoTagMessages(context(), 1, mossOptions(), null);
@@ -1459,6 +1470,20 @@ describe('NAI「生成自然语言」开关与渠道画幅锁', () => {
       expect(spec).toContain('格数上限 3');
       expect(thinking).toContain('机位定死（本步必须在写任何内容之前完成）');
       expect(thinking).toContain('材质三件套');
+
+      // 面部占比:动漫线原来只写「确认脸落在看得见的位置」,脸太小也要有出口。
+      // 「不画脸」是取景选项而不是偷懒,规范自检第 6 条因此从硬要求改成二选一。
+      expect(thinking).toContain('面部占比在这一步一并估掉');
+      expect(thinking).toContain('占比过小时**两种走法，二选一');
+      expect(thinking).toContain('干脆不画脸');
+      expect(spec).toContain('脸的去向说清了吗');
+      expect(spec).toContain('两种都合格，含糊才不合格');
+      // 总检不报条数:分镜两条是按预设条件生效的,写死「六条 / 七条」都会让模型数错
+      expect(thinking).toContain('「八、自检」逐条过一遍');
+      expect(thinking).not.toMatch(/「八、自检」[一二三四五六七八九十]+条/);
+      // 分镜页每格要单独判面部占比:广角格里硬塞五官就是崩坏脸的来源
+      expect(spec).toContain('每格单独判面部占比');
+      expect(spec).toContain('整页不必每格都有脸');
 
       // 示例必须是中文元素行:给英文 tag 示例会把模型带回 tag 流
       expect(contract).toContain('"tag":"一个人，中景，四分之三侧面，公寓客厅，午后的侧光"');
