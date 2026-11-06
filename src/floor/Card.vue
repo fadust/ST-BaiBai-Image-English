@@ -26,6 +26,7 @@ import {
 import { hydrateMessage } from '@/floor/hydrate';
 import { openLightbox } from '@/floor/lightbox';
 import { confirmImageMissing, isImageMissing } from '@/floor/missingImages';
+import { openSlotVersions } from '@/promptVersions/restore';
 import { openPromptEditor } from '@/floor/promptEditor';
 import {
   deleteImageResult,
@@ -553,6 +554,7 @@ onMounted(() => {
           <Icon name="more" :size="15" />
         </button>
         <span class="bbi-figure__menu">
+          <button class="bbi-fab" type="button" title="Prompt history" @click="menuOpen = false; openSlotVersions({ chatId, messageId, swipeId, seq })"><Icon name="history" :size="15" /></button>
           <button
             class="bbi-fab"
             type="button"

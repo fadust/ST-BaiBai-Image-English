@@ -89,7 +89,7 @@ export async function applyMessageText(
   expectedChatId: string,
   expectedSwipeId: number | null,
   expectedMessage?: STMessage,
-  extraUpdate?: MessageExtraUpdate,
+  extraUpdate?: MessageExtraUpdate | MessageExtraUpdate[],
 ): Promise<ApplyMessageResult> {
   const context = getContext();
   if (!context?.saveChat) return 'unavailable';
@@ -111,8 +111,10 @@ export async function applyMessageText(
   setMessageText(message, nextText);
   if (extraUpdate) {
     const nextExtra = { ...(message.extra ?? {}) };
-    if (extraUpdate.value === undefined) delete nextExtra[extraUpdate.key];
-    else nextExtra[extraUpdate.key] = extraUpdate.value;
+    for (const update of Array.isArray(extraUpdate) ? extraUpdate : [extraUpdate]) {
+      if (update.value === undefined) delete nextExtra[update.key];
+      else nextExtra[update.key] = update.value;
+    }
     message.extra = nextExtra;
   }
 

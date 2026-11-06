@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ImageCharacterPrompt } from '@/autoTag/protocol';
 import type { Orientation } from '@/backends/size';
 import BbiTextarea from '@/components/BbiTextarea.vue';
+import PromptOnlyEdit from '@/promptOnlyEdit/PromptOnlyEdit.vue';
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
 import { activeOrientationLock } from '@/state/settings';
@@ -67,6 +68,7 @@ const emit = defineEmits<{
  */
 const open = ref(false);
 
+const editingOnly = ref(false);
 const tag = ref(props.content.tag);
 const nl = ref(props.content.nl);
 const negative = ref(props.content.negative);
@@ -151,7 +153,7 @@ const error = computed(() => {
   return '';
 });
 
-const canApply = computed(() => !error.value && !props.busy && !props.rewriting);
+const canApply = computed(() => !error.value && !props.busy && !props.rewriting && !editingOnly.value);
 
 /**
  * After an AI rewrite is saved, reads the new prompt back into the input box.
@@ -172,6 +174,11 @@ watch(
   },
 );
 
+function fillDraft(next: ImageTagContent): void {
+  tag.value = next.tag; nl.value = next.nl; negative.value = next.negative; size.value = next.size;
+  characters.value = next.characters.map(character => ({ ...character }));
+}
+
 function addCharacter(): void {
   characters.value.push({ name: '', tag: '', nl: '' });
 }
@@ -186,7 +193,7 @@ function apply(regenerate: boolean): void {
 }
 
 function rewrite(): void {
-  if (props.busy || props.rewriting || !props.configured) return;
+  if (props.busy || props.rewriting || editingOnly.value || !props.configured) return;
   emit('rewrite');
 }
 
@@ -247,12 +254,13 @@ onBeforeUnmount(() => {
 
       <!-- AI rewrite: editing by hand and by AI are two means to the same end, so they share one dialog.
            When it finishes it saves and generates directly (see promptEditor.ts), and the result is refilled into the inputs below. -->
+      <PromptOnlyEdit :draft="draft" :disabled="busy || rewriting" @result="fillDraft" @busy="editingOnly = $event" />
       <div class="bbi-rewrite-row">
         <button
           v-if="!rewriting"
           class="bbi-btn bbi-btn-sm"
           type="button"
-          :disabled="busy || !configured"
+          :disabled="busy || editingOnly || !configured"
           :title="
             configured
               ? 'Let AI reread this floor and rewrite this image\'s prompt'

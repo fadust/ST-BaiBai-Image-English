@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CharCopyPaste from '@/charCopy/CharCopyPaste.vue';
+import type { CharCopyKey } from '@/charCopy/format';
 import BbiTextarea from '@/components/BbiTextarea.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import Icon from '@/components/Icon.vue';
@@ -72,6 +74,7 @@ const FIELD_PLACEHOLDERS: Record<CharTagField, string> = {
   eyes: 'e.g. red eyes',
   skin: 'e.g. pale skin (optional)',
   body: 'e.g. petite, slender',
+  bust: 'Optional: flat chest, small breasts, medium breasts, large breasts',
   extra: 'e.g. heterochromia (optional)',
   outfit: 'Signature outfit (optional)',
 };
@@ -184,6 +187,16 @@ function closeEntry() {
 }
 
 /** Manually edited field → the entry becomes manual (but the AI can still take it over with changes) */
+function applyPasted(values: Partial<Record<CharCopyKey, string>>): void {
+  if (!draft.value) return;
+  for (const field of CHAR_TAG_FIELDS) {
+    if (values[field] !== undefined) draft.value.fields[field] = values[field]!;
+  }
+  if (values.raw !== undefined) draft.value.raw = values.raw;
+  if (values.nl !== undefined) draft.value.nl = values.nl;
+  markManual();
+}
+
 function markManual() {
   draftSource.value = 'manual';
   draftDesc.value = '';
@@ -504,6 +517,7 @@ function sourceLabel(entry: CharTagEntry): string {
 
         <div class="bbi-modal-field">
           <span class="bbi-modal-label">Appearance fields</span>
+          <CharCopyPaste :source="draft" @apply="applyPasted" />
           <div class="bbi-char-form">
             <label
               v-for="f in CHAR_TAG_FIELDS"

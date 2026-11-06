@@ -1,5 +1,6 @@
 import App from '@/App.vue';
 import { bindAutoTagging } from '@/autoTag/runner';
+import { bindPassageGenButtons } from '@/rewriteHint/floorPassageGen';
 import { bindTagActionButtons } from '@/floor/actionButton';
 import { bindFloorHydration } from '@/floor/hydrate';
 import { injectMenuButton } from '@/menu';
@@ -104,6 +105,7 @@ async function hydrateWhenReady(attempt = 0) {
       bindAutoTagging();
       bindFloorHydration();
       bindTagActionButtons();
+      bindPassageGenButtons();
       // The public API must come after hydrateSettings: before settings are restored, getBackendStatus() reads
       // defaults and would report a configured user as "not configured". Coming after bindCharTagSync ensures
       // the revision in the ready event already matches the real character library.
