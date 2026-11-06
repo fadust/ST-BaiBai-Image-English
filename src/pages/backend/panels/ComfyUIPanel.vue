@@ -32,6 +32,7 @@ import Collapsible from '@/components/Collapsible.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
+import ComfyWorkflowControls from './ComfyWorkflowControls.vue';
 import {
   activeComfyPreset,
   effectiveComfyConn,
@@ -206,11 +207,13 @@ async function onFetchModels(silent = false) {
   }
 }
 
-// Fetch once automatically when entering simple mode with no list in hand (silent; a failure only leaves the reason in the status line)
+watch(() => settings.comfyui.url, () => { lists.value = null; fetchError.value = ''; });
+
+// Both setup modes use the same cached ComfyUI file lists.
 watch(
-  () => [active.value.id, active.value.mode] as const,
+  () => [active.value.id, active.value.mode, settings.comfyui.url] as const,
   () => {
-    if (active.value.mode === 'simple' && !lists.value && !fetching.value && settings.comfyui.url.trim()) {
+    if (!lists.value && !fetching.value && settings.comfyui.url.trim()) {
       void onFetchModels(true);
     }
   },
@@ -285,7 +288,18 @@ function addLora() {
 }
 
 function removeLora(index: number) {
-  active.value.simple.loras.splice(index, 1);
+  if (index < active.value.simple.loras.length) active.value.simple.loras[index] = { name: '', strength: 1 };
+}
+
+const simpleLoraRows = computed(() => Array.from(
+  { length: Math.max(6, active.value.simple.loras.length) },
+  (_, index) => active.value.simple.loras[index] ?? { name: '', strength: 1 },
+));
+function updateSimpleLora(index: number, value: { name?: string; strength?: number }) {
+  if (value.strength !== undefined && !Number.isFinite(value.strength)) return;
+  const loras = active.value.simple.loras;
+  while (loras.length <= index) loras.push({ name: '', strength: 1 });
+  Object.assign(loras[index], value);
 }
 
 /** Simple-mode status pill: the same rule as image assembly (validateSimpleConfig). */
@@ -725,28 +739,28 @@ function applyAssist() {
                 <Icon name="plus" :size="14" />
               </button>
             </div>
-            <div v-for="(lora, index) in active.simple.loras" :key="index" class="wf-lora-row">
+            <div v-for="(lora, index) in simpleLoraRows" :key="index" class="wf-lora-row">
               <BbiCombo
-                v-model="lora.name"
+                :model-value="lora.name"
+                @update:model-value="updateSimpleLora(index, { name: $event === 'None' ? '' : $event })"
                 :options="loraOptions"
-                placeholder="LoRA file name"
-                aria-label="LoRA file"
+                :placeholder="`LoRA ${index + 1} file name`"
+                :aria-label="`LoRA ${index + 1} file`"
               />
               <input
                 class="bbi-input wf-lora-str"
                 type="number"
-                v-model.number="lora.strength"
-                min="0"
-                max="2"
+                :value="lora.strength"
+                @change="updateSimpleLora(index, { strength: ($event.target as HTMLInputElement).valueAsNumber })"
                 step="0.05"
                 title="Strength"
-                aria-label="LoRA strength"
+                :aria-label="`LoRA ${index + 1} strength`"
               />
               <button
                 class="bbi-icon-btn wf-op wf-remove"
                 type="button"
-                title="Delete this LoRA"
-                aria-label="Delete this LoRA"
+                title="Clear this LoRA slot"
+                :aria-label="`Clear LoRA ${index + 1}`"
                 @click="removeLora(index)"
               >
                 <Icon name="trash" :size="14" />
@@ -832,6 +846,13 @@ function applyAssist() {
 
         <!-- Custom mode: paste API-format JSON -->
         <template v-else>
+        <ComfyWorkflowControls
+          v-model="active.workflow"
+          :lists="lists"
+          :fetching="fetching"
+          :fetch-status="fetchStatus"
+          @fetch="onFetchModels()"
+        />
         <div class="wf-json-head">
           <span class="bbi-field-label">Workflow JSON</span>
           <span class="wf-json-tools">
