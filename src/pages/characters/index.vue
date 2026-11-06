@@ -45,6 +45,8 @@ interface Draft {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /** Chinese appearance: plugin injects into the final positive; not AI-rewritten (CharTagEntry.zh). */
+  zh: string;
 }
 
 // editingName: name of the existing entry being edited; null = new. Whether the dialog is open is decided by whether draft exists.
@@ -124,6 +126,7 @@ function openEntry(entry: CharTagEntry, scope: Scope) {
     fields: { ...emptyCharFields(), ...entry.fields },
     raw: entry.raw,
     nl: entry.nl,
+    zh: entry.zh ?? '',
   };
   draftSource.value = entry.source;
   draftDesc.value = entry.desc;
@@ -134,7 +137,7 @@ function addEntry(scope: Scope = 'chat') {
   editingName.value = null;
   editingScope.value = scope;
   draftScope.value = scope;
-  draft.value = { name: '', fields: emptyCharFields(), raw: '', nl: '' };
+  draft.value = { name: '', fields: emptyCharFields(), raw: '', nl: '', zh: '' };
   draftSource.value = 'manual';
   draftDesc.value = '';
   historyOpen.value = false;
@@ -203,6 +206,7 @@ function confirmEntry() {
     fields: d.fields,
     raw: d.raw,
     nl: d.nl,
+    zh: d.zh,
     source: draftSource.value,
     desc: draftDesc.value,
     history: [],
@@ -296,6 +300,7 @@ function fieldLabel(field: CharTagChangeRecord['field']): string {
   if (field === 'new') return 'Profile created';
   if (field === 'raw') return 'Whole string';
   if (field === 'nl') return 'Natural language';
+  if (field === 'zh') return 'Chinese appearance';
   return CHAR_TAG_FIELD_LABELS[field];
 }
 
@@ -538,6 +543,18 @@ function sourceLabel(entry: CharTagEntry): string {
             :max-rows="4"
             mono
             placeholder="A coherent English appearance description. Replaces @character name in nl in natural-language mode; blank = the tag string is used instead."
+            @input="markManual"
+          />
+        </label>
+
+        <label class="bbi-modal-field">
+          <span class="bbi-modal-label">Chinese appearance (optional)</span>
+          <BbiTextarea
+            v-model="draft.zh"
+            :rows="2"
+            :max-rows="4"
+            mono
+            placeholder="Chinese prose: face shape, features, hair, skin, build. Injected into the image prompt as-is; the plugin does not rewrite it."
             @input="markManual"
           />
         </label>

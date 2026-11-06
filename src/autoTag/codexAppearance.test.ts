@@ -23,7 +23,7 @@ describe('Codex image appearance references', () => {
     expect(result.locked.has('ari')).toBe(true);
     expect(result.isCurrent()).toBe(true);
     const anchors = resolveCharAnchors(result.entries, result.locked);
-    const messages = await buildAutoTagMessages(context, 0, settings.autoTag, null, undefined, anchors.text, '', { nl: true, naiCharPrompts: false, lockedSize: null }, result.note);
+    const messages = await buildAutoTagMessages(context, 0, settings.autoTag, null, undefined, anchors.text, '', { nl: true, naiCharPrompts: false, lockedSize: null , dialect: 'comfy', layoutLock: 'auto' }, result.note);
     expect(messages.some(message => message.role === 'system' && message.content.includes('NPC Codex appearance authority'))).toBe(true);
     expect(messages.at(-1)?.content).toContain(appearance);
     expect(messages.at(-1)?.content).not.toContain('white hair');

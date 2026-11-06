@@ -82,6 +82,15 @@ export interface ImageRecord extends BaseRecord {
   /** Floor coordinates: the details use them to point back to which floor and slot. The image itself is not stored (see the file header). */
   floor: number;
   seq: number;
+  /**
+   * Final positive text actually submitted (fixed positive + tag/nl + Chinese appearance when used).
+   * Segment fields above are raw inputs; this is the composed product used for debugging.
+   */
+  finalPrompt?: string;
+  /** Final negative text actually submitted (same timing as finalPrompt). */
+  finalNegative?: string;
+  /** Chinese appearance prose injected from the character library (plugin-side). */
+  appearance?: string;
 }
 
 export type HistoryRecord = LlmRecord | ImageRecord;
@@ -233,12 +242,22 @@ export interface ImageBegin {
   size: Orientation;
   floor: number;
   seq: number;
+  /** Chinese appearance prose for this run; omit when unused. */
+  appearance?: string;
+  /** Rarely set at begin; usually filled later via patchImagePrompt / finishImage. */
+  finalPrompt?: string;
+  finalNegative?: string;
+}
+
+export interface ImageFinish {
+  finalPrompt?: string;
+  finalNegative?: string;
 }
 
 /** Registers one image request. Image results don't go into the store (data URLs would blow up memory, and the image is already saved into ST). */
 export function beginImage(info: ImageBegin): number {
   const id = nextId++;
-  push({
+  const record: ImageRecord = {
     id,
     kind: 'image',
     status: 'running',
@@ -259,15 +278,29 @@ export function beginImage(info: ImageBegin): number {
     size: info.size,
     floor: info.floor,
     seq: info.seq,
-  });
+  };
+  const appearance = (info.appearance ?? '').trim();
+  if (appearance) record.appearance = truncate(appearance);
+  if (info.finalPrompt) record.finalPrompt = truncate(info.finalPrompt);
+  if (info.finalNegative) record.finalNegative = truncate(info.finalNegative);
+  push(record);
   return id;
 }
 
-export function finishImage(id: number): void {
+/** Record the final submitted prompt text; empty strings are ignored. */
+export function patchImagePrompt(id: number, finalPrompt?: string, finalNegative?: string): void {
+  const record = find(id);
+  if (record?.kind !== 'image') return;
+  if (finalPrompt) record.finalPrompt = truncate(finalPrompt);
+  if (finalNegative) record.finalNegative = truncate(finalNegative);
+}
+
+export function finishImage(id: number, info: ImageFinish = {}): void {
   const record = find(id);
   if (record?.kind !== 'image') return;
   record.status = 'ok';
   record.durationMs = Date.now() - record.startedAt;
+  patchImagePrompt(id, info.finalPrompt, info.finalNegative);
 }
 
 export function failImage(id: number, message: string, aborted = false): void {

@@ -98,6 +98,9 @@ function segments(record: HistoryRecord): Segment[] {
   }
   const out: Segment[] = [{ label: 'positive cue words', text: record.prompt }];
   if (record.nl) out.push({ label: 'Natural language', text: record.nl });
+  if (record.appearance) out.push({ label: 'Chinese appearance (plugin inject)', text: record.appearance });
+  if (record.finalPrompt) out.push({ label: 'Final positive submitted', text: record.finalPrompt });
+  if (record.finalNegative) out.push({ label: 'Final negative submitted', text: record.finalNegative });
   for (const character of record.characters ?? []) {
     out.push({
       label: `Role: ${character.name}`,

@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildSimpleWorkflow,
+  COMFY_TEMPLATES,
+  composePositive,
+  MOSS_ANIME_DEFAULT_NEGATIVE,
+  MOSS_ANIME_DEFAULT_POSITIVE,
+  MOSS_DEFAULT_NEGATIVE,
+  MOSS_DEFAULT_POSITIVE,
   normalizeSimpleConfig,
+  simpleConfigWarnings,
   simpleDefaults,
   templateSupportsNegative,
   validateSimpleConfig,
@@ -23,11 +30,11 @@ function node(workflow: Record<string, SimpleWorkflowNode>, id: string): SimpleW
 }
 
 describe('validateSimpleConfig', () => {
-  it('errors when no model is selected', () => {
-    expect(validateSimpleConfig(simpleDefaults())).toContain("Model");
+  it('未选模型时报错', () => {
+    expect(validateSimpleConfig(simpleDefaults())).toContain('Model');
   });
 
-  it('flux/anima missing VAE or CLIP reports the matching field; checkpoint external VAE may be blank', () => {
+  it('flux/anima 缺 VAE 或 CLIP 时报对应字段;checkpoint 外置 VAE 可留空', () => {
     const flux = { ...simpleDefaults('flux'), model: 'flux1-dev.safetensors' };
     expect(validateSimpleConfig(flux)).toContain('VAE');
     expect(validateSimpleConfig({ ...flux, vae: 'ae.safetensors' })).toContain('T5-XXL');
@@ -47,7 +54,7 @@ describe('validateSimpleConfig', () => {
 describe('buildSimpleWorkflow - checkpoint', () => {
   const simple = config({ model: 'illustrious_xl.safetensors', positive: 'masterpiece, best quality', negative: 'worst quality' });
 
-  it('builds the classic five-node chain, positive/negative joined as fixed + generated', () => {
+  it('组出经典五节点链路,正负面按「固定+生成」拼接', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'extra people' });
     expect(node(wf, '1').class_type).toBe('CheckpointLoaderSimple');
     expect(node(wf, '1').inputs.ckpt_name).toBe('illustrious_xl.safetensors');
@@ -64,30 +71,30 @@ describe('buildSimpleWorkflow - checkpoint', () => {
       positive: ['3', 0],
       negative: ['4', 0],
     });
-    // No external VAE → use the checkpoint's built-in one (slot 2)
+    // 无外置 VAE → 用 checkpoint 内置(槽位 2)
     expect(node(wf, '7').inputs.vae).toEqual(['1', 2]);
     expect(node(wf, '8').class_type).toBe('SaveImage');
   });
 
-  it('when nl exists it takes precedence over tag as the positive generated content', () => {
+  it('nl 存在时优先于 tag 作为正向生成内容', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, nl: 'A girl with silver hair.' });
     expect(node(wf, '3').inputs.text).toBe('masterpiece, best quality, A girl with silver hair.');
   });
 
-  it('blank fixed words leave only generated content (no extra commas)', () => {
+  it('固定词留空时只剩生成内容(不多逗号)', () => {
     const wf = buildSimpleWorkflow(config({ model: 'm.safetensors' }), VALUES);
     expect(node(wf, '3').inputs.text).toBe('1girl, silver hair');
     expect(node(wf, '4').inputs.text).toBe('');
   });
 
-  it('external VAE goes through VAELoader; LoRAs chain between the base model and encoding', () => {
+  it('外置 VAE 走 VAELoader;LoRA 串联在底模与编码之间', () => {
     const wf = buildSimpleWorkflow(
       config({
         model: 'm.safetensors',
         vae: 'fix_vae.safetensors',
         loras: [
           { name: 'style.safetensors', strength: 0.8 },
-          { name: '', strength: 1 }, // Unfinished rows are ignored
+          { name: '', strength: 1 }, // 未填完的行被忽略
           { name: 'detail.safetensors', strength: 0.5 },
         ],
       }),
@@ -112,7 +119,7 @@ describe('buildSimpleWorkflow - flux', () => {
     clip2: 'clip_l.safetensors',
   };
 
-  it('UNet + DualCLIP + ae, negative always empty, cfg always 1, via FluxGuidance', () => {
+  it('UNet + DualCLIP + ae,负面恒空、cfg 恒 1、走 FluxGuidance', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'ignored' });
     expect(node(wf, '1').class_type).toBe('UNETLoader');
     expect(node(wf, '2').inputs).toMatchObject({ clip_name1: 't5xxl_fp8.safetensors', clip_name2: 'clip_l.safetensors', type: 'flux' });
@@ -122,13 +129,13 @@ describe('buildSimpleWorkflow - flux', () => {
     expect(node(wf, '7').class_type).toBe('EmptySD3LatentImage');
   });
 
-  it('guidance = 1 skips FluxGuidance and connects the encoding output directly', () => {
+  it('guidance = 1 时跳过 FluxGuidance,直连编码输出', () => {
     const wf = buildSimpleWorkflow({ ...simple, guidance: 1 }, VALUES);
     expect(wf['6']).toBeUndefined();
     expect(node(wf, '8').inputs.positive).toEqual(['4', 0]);
   });
 
-  it('GGUF uses UnetLoaderGGUF; LoRAs only attach to model (LoraLoaderModelOnly)', () => {
+  it('GGUF 用 UnetLoaderGGUF;LoRA 只挂 model(LoraLoaderModelOnly)', () => {
     const wf = buildSimpleWorkflow(
       { ...simple, gguf: true, loras: [{ name: 'flux_lora.safetensors', strength: 1 }] },
       VALUES,
@@ -148,7 +155,7 @@ describe('buildSimpleWorkflow - anima', () => {
     clip1: 'qwen_2.5_vl_7b.safetensors',
   };
 
-  it('CLIPLoader uses the qwen_image type, and the model passes through ModelSamplingAuraFlow (adjustable shift)', () => {
+  it('CLIPLoader 用 qwen_image 类型,模型过 ModelSamplingAuraFlow(shift 可调)', () => {
     const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'blurry' });
     expect(node(wf, '2').inputs).toMatchObject({ clip_name: 'qwen_2.5_vl_7b.safetensors', type: 'qwen_image' });
     expect(node(wf, '6').inputs).toMatchObject({ shift: 3, model: ['1', 0] });
@@ -156,26 +163,26 @@ describe('buildSimpleWorkflow - anima', () => {
     expect(node(wf, '5').inputs.text).toBe('blurry');
   });
 
-  it('the LoRA chain end connects into AuraFlow, not the sampler', () => {
+  it('LoRA 链尾接进 AuraFlow 而不是采样器', () => {
     const wf = buildSimpleWorkflow({ ...simple, loras: [{ name: 'a.safetensors', strength: 1 }] }, VALUES);
     expect(node(wf, '6').inputs.model).toEqual(['300', 0]);
   });
 });
 
-describe('buildSimpleWorkflow - size', () => {
-  it('errors on invalid size (the simple-mode canvas node is always built, with no exemption for a workflow with hardcoded size)', () => {
+describe('buildSimpleWorkflow - 尺寸', () => {
+  it('尺寸无效时报错(简易模式的画布节点是必建的,没有「工作流写死尺寸」的豁免)', () => {
     const simple = config({ model: 'm.safetensors' });
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('landscape sizes');
-    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('landscape sizes');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, width: 0 })).toThrow('尺寸');
+    expect(() => buildSimpleWorkflow(simple, { ...VALUES, height: 0 })).toThrow('尺寸');
   });
 });
 
 describe('normalizeSimpleConfig', () => {
-  it('empty input gets checkpoint defaults', () => {
+  it('空输入给 checkpoint 默认值', () => {
     expect(normalizeSimpleConfig(undefined)).toEqual(simpleDefaults());
   });
 
-  it('invalid template falls back to checkpoint; dirty fields reset item by item', () => {
+  it('非法 template 回 checkpoint;脏字段逐项归位', () => {
     const normalized = normalizeSimpleConfig({
       template: 'qwen-whatever',
       model: 42,
@@ -192,16 +199,335 @@ describe('normalizeSimpleConfig', () => {
     ]);
   });
 
-  it('sampling parameters of a valid template fall back to that template defaults', () => {
+  it('合法 template 的采样参数按该模板默认值兜底', () => {
     expect(normalizeSimpleConfig({ template: 'flux' })).toEqual(simpleDefaults('flux'));
     expect(normalizeSimpleConfig({ template: 'anima' }).shift).toBe(3);
   });
 });
 
 describe('templateSupportsNegative', () => {
-  it('flux has no real negative input; the others do', () => {
+  it('flux 无真实负面输入,其余有', () => {
     expect(templateSupportsNegative('flux')).toBe(false);
     expect(templateSupportsNegative('checkpoint')).toBe(true);
     expect(templateSupportsNegative('anima')).toBe(true);
+    // MOSS 有真实负面通道,且该通道被 negativeRequired 要求必须有内容(两件事正交)
+    expect(templateSupportsNegative('moss')).toBe(true);
   });
 });
+
+describe('buildSimpleWorkflow - moss(写实线)', () => {
+  // 必须用 moss 自己的默认值打底:config() 展开的是 checkpoint 默认值(28 步 / cfg 5),
+  // 拿它去断言 MOSS 的 30 步 / cfg 3.5 只会测到「我传进去的 28」。
+  const simple: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    positive: 'photorealistic, high detail',
+  };
+
+  it('加载链:UNET 直载 + CLIPLoader 用 moss_image 类型 + flux2 VAE', () => {
+    const wf = buildSimpleWorkflow(simple, VALUES);
+    expect(node(wf, '1').class_type).toBe('UNETLoader');
+    expect(node(wf, '1').inputs.unet_name).toBe('moss_image_sft_int8_convrot.safetensors');
+    expect(node(wf, '2').class_type).toBe('CLIPLoader');
+    // type 必须是 moss_image:按 flux 的 qwen_image 加载会类型不匹配
+    expect(node(wf, '2').inputs).toMatchObject({
+      clip_name: 'qwen3.5_9b_int8_convrot.safetensors',
+      type: 'moss_image',
+    });
+    expect(node(wf, '3').inputs.vae_name).toBe('flux2-vae_small.safetensors');
+  });
+
+  it('latent 用 EmptyFlux2LatentImage(flux2 VAE 是 128 通道,SD3/latent 会通道不匹配)', () => {
+    const wf = buildSimpleWorkflow(simple, VALUES);
+    expect(node(wf, '6').class_type).toBe('EmptyFlux2LatentImage');
+    expect(node(wf, '6').inputs).toMatchObject({ width: 832, height: 1216, batch_size: 1 });
+  });
+
+  it('采样参数走 MOSS 官方口径,正负面按「固定+生成」拼接', () => {
+    const wf = buildSimpleWorkflow(simple, { ...VALUES, negative: 'extra people' });
+    expect(node(wf, '7').inputs).toMatchObject({
+      seed: 42,
+      steps: 30,
+      cfg: 3.5,
+      sampler_name: 'euler',
+      scheduler: 'sgm_uniform',
+      latent_image: ['6', 0],
+    });
+    expect(node(wf, '4').inputs.text).toBe('photorealistic, high detail, 1girl, silver hair');
+    expect(node(wf, '5').inputs.text).toBe(MOSS_DEFAULT_NEGATIVE + ', extra people');
+    expect(node(wf, '9').class_type).toBe('SaveImage');
+  });
+
+  it('LoRA 只挂 UNet(LoraLoaderModelOnly),不接 clip', () => {
+    const wf = buildSimpleWorkflow(
+      { ...simple, loras: [{ name: 'moss_pussy_lora_v2.0_face_pussy.safetensors', strength: 0.8 }] },
+      VALUES,
+    );
+    expect(node(wf, '300').class_type).toBe('LoraLoaderModelOnly');
+    expect(node(wf, '300').inputs).toMatchObject({
+      lora_name: 'moss_pussy_lora_v2.0_face_pussy.safetensors',
+      strength_model: 0.8,
+    });
+    expect(node(wf, '7').inputs.model).toEqual(['300', 0]);
+  });
+
+  it('simpleDefaults 预填 MOSS 默认负面(negativeRequired 的必填项不能空着出生)', () => {
+    expect(simpleDefaults('moss').negative).toBe(MOSS_DEFAULT_NEGATIVE);
+    expect(simpleDefaults('checkpoint').negative).toBe('');
+    expect(normalizeSimpleConfig({ template: 'moss' }).negative).toBe(MOSS_DEFAULT_NEGATIVE);
+  });
+});
+
+describe('buildSimpleWorkflow - moss-anime(动漫线)', () => {
+  // 与写实线共底模,差别全在模型链:多一层 SkipLayerGuidanceDiTSimple,且画风 LoRA 必须挂在它之后。
+  const animeConfig: ComfySimpleConfig = {
+    ...simpleDefaults('moss-anime'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    loras: [{ name: 'Sonsp_Moss_Style_v2.safetensors', strength: 0.8 }],
+  };
+
+  it('加载链与写实线同源(UNET 直载 + moss_image CLIP + flux2 VAE + Flux2 latent)', () => {
+    const wf = buildSimpleWorkflow(animeConfig, VALUES);
+    expect(node(wf, '1').class_type).toBe('UNETLoader');
+    expect(node(wf, '2').inputs).toMatchObject({ type: 'moss_image' });
+    expect(node(wf, '3').inputs.vae_name).toBe('flux2-vae_small.safetensors');
+    expect(node(wf, '6').class_type).toBe('EmptyFlux2LatentImage');
+  });
+
+  it('叠一层跳层引导(单层 22 / 前 50%),且画风 LoRA 挂在它之后', () => {
+    const wf = buildSimpleWorkflow(animeConfig, VALUES);
+    expect(node(wf, '20').class_type).toBe('SkipLayerGuidanceDiTSimple');
+    expect(node(wf, '20').inputs).toMatchObject({
+      model: ['1', 0],
+      single_layers: '22',
+      start_percent: 0,
+      end_percent: 0.5,
+    });
+    // 顺序不能反:LoRA 挂在 SLG 的输出上,否则画风权重会被跳层一起改掉
+    expect(node(wf, '300').inputs.model).toEqual(['20', 0]);
+    expect(node(wf, '7').inputs.model).toEqual(['300', 0]);
+  });
+
+  it('写实线不建 SLG 节点(加了对胶片质感是反效果)', () => {
+    const wf = buildSimpleWorkflow(
+      {
+        ...simpleDefaults('moss'),
+        model: 'moss_image_sft_int8_convrot.safetensors',
+        vae: 'flux2-vae_small.safetensors',
+        clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+      },
+      VALUES,
+    );
+    expect(Object.values(wf).some(n => n.class_type === 'SkipLayerGuidanceDiTSimple')).toBe(false);
+  });
+
+  it('新建预设预填的是动漫线自己那份负面(不带 text / logo,带 3d / shiny hair)', () => {
+    const neg = simpleDefaults('moss-anime').negative;
+    expect(neg).toBe(MOSS_ANIME_DEFAULT_NEGATIVE);
+    expect(neg).toContain('3d');
+    expect(neg).toContain('shiny hair');
+    // 这条线擅长画面内文字:带着 text / logo 会把要画的字一起压掉
+    expect(neg).not.toMatch(/\btext\b/);
+    expect(neg).not.toContain('logo');
+    // 两条 MOSS 线的负面不可互换
+    expect(neg).not.toBe(simpleDefaults('moss').negative);
+  });
+});
+
+describe('composePositive - moss 的中文外貌通道', () => {
+  const simple: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    positive: 'moodyrealism, photorealistic',
+  };
+
+  it('moss 下 tag 与 nl 同时进条件(nl 不再顶掉 tag)', () => {
+    const text = composePositive(simple, {
+      ...VALUES,
+      nl: '她坐在窗边,午后斜光落在桌面。',
+    });
+    expect(text).toBe('moodyrealism, photorealistic, 1girl, silver hair, 她坐在窗边,午后斜光落在桌面。');
+  });
+
+  it('moss 下中文外貌拼在 nl 之后、固定正面与 tag 之后', () => {
+    const text = composePositive(simple, {
+      ...VALUES,
+      nl: '她坐在窗边。',
+      appearance: '鹅蛋脸,单眼皮,皮肤偏白。',
+    });
+    expect(text).toBe(
+      'moodyrealism, photorealistic, 1girl, silver hair, 她坐在窗边。, 鹅蛋脸,单眼皮,皮肤偏白。',
+    );
+  });
+
+  it('中文外貌留空时不产生多余分隔符', () => {
+    expect(composePositive(simple, { ...VALUES, appearance: '' }).endsWith('1girl, silver hair')).toBe(true);
+    expect(composePositive(simple, { ...VALUES, appearance: '   ' })).toBe(
+      'moodyrealism, photorealistic, 1girl, silver hair',
+    );
+  });
+
+  it('非 moss 模板保持旧口径:nl 优先,中文外貌不并入', () => {
+    const checkpoint = config({ model: 'm.safetensors', positive: 'masterpiece' });
+    const text = composePositive(checkpoint, {
+      ...VALUES,
+      nl: 'A girl sits by the window.',
+      appearance: '鹅蛋脸,单眼皮。',
+    });
+    // 其余模板的文本编码器对中文几乎无响应,拼进去只是噪声
+    expect(text).toBe('masterpiece, A girl sits by the window.');
+  });
+});
+
+describe('moss 模板的元数据', () => {
+  it('固定负面必填、采样器锁 euler、尺寸按官方口径', () => {
+    expect(COMFY_TEMPLATES.moss.negativeRequired).toBe(true);
+    expect(COMFY_TEMPLATES.moss.samplerFixed).toBe('euler');
+    expect(COMFY_TEMPLATES.moss.defaults).toMatchObject({
+      steps: 30,
+      cfg: 3.5,
+      sampler: 'euler',
+      scheduler: 'sgm_uniform',
+    });
+    expect(COMFY_TEMPLATES.moss.portraitSize).toBe('832×1216');
+    // 其余模板不锁采样器、不强制负面
+    expect(COMFY_TEMPLATES.checkpoint.samplerFixed).toBeNull();
+    expect(COMFY_TEMPLATES.flux.negativeRequired).toBe(false);
+  });
+
+  it('固定负面留空时 validateSimpleConfig 拦下并提示填默认负面', () => {
+    const moss = {
+      ...simpleDefaults('moss'),
+      model: 'moss_image_sft_int8_convrot.safetensors',
+      vae: 'flux2-vae_small.safetensors',
+      clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    };
+    expect(validateSimpleConfig({ ...moss, negative: '' })).toContain('固定负面');
+    expect(validateSimpleConfig({ ...moss, negative: '' })).toContain('填入默认负面');
+    expect(validateSimpleConfig(moss)).toBeNull();
+  });
+});
+
+/* ============ 固定正面(defaultPositive):空着不报错的口子 ============ */
+
+describe('defaultPositive - 两条 MOSS 线的默认固定正面', () => {
+  it('写实线的画质串取自规范点名的那一条,且与规范禁区不打架', () => {
+    expect(MOSS_DEFAULT_POSITIVE).toBe(
+      'moodyrealism, photorealistic, photograph, high detail, sharp focus, natural skin texture',
+    );
+    // 规范禁 AI 写动漫画质词:正面这边也不能有
+    expect(MOSS_DEFAULT_POSITIVE).not.toContain('masterpiece');
+    expect(MOSS_DEFAULT_POSITIVE).not.toContain('best quality');
+    // 规范禁的皮肤反光词,一个都不许进正面串
+    for (const word of ['glossy', 'shiny', 'oily', 'greasy']) {
+      expect(MOSS_DEFAULT_POSITIVE).not.toContain(word);
+    }
+    // 规范禁的拍摄介质参数词
+    for (const word of ['HDR', '计算摄影', '高分辨率']) {
+      expect(MOSS_DEFAULT_POSITIVE).not.toContain(word);
+    }
+  });
+
+  it('动漫线的画风层是固定两句:sonsp 触发词 + 单独刻脸,且不带 LoRA 语法', () => {
+    const pos = MOSS_ANIME_DEFAULT_POSITIVE;
+    // sonsp 是画风 LoRA 的触发词,必须留在串里
+    expect(pos).toContain('sonsp');
+    // 一句整体上色/线/材质 + 一句脸部单独刻画
+    expect(pos).toContain('二次元插画');
+    expect(pos).toContain('人物脸部单独精细刻画');
+    // 不要写成 <lora:…> 语法:LoRA 由简易模式的 LoRA 链挂载
+    expect(pos).not.toContain('<lora:');
+    // 规范禁 AI 写的风格名:实测加了反而把 sonsp 的画风拽歪
+    for (const word of ['韩漫', '条漫', '赛璐璐', '日式动画']) {
+      expect(pos).not.toContain(word);
+    }
+    // 两条 MOSS 线的默认正面不可互换(写实是画质串、动漫是画风层)
+    expect(pos).not.toBe(MOSS_DEFAULT_POSITIVE);
+  });
+
+  it('非 MOSS 模板不预填正面(AI 那侧本来就自带质量词)', () => {
+    for (const id of ['checkpoint', 'flux', 'anima'] as const) {
+      expect(simpleDefaults(id).positive).toBe('');
+      expect(simpleDefaults(id).negative).toBe('');
+    }
+  });
+
+  it('新建 moss / moss-anime 预设的正面非空(画质/画风串真的进得了串)', () => {
+    expect(simpleDefaults('moss').positive).toBe(MOSS_DEFAULT_POSITIVE);
+    expect(simpleDefaults('moss-anime').positive).toBe(MOSS_ANIME_DEFAULT_POSITIVE);
+    // 两端打通:默认正面确实被 composePositive 拼在最前面,而不是躺在配置里
+    const moss: ComfySimpleConfig = {
+      ...simpleDefaults('moss'),
+      model: 'moss_image_sft_int8_convrot.safetensors',
+      vae: 'flux2-vae_small.safetensors',
+      clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+    };
+    const wf = buildSimpleWorkflow(moss, VALUES);
+    expect(node(wf, '4').inputs.text).toBe(`${MOSS_DEFAULT_POSITIVE}, 1girl, silver hair`);
+  });
+});
+
+describe('normalizeSimpleConfig - 正面的「缺失」与「显式空串」', () => {
+  it('字段缺失 → 用该模板的 defaultPositive', () => {
+    expect(normalizeSimpleConfig({ template: 'moss' }).positive).toBe(MOSS_DEFAULT_POSITIVE);
+    expect(normalizeSimpleConfig({ template: 'moss-anime' }).positive).toBe(MOSS_ANIME_DEFAULT_POSITIVE);
+    // 缺字段与「新建预设」是同一个结果(既有等价断言因此继续成立)
+    expect(normalizeSimpleConfig({ template: 'moss' })).toEqual(simpleDefaults('moss'));
+  });
+
+  it('显式空串 → 原样保留(用户有权清掉),与 negative 同一口径', () => {
+    expect(normalizeSimpleConfig({ template: 'moss', positive: '' }).positive).toBe('');
+    expect(normalizeSimpleConfig({ template: 'moss-anime', positive: '' }).positive).toBe('');
+    // 两边口径必须一致:legacy 预设正负两面都是显式空串,谁也不回填
+    const legacy = normalizeSimpleConfig({ template: 'moss', positive: '', negative: '' });
+    expect(legacy.positive).toBe('');
+    expect(legacy.negative).toBe('');
+    // 非字符串(老数据里可能是 null / 数字)按「缺失」处理
+    expect(normalizeSimpleConfig({ template: 'moss', positive: null }).positive).toBe(MOSS_DEFAULT_POSITIVE);
+  });
+});
+
+describe('simpleConfigWarnings - 非阻断告警', () => {
+  const mossReady: ComfySimpleConfig = {
+    ...simpleDefaults('moss'),
+    model: 'moss_image_sft_int8_convrot.safetensors',
+    vae: 'flux2-vae_small.safetensors',
+    clip1: 'qwen3.5_9b_int8_convrot.safetensors',
+  };
+
+  it('MOSS 两条线正面为空时给出告警,并点名「填入默认正面」', () => {
+    const real = simpleConfigWarnings({ ...mossReady, positive: '' });
+    expect(real).toContain('固定正面');
+    expect(real).toContain('填入默认正面');
+    // 写实线说的是画质串,动漫线说的是画风层:措辞各说各的承担物
+    expect(real).toContain('画质串');
+    const anime = simpleConfigWarnings({ ...simpleDefaults('moss-anime'), positive: '  ' });
+    expect(anime).toContain('画风层');
+  });
+
+  it('正面非空时无告警', () => {
+    expect(simpleConfigWarnings(mossReady)).toBeNull();
+    expect(simpleConfigWarnings(simpleDefaults('moss-anime'))).toBeNull();
+  });
+
+  it('对非 MOSS 模板不误报(AI 那侧自带质量词)', () => {
+    for (const id of ['checkpoint', 'flux', 'anima'] as const) {
+      expect(simpleConfigWarnings({ ...simpleDefaults(id), model: 'm.safetensors' })).toBeNull();
+    }
+  });
+
+  it('告警**不阻断**出图:正面空着的 MOSS 预设照样能组装工作流', () => {
+    // 这是本组最关键的一条:非阻断的承诺必须可执行,而不是只写在注释里
+    expect(validateSimpleConfig({ ...mossReady, positive: '' })).toBeNull();
+    const wf = buildSimpleWorkflow({ ...mossReady, positive: '' }, VALUES);
+    // 固定正面缺位时正向串只剩 AI 那侧的内容,但请求本身照常成立
+    expect(node(wf, '4').inputs.text).toBe('1girl, silver hair');
+  });
+});
+

@@ -7,6 +7,7 @@ import {
   formatEntryForPrompt,
   parseConvertedTags,
   resolveCharAnchors,
+  ZH_FILLED_MARK,
 } from '@/autoTag/charAnchors';
 import {
   createCharTagNewOp,
@@ -30,23 +31,53 @@ function entry(name: string, fields: Partial<Record<string, string>>, source: Ch
 describe('formatEntryForPrompt / buildLibraryText', () => {
   it('renders non-empty fields with labels in fixed order', () => {
     const text = formatEntryForPrompt(entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'red eyes' }));
-    expect(text).toBe("- 小雪: Gender=1girl, Hair=long black hair, Eyes=red eyes");
+    expect(text).toBe('- 小雪: Gender=1girl, Hair=long black hair, Eyes=red eyes');
   });
 
   it('falls back to raw tag when no structured fields', () => {
     const e = entry('旧角色', {});
     e.raw = '1girl, red eyes';
-    expect(formatEntryForPrompt(e)).toBe("- 旧角色: tag=1girl, red eyes");
+    expect(formatEntryForPrompt(e)).toBe('- 旧角色: tag=1girl, red eyes');
   });
 
   it('builds the library block with a header', () => {
     const text = buildLibraryText([entry('小雪', { sex: '1girl' })]);
-    expect(text).toContain('【 character fixed appearance library');
-    expect(text).toContain("- 小雪: Gender=1girl");
+    expect(text).toContain('【Character fixed-appearance library');
+    expect(text).toContain('- 小雪: Gender=1girl');
   });
 
   it('returns empty string for no entries', () => {
     expect(buildLibraryText([])).toBe('');
+  });
+
+  it('有中文外貌的条目带 [中文外貌已填] 标记,且不输出 zh 正文', () => {
+    const e = entry('林夏', { sex: '1girl', hair: 'long black hair' });
+    e.zh = '鹅蛋脸,单眼皮,皮肤偏白。';
+    const line = formatEntryForPrompt(e);
+    expect(line).toContain(ZH_FILLED_MARK);
+    // 只标记存在性:正文进了提示词就会被照抄进 tag/nl,插件再拼一遍等于双写
+    expect(line).not.toContain('鹅蛋脸');
+    // 英文字段照常渲染(它们是 tag 那条线的来源,与 zh 通道并存)
+    expect(line).toContain('Hair=long black hair');
+  });
+
+  it('没填 zh 的条目不带该标记', () => {
+    expect(formatEntryForPrompt(entry('许梨', { sex: '1girl' }))).not.toContain(ZH_FILLED_MARK);
+    // 空的 zh 键与没有该键等价
+    const blank = entry('许梨', { sex: '1girl' });
+    blank.zh = '   ';
+    expect(formatEntryForPrompt(blank)).not.toContain(ZH_FILLED_MARK);
+  });
+
+  it('库里有任何人填了 zh 时,头部解释这个标记的含义', () => {
+    const filled = entry('林夏', { sex: '1girl' });
+    filled.zh = '鹅蛋脸。';
+    const text = buildLibraryText([filled]);
+    expect(text).toContain(ZH_FILLED_MARK);
+    // 不解释的话,标记对模型只是个陌生符号,分流规则无从执行
+    expect(text).toContain('do not redraw features');
+    // 无人填 zh 时不加这段说明,免得给没用到该通道的库塞无关规则
+    expect(buildLibraryText([entry('小雪', { sex: '1girl' })])).not.toContain('do not redraw features');
   });
 
   it('marks locked entries and declares immutability in the header', () => {
@@ -54,10 +85,10 @@ describe('formatEntryForPrompt / buildLibraryText', () => {
       [entry('小雪', { sex: '1girl' }), entry('张三', { sex: '1boy' })],
       new Set(['小雪']),
     );
-    expect(text).toContain("- 小雪 [locked]: Gender=1girl");
-    expect(text).toContain("- 张三: Gender=1boy");
+    expect(text).toContain('- 小雪 [locked]: Gender=1girl');
+    expect(text).toContain('- 张三: Gender=1boy');
     expect(text).toContain('[locked] are global and immutable');
-    // Without locked names the header stays as-is (no locked note)
+    // 无锁定名时头部保持原样(不带锁定说明)
     expect(buildLibraryText([entry('小雪', { sex: '1girl' })])).not.toContain('immutable');
   });
 });
@@ -133,11 +164,11 @@ describe('parseConvertedTags', () => {
 
 describe('positioned character state', () => {
   it('renders the library without firing any request', () => {
-    // Profile creation moved to the main request: this layer only renders locally and no longer sends an appearance conversion request
+    // 建档已交给主请求:这层只做本地渲染,不再发外貌转换请求
     const entries = [entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'blue eyes' })];
     const resolved = resolveCharAnchors(entries);
     expect(resolved.entries).toBe(entries);
-    expect(resolved.text).toContain("- 小雪: Gender=1girl");
+    expect(resolved.text).toContain('- 小雪: Gender=1girl');
     expect(resolveCharAnchors([]).text).toBeNull();
   });
 
@@ -155,8 +186,8 @@ describe('positioned character state', () => {
   });
 
   it('makes a same-response new profile available across the whole floor', () => {
-    // A new character's fixed appearance holds for the whole floor; it is not a change "starting somewhere":
-    // gating by position would leave images before the profile position without an entry, and the @placeholder would be stripped = the character has no appearance.
+    // 新角色的固定外貌是本楼全程成立的事实,不是「从某处开始」的变化:
+    // 按位置门控会让建档位置之前的图片查不到条目,@占位符被整个剥掉 = 角色没有外貌。
     const profile = createCharTagNewOp({
       name: '阿黛尔',
       fields: { ...emptyCharFields(), sex: '1girl', hair: 'short silver hair', eyes: 'red eyes' },
@@ -180,11 +211,11 @@ describe('positioned character state', () => {
     const dye = createCharTagSetOp('玩家', 'hair', 'long red hair', '染发')!;
     const ops = [{ op: dye, sourceLine: 0 }];
     const locked = new Set(['玩家']);
-    // Locked: set is discarded; the library value always applies
+    // 锁定:set 被丢弃,始终用库中值
     expect(applyPositionedCharRefs('@玩家, standing', base, ops, 5, 'tag', locked).text).toBe(
       '1boy, short black hair, standing',
     );
-    // Not locked: takes effect by position as before
+    // 不锁定:照旧按位置生效
     expect(applyPositionedCharRefs('@玩家, standing', base, ops, 5).text).toBe(
       '1boy, long red hair, standing',
     );

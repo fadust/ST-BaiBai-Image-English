@@ -132,7 +132,7 @@ describe('getBackendStatus', () => {
     ready();
 
     const status = getBackendStatus();
-    // Allowlist rule: fields added to the internal structure later can never leak out silently
+    // 白名单口径:内部结构日后加字段也不会静默泄漏出去
     expect(Object.keys(status).sort()).toEqual([
       'apiVersion', 'backend', 'configured', 'model', 'pluginVersion', 'reason', 'supportsCharacters',
     ]);
@@ -190,7 +190,7 @@ describe('generate', () => {
     ready();
     const result = fakeResult();
     vi.mocked(generateImage).mockResolvedValue({
-      result, seed: 4242, size: 'landscape', backend: 'nai', charactersApplied: true, meta: fakeMeta(),
+      result, seed: 4242, size: 'landscape', backend: 'nai', charactersApplied: true, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
 
     await generate({
@@ -218,7 +218,7 @@ describe('generate', () => {
   it('reports charactersApplied=false when the backend dropped them (ComfyUI)', async () => {
     ready({ backend: 'comfyui', model: '默认工作流', supportsCharacters: false });
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 7, size: 'portrait', backend: 'comfyui', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 7, size: 'portrait', backend: 'comfyui', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
 
     const out = await generate({ prompt: '1girl', characters: [{ name: 'a', tag: 'b' }] });
@@ -229,12 +229,12 @@ describe('generate', () => {
   it('saves to the gallery by default and skips it only when told to', async () => {
     ready();
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
 
     const saved = await generate({ prompt: '1girl' });
     expect(saved.path).toBe('/user/images/x.png');
-    // The sidecar stores the raw tag (including the <bbi_image> wrapper); the gallery parses the fields back from it
+    // 侧写存的是 tag 原文(含 <bbi_image> 壳),图库要拿它反解析出各字段
     const [name, tag, seed] = vi.mocked(saveExternalImage).mock.calls[0];
     expect(name).toBe('小雪');
     expect(tag).toBe('<bbi_image>1girl<size>portrait</size></bbi_image>');
@@ -242,7 +242,7 @@ describe('generate', () => {
 
     vi.mocked(saveExternalImage).mockClear();
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
     const skipped = await generate({ prompt: '1girl', save: false });
     expect(skipped.path).toBeNull();
@@ -252,9 +252,9 @@ describe('generate', () => {
   it('records the size the image was actually drawn at, not the requested one (channel lock)', async () => {
     ready();
     vi.mocked(saveExternalImage).mockClear();
-    // Channel locked to landscape: the request asks for portrait, and generateImage reports it actually rendered landscape
+    // 渠道锁横图:请求要竖,generateImage 回报实际按横出
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 4242, size: 'landscape', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 4242, size: 'landscape', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
 
     await generate({ prompt: '1girl', size: 'portrait' });
@@ -266,7 +266,7 @@ describe('generate', () => {
   it('still returns the image when saving to the gallery fails', async () => {
     ready();
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 4242, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
     vi.mocked(saveExternalImage).mockRejectedValueOnce(new Error('磁盘满了'));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -280,14 +280,14 @@ describe('generate', () => {
     ready();
     const ok = fakeResult();
     vi.mocked(generateImage).mockResolvedValue({
-      result: ok, seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: ok, seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
     await generate({ prompt: '1girl', save: false });
     expect(ok.revoke).toHaveBeenCalledTimes(1);
 
     const failing = fakeResult('blob:http://x/y');
     vi.mocked(generateImage).mockResolvedValue({
-      result: failing, seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: failing, seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
     await expect(generate({ prompt: '1girl', save: false })).rejects.toMatchObject({
@@ -300,7 +300,7 @@ describe('generate', () => {
   it('never lets a third-party progress callback break the generation', async () => {
     ready();
     vi.mocked(generateImage).mockResolvedValue({
-      result: fakeResult(), seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(),
+      result: fakeResult(), seed: 1, size: 'portrait', backend: 'nai', charactersApplied: false, meta: fakeMeta(), finalPrompt: '', finalNegative: '',
     });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 

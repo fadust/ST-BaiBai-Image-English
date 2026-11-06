@@ -20,7 +20,7 @@ function fakeResult() {
   return { url: 'data:image/png;base64,AAAA', filename: 'x.png', format: 'png', revoke: vi.fn() };
 }
 
-/** generateNaiImage now returns { result, usage } (usage is saved with the image). */
+/** generateNaiImage 现在返回 { result, usage }（usage 随图落盘）。 */
 function fakeNaiOutput() {
   return {
     result: fakeResult(),
@@ -36,13 +36,13 @@ beforeEach(() => {
 });
 
 /**
- * Sets settings to "NAI fully configured". The address and key land on the **current endpoint**; the two channel-level ones are legacy fields.
- * settings is a module-level singleton that leaks between cases, so the endpoint library is reset wholesale to "only the official one" here.
+ * 把设置调成「NAI 已配齐」。地址与 key 落在**当前接入点**上——渠道级那两个是存量字段。
+ * settings 是模块级单例,用例之间会串,故这里把接入点库整个复位成「只有官方一条」。
  */
 function naiReady(model: NaiModel = 'nai-diffusion-4-5-full'): void {
   settings.defaultBackend = 'nai';
   settings.nai.endpoints = [
-    { id: 'nep_official', name: 'NovelAI 官方', url: 'https://image.novelai.net', key: 'k' },
+    { id: 'nep_official', name: 'NovelAI Official', url: 'https://image.novelai.net', key: 'k' },
   ];
   settings.nai.activeEndpointId = 'nep_official';
   settings.nai.model = model;
@@ -50,7 +50,7 @@ function naiReady(model: NaiModel = 'nai-diffusion-4-5-full'): void {
   settings.nai.orientationLock = 'auto';
 }
 
-/** Sets settings to "ComfyUI custom workflow fully configured". */
+/** 把设置调成「ComfyUI 自定义工作流已配齐」。 */
 function comfyReady(): void {
   settings.defaultBackend = 'comfyui';
   settings.comfyui.url = 'http://127.0.0.1:8188';
@@ -58,6 +58,9 @@ function comfyReady(): void {
   settings.comfyui.activeWorkflowId = preset.id;
   preset.mode = 'custom';
   preset.workflow = '{"1":{}}';
+  // 固定正面是模块级单例的一部分,用例之间会串:不复位的话,前一个用例设的
+  // 「masterpiece」会带进后一个用例的正向期望里。
+  preset.simple.positive = '';
   preset.orientationLock = 'auto';
 }
 
@@ -69,18 +72,18 @@ describe('backendStatus', () => {
     activeNaiEndpoint().key = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current NAI endpoint has no API key",
+      reason: 'The current NAI endpoint has no API key',
     });
 
     activeNaiEndpoint().url = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current NAI endpoint has no API address",
+      reason: 'The current NAI endpoint has no API address',
     });
   });
 
   it('keeps the endpoint name out of reason (it goes to third parties, and users name rows after URLs)', () => {
-    // reason is passed to third parties as-is via getBackendStatus, and an address must never appear in the public return value
+    // reason 经 getBackendStatus 原样递给第三方,而公开返回值里绝不能出现地址
     naiReady();
     const named = newNaiEndpoint('https://my-secret-proxy.example');
     settings.nai.endpoints.push(named);
@@ -89,24 +92,24 @@ describe('backendStatus', () => {
   });
 
   it('judges readiness by the active endpoint, not the legacy channel-level url/key', () => {
-    // The legacy fields are kept only for rollback; image generation never looks at them, otherwise switching to a community site with no key would "look clickable"
+    // 存量字段留着只为回滚,出图一律不看它 —— 否则切到没填 key 的公益站会「看起来能点」
     naiReady();
     settings.nai.url = 'https://image.novelai.net';
     settings.nai.key = 'legacy';
 
-    const blank = newNaiEndpoint('公益站 A');
+    const blank = newNaiEndpoint('Public site A');
     settings.nai.endpoints.push(blank);
     settings.nai.activeEndpointId = blank.id;
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current NAI endpoint has no API address",
+      reason: 'The current NAI endpoint has no API address',
     });
   });
 
   it('sends the active endpoint down to the backend (switching outlets keeps every other param)', async () => {
     naiReady();
     settings.nai.steps = 33;
-    const alt = newNaiEndpoint('公益站 A');
+    const alt = newNaiEndpoint('Public site A');
     alt.url = 'https://a.example';
     alt.key = 'ka';
     settings.nai.endpoints.push(alt);
@@ -123,7 +126,7 @@ describe('backendStatus', () => {
   it('answers supportsCharacters from the model alone, even before the key is filled in', () => {
     naiReady();
     activeNaiEndpoint().key = '';
-    // Third parties need to know **before** generating whether to pass characters, not only once things are configured
+    // 第三方要在出图**前**就知道该不该传 characters,不能等配好了才知道
     expect(backendStatus().supportsCharacters).toBe(true);
   });
 
@@ -137,7 +140,7 @@ describe('backendStatus', () => {
     settings.comfyui.workflows[0].workflow = '  ';
     expect(backendStatus()).toMatchObject({
       configured: false,
-      reason: "The current workflow preset has no workflow JSON",
+      reason: 'The current workflow preset has no workflow JSON',
     });
   });
 });
@@ -179,7 +182,7 @@ describe('generateImage', () => {
 
     vi.mocked(generateNaiImage).mockRejectedValueOnce(new Error('429'));
     await expect(generateImage({ prompt: '1girl', seed: 1 })).rejects.toThrow('429');
-    // Missing one release permanently loses a concurrency slot; miss enough and no request can ever be sent again
+    // 漏一次 release 就永久少一格并发,漏满就再也发不出请求
     expect(release).toHaveBeenCalledTimes(2);
   });
 
@@ -206,14 +209,14 @@ describe('generateImage', () => {
 
     naiReady();
     expect((await generateImage({ prompt: 'x', characters, seed: 1 })).charactersApplied).toBe(true);
-    // Without characters passed, it shouldn't report "used"
+    // 没传角色时不该报「用上了」
     expect((await generateImage({ prompt: 'x', seed: 1 })).charactersApplied).toBe(false);
   });
 
   it('refuses to fire a doomed request when the backend is not configured', async () => {
     naiReady();
     activeNaiEndpoint().key = '';
-    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow("API key");
+    await expect(generateImage({ prompt: 'x', seed: 1 })).rejects.toThrow('API key');
     expect(vi.mocked(generateNaiImage)).not.toHaveBeenCalled();
   });
 
@@ -221,7 +224,7 @@ describe('generateImage', () => {
     naiReady();
     const onRetry = vi.fn();
     await generateImage({ prompt: 'x', seed: 1 }, undefined, { onRetry });
-    // Saving still takes a moment, during which "retrying shortly" shouldn't keep showing
+    // 落盘还要一会儿,这段时间不该继续显示「稍后重试」
     expect(onRetry).toHaveBeenLastCalledWith(null);
   });
 
@@ -257,12 +260,12 @@ describe('generateImage', () => {
     naiReady();
     settings.nai.orientationLock = 'landscape';
     try {
-      // The tag records portrait (old images from before the lock / a size passed by a third party); once locked, everything comes out landscape
+      // tag 里记的是竖图(锁定前的老图 / 第三方传的 size),锁定后一律按横出
       const out = await generateImage({ prompt: 'x', seed: 1, size: 'portrait' });
       expect(vi.mocked(generateNaiImage).mock.calls[0][1]).toMatchObject({ size: 'landscape' });
-      // Report the actual orientation: the public API records the tag from this when saving to the gallery, not the portrait from the request
+      // 回报实际方向:公开接口落图库时据此记 tag,不能记成请求里的竖图
       expect(out.size).toBe('landscape');
-      // A default size is overridden by the lock too
+      // 缺省 size 同样被锁覆盖
       await generateImage({ prompt: 'x', seed: 1 });
       expect(vi.mocked(generateNaiImage).mock.calls[1][1]).toMatchObject({ size: 'landscape' });
     } finally {
@@ -274,7 +277,7 @@ describe('generateImage', () => {
     comfyReady();
     const preset = settings.comfyui.workflows[0];
     preset.orientationLock = 'portrait';
-    // Another channel's lock shouldn't leak over
+    // 另一个渠道的锁不该串过来
     settings.nai.orientationLock = 'landscape';
     try {
       const out = await generateImage({ prompt: 'x', seed: 1, size: 'landscape' });
@@ -343,8 +346,73 @@ describe('generateImage', () => {
         cfg: 7,
       },
     });
-    // Simple mode's fixed negative + dynamic negative are combined into full text in meta
+    // 简易模式的固定负面 + 动态负面在 meta 里合成全文
     expect(out.meta.negative).toBe('bad');
     expect(out.meta.positive).toBe('1girl');
+  });
+
+  it('把最终成品全文一并回传,而不只是分段原料', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.template = 'moss';
+    preset.simple.model = 'moss_image_sft_int8_convrot.safetensors';
+    preset.simple.vae = 'flux2-vae_small.safetensors';
+    preset.simple.clip1 = 'qwen3.5_9b_int8_convrot.safetensors';
+    preset.simple.negative = 'worst quality';
+    preset.simple.positive = 'moodyrealism, photorealistic';
+
+    const out = await generateImage({
+      prompt: '1girl, 林夏, medium shot',
+      nl: '她坐在窗边。',
+      appearance: '林夏：鹅蛋脸,单眼皮。',
+      seed: 1,
+    });
+    // 分段原料看不出拼接顺序与去哪了,调用方要落账的必须是这条
+    expect(out.finalPrompt).toBe(
+      'moodyrealism, photorealistic, 1girl, 林夏, medium shot, 她坐在窗边。, 林夏：鹅蛋脸,单眼皮。',
+    );
+    expect(out.finalNegative).toBe('worst quality');
+    // 与 meta 同一份,不应出现两个口径
+    expect(out.finalPrompt).toBe(out.meta.positive);
+  });
+
+  it('onPrompt 在请求之前就回报最终全文,失败也能回看', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.model = 'pony.safetensors';
+    preset.simple.positive = 'masterpiece';
+    vi.mocked(generateComfyImage).mockRejectedValueOnce(new Error('服务器炸了'));
+
+    const seen: string[] = [];
+    await expect(
+      generateImage({ prompt: '1girl', seed: 1 }, undefined, {
+        onPrompt: info => seen.push(info.positive),
+      }),
+    ).rejects.toThrow('服务器炸了');
+    // 埋点先于请求:请求失败时这条仍在,正是排查需要的那一刻
+    expect(seen).toEqual(['masterpiece, 1girl']);
+  });
+
+  it('中文外貌在 ComfyUI 链路上随正向透传,落进 meta.positive', async () => {
+    comfyReady();
+    const preset = settings.comfyui.workflows[0];
+    preset.mode = 'simple';
+    preset.simple.template = 'moss';
+    preset.simple.model = 'moss_image_sft_int8_convrot.safetensors';
+    preset.simple.vae = 'flux2-vae_small.safetensors';
+    preset.simple.clip1 = 'qwen3.5_9b_int8_convrot.safetensors';
+    // MOSS 的固定负面是必填项(negativeRequired),空着会被闸门拦在请求之前
+    preset.simple.negative = 'worst quality, bad anatomy';
+
+    const out = await generateImage({
+      prompt: '1girl, 林夏, medium shot',
+      nl: '她坐在窗边。',
+      appearance: '鹅蛋脸,单眼皮。',
+      seed: 1,
+    });
+    // moss 模板:固定正面 + tag + nl + 中文外貌四段全留
+    expect(out.meta.positive).toBe('1girl, 林夏, medium shot, 她坐在窗边。, 鹅蛋脸,单眼皮。');
   });
 });

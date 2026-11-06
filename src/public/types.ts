@@ -3,73 +3,73 @@ import type { BackendId } from '@/state/settings';
 import type { CharTagField } from '@/state/charTags';
 
 /**
- * Data structures (DTOs) of the BaiBai Image public API. **The contract surface for third-party plugins.**
+ * 柏宝绘公开接口的数据结构(DTO)。**第三方插件的契约面。**
  *
- * Rules (same as BaiBai Book's src/public/types.ts, so third-party authors learn one set):
- * - apiVersion is independent of pluginVersion: the former is the version of **the structures in this file**; the plugin version goes up all the time,
- *   apiVersion doesn't. Third parties judge compatibility by apiVersion and should not parse pluginVersion's meaning.
- * - Add only; never change or delete: adding optional fields is safe; changing a field's meaning / deleting a field always bumps apiVersion.
- *   So this file deliberately **does not expose** every field of the internal types; once exposed, it can never be taken back
- *   (e.g. CharTagEntry.history holds 50 change records that third parties have no use for, so it's withheld for now).
- * - Always **plain cloneable objects**: no functions, no Vue reactive proxies, no class instances.
- *   instanceof never works across plugin bundle boundaries, so errors also use a code field rather than custom Error subclasses.
+ * 纪律(与柏宝书 src/public/types.ts 同款,第三方作者学一套就够):
+ * - apiVersion 独立于 pluginVersion:前者是**本文件这些结构**的版本,插件版本天天涨,
+ *   它不涨。第三方按 apiVersion 判兼容,不该去解析 pluginVersion 的语义。
+ * - 只增不改不删:加可选字段是安全的;改字段含义 / 删字段一律要升 apiVersion。
+ *   因此本文件刻意**不暴露**内部类型的全部字段——暴露出去就再也收不回来了
+ *   (例:CharTagEntry.history 有 50 条变更记录,第三方拿它没用,先不给)。
+ * - 一律是**普通可克隆对象**:不含函数、不含 Vue reactive 代理、不含 class 实例。
+ *   跨插件 bundle 边界 instanceof 一律失效,故错误也走 code 字段而非自定义 Error 子类。
  */
 
 export const PUBLIC_API_VERSION = 1 as const;
 
 export interface PublicCapabilities {
-  /** globalThis.STBaiBaiImage is available. */
+  /** globalThis.STBaiBaiImage 可用。 */
   globalApi: true;
-  /** Can read the character library (getCharacters). */
+  /** 能读角色库(getCharacters)。 */
   characterLibrary: true;
-  /** Can call image generation (generate). */
+  /** 能调生图(generate)。 */
   generate: true;
-  /** Generated images can be saved into the BaiBai Image gallery (generate's save option). */
+  /** 生成的图能落盘进柏宝绘图库(generate 的 save 选项)。 */
   saveToGallery: true;
-  /** ready/changed events are available. */
+  /** ready/changed 事件可用。 */
   events: true;
 }
 
-/** A character's appearance fields. Keys map one-to-one to the "Character library" on the BaiBai Image settings page. */
+/** 一个角色的外貌字段。键与柏宝绘设置页的「角色库」逐项对应。 */
 export type PublicCharacterFields = Record<CharTagField, string>;
 
 export interface PublicCharacter {
-  /** Character name. **Verbatim**, never transliterated or normalised (image tags and story text are aligned by it). */
+  /** 角色名。**逐字原样**,不音译不规范化(生图 tag 与正文靠它对齐)。 */
   name: string;
   /**
-   * Complete tag string usable directly for image generation.
-   * Built from fields in a fixed order (fandom identity → sex → hair → eyes → skin → body → signature features → outfit);
-   * for old entries with only a whole raw string, it is raw itself. **Use this directly**; don't assemble fields yourself.
+   * 可直接用于生图的完整 tag 串。
+   * 由 fields 按固定顺序(同人身份→性别→头发→眼睛→肤色→体型→标志特征→着装)拼成;
+   * 老条目只有整串 raw 时即为 raw 本身。**推荐直接用这个**,别自己拼 fields。
    */
   tag: string;
-  /** Appearance split by field (only needed if you want to pick and choose). */
+  /** 分字段的外貌(要自己挑着用时才需要)。 */
   fields: PublicCharacterFields;
-  /** Natural-language appearance description (may be empty). */
+  /** 自然语言外貌描述(可空)。 */
   nl: string;
   /**
-   * Where this profile came from:
-   * - 'manual' written / edited by the user
-   * - 'ai'     created or changed by the AI during the story
-   * - 'book'   synced from BaiBai Book's character memory
+   * 这条档案从哪来:
+   * - 'manual' 用户手写 / 手动编辑过
+   * - 'ai'     AI 在剧情里建的档或改过
+   * - 'book'   从柏宝书的角色记忆同步来
    */
   source: 'book' | 'manual' | 'ai';
   /**
-   * Scope:
-   * - 'global' global character library (across chats, maintained only by the user by hand; the AI can't change it)
-   * - 'chat'   this chat's profile (manual baseline + replay of the AI's changes on floors)
+   * 作用域:
+   * - 'global' 全局角色库(跨聊天,只由用户手动维护,AI 改不动)
+   * - 'chat'   本聊天的档案(手动基线 + AI 在楼层里的变更重放而来)
    */
   scope: 'global' | 'chat';
-  /** The "why it looks like this" sentence from profile creation (usually an empty string). */
+  /** 建档时那句「为什么长这样」(多为空串)。 */
   desc: string;
 }
 
 export interface GetCharactersOptions {
   /**
-   * Gets a character-library snapshot "before floor number floor" (ST's zero-based mesid, excluding that floor).
+   * 取「第 floor 楼之前」的角色库快照(ST 零基 mesid,不含该楼)。
    *
-   * Why you'd need it: profiles evolve with the story (the AI changed a character's hair colour on some floor); to generate an image
-   * for **a past floor** you need the profile as it was then; using the current library would draw later changes too.
-   * Omitted = the current library (all floors replayed).
+   * 为什么会需要它:角色档案随剧情演进(AI 在某楼给角色换了发色),要为**历史某一楼**
+   * 出图就得用那一楼当时的档案,拿当前库会把后来的变更也画进去。
+   * 省略 = 当前(全部楼层重放完)的库。
    */
   floor?: number;
 }
@@ -77,9 +77,9 @@ export interface GetCharactersOptions {
 export interface PublicCharacterList {
   apiVersion: typeof PUBLIC_API_VERSION;
   pluginVersion: string;
-  /** Increments on every character-library change; use it for cache invalidation. */
+  /** 角色库每次变更递增;拿它做缓存失效判断。 */
   revision: number;
-  /** Floor the snapshot belongs to (null = current when floor is omitted). */
+  /** 快照对应的楼层(省略 floor 时为 null = 当前)。 */
   floor: number | null;
   characters: PublicCharacter[];
 }
@@ -87,88 +87,88 @@ export interface PublicCharacterList {
 export interface PublicBackendStatus {
   apiVersion: typeof PUBLIC_API_VERSION;
   pluginVersion: string;
-  /** Image backend the user currently selected. */
+  /** 用户当前选的出图后端。 */
   backend: BackendId;
-  /** Whether the backend is fully configured and can generate. When false, generate throws code='not_configured'. */
+  /** 后端是否已配齐、能出图。false 时 generate 会抛 code='not_configured'。 */
   configured: boolean;
-  /** Model name for NAI; current workflow preset name for ComfyUI. **Never includes the server address or API key.** */
+  /** NAI 为模型名;ComfyUI 为当前工作流预设名。**不含服务地址与 API Key。** */
   model: string;
   /**
-   * Whether the current backend supports characters (multi-character prompts).
-   * true for NAI 4.5/V5; **always false for ComfyUI**: passed values are silently dropped,
-   * so check here before drawing several characters rather than finding out after generation.
+   * 当前后端是否支持 characters(多角色提示)。
+   * NAI 4.5/V5 为 true;**ComfyUI 恒为 false**——传了会被静默丢弃,
+   * 故要画多角色时请先看这里,别等出图完才发现。
    */
   supportsCharacters: boolean;
-  /** Human-readable reason when configured=false (can be shown to the user directly); empty string when ready. */
+  /** configured=false 时的人话原因(可直接展示给用户);已就绪为空串。 */
   reason: string;
 }
 
-/** One character in a multi-character prompt (NAI 4.5/V5 Character Prompt). */
+/** 多角色提示里的一位(NAI 4.5/V5 的 Character Prompt)。 */
 export interface PublicCharacterPrompt {
-  /** Character name, for identification only; not part of the prompt. */
+  /** 角色名,仅用于标识,不进提示词。 */
   name: string;
-  /** This character's tags (usually PublicCharacter.tag). */
+  /** 该角色的 tag(通常取 PublicCharacter.tag)。 */
   tag: string;
-  /** This character's natural-language description (may be empty). */
+  /** 该角色的自然语言描述(可空)。 */
   nl?: string;
 }
 
 export interface GenerateRequest {
-  /** Positive short danbooru tags. **Required and must not be empty** (an empty string throws code='invalid_args'). */
+  /** 正向 danbooru 短 tag。**必填且不能为空**(空串抛 code='invalid_args')。 */
   prompt: string;
-  /** Natural-language description (may be empty). */
+  /** 自然语言描述(可空)。 */
   nl?: string;
   /**
-   * Dynamic negative for this image (may be empty).
-   * Only applies to ComfyUI (filled into the workflow's %negative_prompt%); NAI takes its negative from the user's channel config.
+   * 本画面的动态负面(可空)。
+   * 只对 ComfyUI 生效(填进工作流的 %negative_prompt%);NAI 的负面取用户渠道配置。
    */
   negative?: string;
   /**
-   * Multi-character prompts. Only take effect when supportsCharacters is true;
-   * charactersApplied in the result says plainly whether they were actually used this time.
+   * 多角色提示。需 supportsCharacters 为 true 才会生效,
+   * 结果里的 charactersApplied 会明说这次到底用上了没有。
    */
   characters?: PublicCharacterPrompt[];
-  /** Frame orientation; defaults to 'portrait'. Exact pixels come from the portrait/landscape sizes the user set on the channel page. */
+  /** 画幅方向;缺省 'portrait'。具体像素取用户在渠道页配的横竖尺寸。 */
   size?: Orientation;
-  /** Explicit seed (positive integer). Omitted = decided by user settings (the NAI panel's fixed seed, otherwise random). */
+  /** 指定种子(正整数)。省略 = 按用户设置决定(NAI 面板固定种子,否则随机)。 */
   seed?: number;
   /**
-   * Save into the BaiBai Image gallery, **default true**.
+   * 落盘进柏宝绘图库,**默认 true**。
    *
-   * true: the image is stored in user/images/柏宝绘_<character>/ with a sidecar json, so
-   *       the user can see it grouped by character on the BaiBai Image gallery page, together with its prompt.
-   * false: only returns dataUrl and never touches disk, suited to "preview and discard" use.
+   * true:图存进 user/images/柏宝绘_<character>/ 并写侧写 json,于是
+   *       用户能在柏宝绘图库页里按角色分组看到它、连提示词一起。
+   * false:只返回 dataUrl,不碰磁盘——适合「预览一下就丢」的用法。
    *
-   * ⚠ Saving **does not write chat history**: the image appears in no floor's text and takes no floor card.
-   *   Where the image shows is up to you; that is exactly why this API exists.
+   * ⚠ 落盘**不写聊天记录**:图不会出现在任何楼层的正文里,也不占楼层卡片。
+   *   图显示在哪里由你决定,这正是本接口存在的意义。
    */
   save?: boolean;
   /**
-   * Which character name to save under (the gallery's group name, i.e. folder 柏宝绘_<character>).
-   * Omitted = the current chat's character name. Meaningless when save=false.
+   * 落盘归到哪个角色名下(图库的分组名,即目录 柏宝绘_<character>)。
+   * 省略 = 当前聊天的角色名。save=false 时无意义。
    */
   character?: string;
 }
 
 export interface GenerateOptions {
-  /** Cancels this generation. Throws code='aborted' when cancelled. */
+  /** 取消本次生成。取消时抛 code='aborted'。 */
   signal?: AbortSignal;
-  /** Progress callback (optional). An error thrown by any callback is only logged to the console and doesn't affect generation. */
+  /** 进度回调(可选)。任何一次回调抛错都只会被记进 console,不影响生成。 */
   onProgress?: (progress: PublicGenerateProgress) => void;
 }
 
 export interface PublicGenerateProgress {
   /**
-   * - 'queued'     queued in BaiBai Image's NAI concurrency gate (waiting for another request to free a slot)
-   * - 'generating' request sent; the backend is drawing
-   * - 'queued-remote' in the ComfyUI **server** queue (ahead = how many are in front)
-   * - 'retrying'   rate-limited; backing off and retrying (attempt/max)
-   * - 'saving'     image received; saving to disk
+   * - 'queued'     在柏宝绘的 NAI 并发闸门里排队(等别的请求让出槽位)
+   * - 'generating' 请求已发出,后端正在画
+   * - 'queued-remote' 在 ComfyUI **服务端**队列里(ahead 为前面还有几个)
+   * - 'retrying'   被限流了,正在退避重试(attempt/max)
+   * - 'saving'     图已拿到,正在落盘
    */
   phase: 'queued' | 'generating' | 'queued-remote' | 'retrying' | 'saving';
-  /** How many are ahead when phase='queued-remote'; null if unknown. */
+  /** phase='queued-remote' 时前面还有几个;未知为 null。 */
   ahead?: number | null;
-  /** Attempt number / total when phase='retrying'. */
+  /** phase='retrying' 时的第几次/共几次。 */
   attempt?: number;
   max?: number;
 }
@@ -177,50 +177,61 @@ export interface GenerateResult {
   apiVersion: typeof PUBLIC_API_VERSION;
   pluginVersion: string;
   /**
-   * Image data URL (like data:image/png;base64,…), usable directly as <img src>.
+   * 图片的 data URL(形如 data:image/png;base64,…),可直接 <img src>。
    *
-   * A data URL rather than a blob URL on purpose: blobs need a matching revokeObjectURL;
-   * forgetting leaks, and revoking on your behalf would blank your <img> suddenly. Data URLs have none of these pitfalls;
-   * the cost is a large string, so don't keep it in memory long-term.
+   * 刻意用 data URL 而不是 blob URL:blob 要配对 revokeObjectURL,
+   * 忘了就泄漏、替你 revoke 又会让你的 <img> 突然变空白。data URL 没这些坑,
+   * 代价是字符串比较大——用完别长期留在内存里。
    */
   dataUrl: string;
-  /** Image format, such as 'png' / 'jpg'. */
+  /** 图片格式,如 'png' / 'jpg'。 */
   format: string;
   /**
-   * ST static path after saving (like /user/images/柏宝绘_小雪/bbi_….png), usable directly as <img src>.
-   * null when save=false or saving failed. **A failed save does not throw**: the image is already in dataUrl,
-   * and failing to store it in the gallery must not cost you the image itself.
+   * 落盘后的 ST 静态路径(形如 /user/images/柏宝绘_小雪/bbi_….png),可直接 <img src>。
+   * save=false 或落盘失败时为 null——**落盘失败不抛错**,图已经在 dataUrl 里了,
+   * 不能因为存不进图库就让你连图都拿不到。
    */
   path: string | null;
-  /** The seed actually used (given even when random; to reproduce, pass it back as seed). */
+  /** 本次实际使用的种子(随机时也给,想复现就把它填回 seed)。 */
   seed: number;
-  /** Backend that actually generated the image. */
+  /** 实际出图的后端。 */
   backend: BackendId;
   /**
-   * Whether characters was actually sent to the backend.
-   * You passed characters but this is false = they were dropped (usually because the user is on ComfyUI).
-   * BaiBai Image **deliberately does not degrade by merging characters into the prompt**: that draws images with several overlapping torsos.
+   * characters 是否真的发给了后端。
+   * 你传了 characters 但这里是 false = 被丢弃了(通常是用户在用 ComfyUI)。
+   * 柏宝绘**刻意不降级把角色拼进 prompt**:那会画出多份躯干重叠的图。
    */
   charactersApplied: boolean;
+  /**
+   * **最终实际提交的提示词全文**(合成后):固定正面/画质词/画师串 + 你的 tag + nl +
+   * 角色中文外貌,按后端实际拼接顺序连成的一条。拿不到时为空串(很少见)。
+   *
+   * 存在的理由:你传进去的是分段原料,而分段原料看不出成品——非 moss 模板下 nl 会
+   * 顶掉 tag、中文外貌只拼在末尾、NAI 会再加画师串与质量词。要判断「我传的到底变成
+   * 了什么」只能看这个字段。
+   */
+  finalPrompt: string;
+  /** 最终实际提交的负面全文;口径同上。 */
+  finalNegative: string;
 }
 
 /**
- * The code attached to the Error thrown on failure. **Branch on code; don't match the message text**
- * (message is human-readable text that changes between versions; and don't use instanceof, which never works across bundles).
+ * 出错时抛出的 Error 上挂的 code。**按 code 分支,别匹配 message 文案**
+ * (message 是给人看的中文,会随版本改;也别用 instanceof,跨 bundle 一律失效)。
  */
 export type PublicErrorCode =
-  /** User cancelled (the signal you passed fired). */
+  /** 用户取消(你传的 signal 触发了)。 */
   | 'aborted'
-  /** The user hasn't configured an image backend yet; the reason is in getBackendStatus(). */
+  /** 用户还没配好出图后端;reason 在 getBackendStatus() 里。 */
   | 'not_configured'
-  /** Invalid arguments (empty prompt, seed not a number, and so on). */
+  /** 入参不合法(prompt 空、seed 不是数字之类)。 */
   | 'invalid_args'
-  /** Rate-limited by the backend, and BaiBai Image's automatic backoff retries are exhausted. */
+  /** 被后端限流,且柏宝绘的自动退避重试已用尽。 */
   | 'rate_limited'
-  /** Backend error (network down, workflow problems, invalid API key…). */
+  /** 后端报错(网络不通、工作流有问题、API Key 失效……)。 */
   | 'backend_error';
 
-/** An Error with code attached. Check with `'code' in error`, not instanceof. */
+/** 挂了 code 的 Error。用 `'code' in error` 判断,不要 instanceof。 */
 export interface PublicError extends Error {
   code: PublicErrorCode;
 }
@@ -237,17 +248,17 @@ export interface PublicChangeNotice {
 export type PublicChangeListener = (notice: PublicChangeNotice) => void;
 
 export interface STBaiBaiImageApi {
-  /** Version of this API's data structures. Third parties judge compatibility by it (currently always 1). */
+  /** 本接口数据结构的版本。第三方按它判兼容(当前恒为 1)。 */
   readonly apiVersion: typeof PUBLIC_API_VERSION;
-  /** BaiBai Image plugin version (for display/debugging only; don't parse it for compatibility decisions). */
+  /** 柏宝绘插件版本(仅供展示/排查,别解析它做兼容判断)。 */
   readonly pluginVersion: string;
   readonly capabilities: PublicCapabilities;
-  /** Gets the character list BaiBai Image has recorded (including tags ready for generation). Returns a deep copy; changing it doesn't affect BaiBai Image. */
+  /** 取柏宝绘已记录的角色列表(含可直接出图的 tag)。返回深拷贝,改它不影响柏宝绘。 */
   getCharacters(options?: GetCharactersOptions): PublicCharacterList;
-  /** Ask before generating: is the backend configured, does it support multiple characters. */
+  /** 出图前先问问:后端配好了吗、支不支持多角色。 */
   getBackendStatus(): PublicBackendStatus;
-  /** Calls BaiBai Image to generate an image. The image is returned to you; where it shows is up to you. */
+  /** 调柏宝绘生图。图返回给你,显示在哪由你决定。 */
   generate(request: GenerateRequest, options?: GenerateOptions): Promise<GenerateResult>;
-  /** Subscribes to character-library changes; returns an unsubscribe function. */
+  /** 订阅角色库变更;返回取消订阅的函数。 */
   subscribe(listener: PublicChangeListener): () => void;
 }

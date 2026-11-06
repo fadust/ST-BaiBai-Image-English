@@ -25,6 +25,10 @@ function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
     comfyThinking: '',
     naiThinking: '',
     naiV5Thinking: '',
+    mossSpec: '',
+    mossThinking: '',
+    mossAnimeSpec: '',
+    mossAnimeThinking: '',
     ...overrides,
   };
 }
@@ -1080,11 +1084,11 @@ describe('NAI "Generate Natural Language" toggle and channel frame lock', () => 
       settings.nai.model = 'nai-diffusion-4-5-full';
       settings.nai.naturalLanguage = true;
       settings.nai.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: true, lockedSize: null });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: true, lockedSize: null , dialect: 'comfy' as const, layoutLock: 'auto' as const });
 
       settings.nai.naturalLanguage = false;
       settings.nai.orientationLock = 'portrait';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait' });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: true, nl: false, lockedSize: 'portrait', dialect: 'comfy', layoutLock: 'auto' });
 
       // The single-string branch (NAI4) protocol never writes nl anyway, so the toggle has no effect on it
       settings.nai.model = 'nai-diffusion-4-full';
@@ -1095,11 +1099,11 @@ describe('NAI "Generate Natural Language" toggle and channel frame lock', () => 
       settings.defaultBackend = 'comfyui';
       state.preset.naturalLanguage = true;
       state.preset.orientationLock = 'landscape';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: true, lockedSize: 'landscape' });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: true, lockedSize: 'landscape', dialect: 'comfy', layoutLock: 'auto' });
 
       state.preset.naturalLanguage = false;
       state.preset.orientationLock = 'auto';
-      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: false, lockedSize: null });
+      expect(autoTagProfile()).toEqual({ naiCharPrompts: false, nl: false, lockedSize: null , dialect: 'comfy' as const, layoutLock: 'auto' as const });
     } finally {
       state.restore();
     }
