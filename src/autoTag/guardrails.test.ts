@@ -20,6 +20,10 @@ function prompts(overrides: Partial<AutoTagPrompts> = {}): AutoTagPrompts {
     comfyThinking: '',
     naiThinking: '',
     naiV5Thinking: '',
+    mossSpec: '',
+    mossThinking: '',
+    mossAnimeSpec: '',
+    mossAnimeThinking: '',
     ...overrides,
   };
 }

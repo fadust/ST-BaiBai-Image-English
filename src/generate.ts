@@ -1,116 +1,161 @@
 /**
- * The shared middle of "one image generation": the single generation entry point for floor cards and the public API.
+ * 「一次出图」的共用中段 —— 楼层卡片与公开接口的唯一生成入口。
  *
- * This work used to live entirely in Card.vue's generate(), tangled up with slot runtime state (beginGen/failGen),
- * saving (saveImageResult) and re-hydration (hydrateMessage). The public API lets third parties
- * "decide for themselves where the image shows", and what they need is precisely **the middle with head and tail removed**:
+ * 原本这段活全写在 Card.vue 的 generate() 里,与槽位运行态(beginGen/failGen)、
+ * 落盘(saveImageResult)、重水合(hydrateMessage)缠在一起。公开接口要让第三方
+ * 「自己决定图显示在哪」,要的恰恰是**掐头去尾的中段**:
  *
- *   before (caller): register runtime state / validate parameters
- *   ★ middle (this module): NAI gate → dispatch by backend → get the image
- *   after (caller): save, display, final tracking
+ *   前(调用方):登记运行态 / 校验参数
+ *   ★ 中(本模块):NAI 闸门 → 按 backend 分派 → 拿到图
+ *   后(调用方):落盘、显示、收尾埋点
  *
- * **The gate cannot be bypassed**, which is the main reason this module exists: calling generateNaiImage in backends/nai.ts directly
- * would run outside the concurrency gate and global pacing in floor/genQueue.ts, and 0.2.0's entire
- * NAI rate-limit self-healing (global 429 cooldown, minimum interval between requests, backoff retries) would be gone at once. Concurrent third-party calls
- * are normal, and the symptom of bypassing is the user's NAI account eating a burst of 429s, while the user just thinks BaiBai Image is broken.
- * So the public API and cards share this function, and the gate is sealed in here.
+ * **闸门不可绕过**,这是本模块存在的首要理由:直接调 backends/nai.ts 的
+ * generateNaiImage 会跑在 floor/genQueue.ts 的并发闸门与全局节奏之外,0.2.0 整版的
+ * NAI 限流自愈(429 全局冷却、相邻请求最小间隔、退避重试)当场失效。第三方并发调用
+ * 是常态,绕过去的症状是用户 NAI 账号吃一串密集 429 —— 而用户只会认为柏宝绘坏了。
+ * 故公开接口与卡片共用本函数,闸门在这里包死。
  *
- * This module deliberately **does not touch**: floor coordinates, genState, extra, hydration, request-history tracking.
- * Leaving tracking to callers is intentional: what counts as "success" for a history record differs per caller. Floor cards only count it once
- * saveImageResult has saved successfully, and must record "got the image but discarded it because the task was superseded" as cancelled;
- * this module only knows whether the request itself succeeded, and concluding on the caller's behalf would misreport those two cases as success.
- * Hence decideSeed is exported separately: the caller fixes the seed first (tracking needs it), then passes it in explicitly.
+ * 本模块**刻意不碰**:楼层坐标、genState、extra、水合、请求历史埋点。
+ * 埋点留给调用方是有意为之:一条历史记录的「成功」判据各家不同——楼层卡片要等
+ * saveImageResult 落盘成功才算成,还要把「图拿到了却因任务被取代而丢弃」记成已取消;
+ * 本模块只知道请求本身的成败,替调用方下结论会把那两种情形谎报成成功。
+ * 故 decideSeed 单独导出:调用方先定种子(埋点需要它)、再把它显式传进来。
  */
 
 import type { ImageCharacterPrompt } from '@/autoTag/protocol';
-import { comfySimpleParams, composeNegative, composePositive, validateSimpleConfig, type SimpleGenValues } from '@/backends/comfyTemplates';
-import { generateComfyImage, randomSeed, type ComfyImageResult } from '@/backends/comfyui';
-import { generateNaiImage, naiRandomSeed, naiSupportsCharacterPrompts } from '@/backends/nai';
+import { comfySimpleParams, validateSimpleConfig } from '@/backends/comfyTemplates';
+import { generateComfyImage, previewComfyPrompt, randomSeed, type ComfyImageResult } from '@/backends/comfyui';
+import {
+  fullNegativePrompt,
+  fullPositivePrompt,
+  generateNaiImage,
+  naiRandomSeed,
+  naiSupportsCharacterPrompts,
+} from '@/backends/nai';
 import { effectiveOrientation, parseSize, pickSize, type Orientation } from '@/backends/size';
 import { acquireNaiSlot } from '@/floor/genQueue';
 import type { GenerationMeta } from '@/generationMeta';
 import { activeComfyPreset, activeNaiEndpoint, activeOrientationLock, effectiveComfyConn, effectiveNai, settings, type BackendId } from '@/state/settings';
 
-/** Input for one generation. Same shape as the protocol layer's ImageInsertion, but without story-text position info. */
+/** 一次生成的输入。与协议层 ImageInsertion 同形,但不含正文位置信息。 */
 export interface GenerateInput {
-  /** Positive short danbooru tags. */
+  /** 正向 danbooru 短 tag。 */
   prompt: string;
-  /** Natural-language part (optional). */
+  /** 自然语言部分(可空)。 */
   nl?: string;
-  /** Per-image dynamic negative (optional). ComfyUI uses %negative_prompt%; NAI takes its negative from the channel config and ignores this. */
+  /**
+   * 角色中文外貌(插件从角色库机械拼接,不来自 AI;可空)。
+   * ComfyUI 链路并进正向;NAI 忽略——那边没有中文原生的文本编码器。
+   */
+  appearance?: string;
+  /** 本画面动态负面(可空)。ComfyUI 走 %negative_prompt%;NAI 的负面取渠道配置,不吃这个。 */
   negative?: string;
-  /** NAI 4.5/V5 native multi-character prompts; ComfyUI does not support them (see charactersApplied). */
+  /** NAI 4.5/V5 原生多角色提示;ComfyUI 不支持(见 charactersApplied)。 */
   characters?: ImageCharacterPrompt[];
   /**
-   * Frame orientation; defaults to portrait. Exact pixels come from the channel's portrait/landscape sizes.
-   * If the channel locks orientation (activeOrientationLock), the locked orientation always applies and whatever is passed here is ignored.
+   * 画幅方向;缺省竖屏。具体像素取渠道配置里的横竖尺寸。
+   * 渠道锁定了方向(activeOrientationLock)时一律按锁定方向出,这里传什么都不算数。
    */
   size?: Orientation;
-  /** Seed for this run. Fixed beforehand by the caller via decideSeed() (tracking needs it before the request is sent). */
+  /** 本次种子。由调用方经 decideSeed() 先行确定(埋点要在发请求前拿到它)。 */
   seed: number;
 }
 
-/** Progress reports during generation (the card uses them to show queue position and backoff progress). */
+/** 生成过程中的进度上报(卡片用它显示排队位置与退避进度)。 */
+/** 最终提交的提示词全文(合成后)。 */
+export interface FinalPromptInfo {
+  positive: string;
+  negative: string;
+}
+
 export interface GenerateProgress {
-  /** A gate slot has been acquired and the request is about to go out (when NAI moves from "queued" to "generating"). */
+  /** 已取得闸门槽位、请求即将发出(NAI 从「排队中」进入「生成中」的时机)。 */
   onStart?: () => void;
-  /** How many tasks are ahead in the ComfyUI server queue; null = unknown. */
+  /**
+   * 拼装完成、请求即将发出时回报最终全文。**先于请求发出**,故即使请求失败/被拦,
+   * 调用方也已拿到「它本来要发什么」——这正是排查最需要的那一刻。
+   * 拼装是纯函数(composePositive / fullPositivePrompt),在调后端之前就能算出。
+   */
+  onPrompt?: (info: FinalPromptInfo) => void;
+  /** ComfyUI 服务端队列里前面还有几个;null = 未知。 */
   onQueue?: (ahead: number | null) => void;
-  /** NAI rate-limit backoff progress; null means no longer backing off. */
+  /** NAI 限流退避进度;传 null 表示已不在退避中。 */
   onRetry?: (retry: { attempt: number; max: number } | null) => void;
 }
 
 export interface GenerateOutput {
   result: ComfyImageResult;
-  /** The seed actually used (passed back as-is, so the caller need not keep track). */
+  /** 本次实际使用的种子(原样回传,调用方不必自己记)。 */
   seed: number;
-  /** The orientation actually rendered (the locked orientation when the channel is locked; may differ from the size passed in). */
+  /** 本次实际出图的画幅方向(渠道锁定时即锁定方向,可能与入参 size 不同)。 */
   size: Orientation;
   backend: BackendId;
   /**
-   * Whether characters was actually sent to the backend.
-   * The ComfyUI path **does not support** multi-character prompts (comfyui.ts / comfyTemplates.ts never read the field),
-   * so passing them is silently dropped. It is reported explicitly so callers can decide whether to tell the user to switch backends.
-   * No "degrade by merging into the prompt" here: that is exactly the overlapping-torso problem fixed in 0.2.3 (several full appearances in one image).
+   * 最终实际提交给后端的那一条正向全文(合成后,含固定正面/画质词/中文外貌)。
+   * meta.positive 有时拿不到(ComfyUI 自定义模式无法在这里拼出全文),这里同口径:
+   * 拿不到时为空串。存在的理由是调用方要把它写进请求历史——分段原料(simpleValues)
+   * 看不出拼接顺序、看不出哪段被丢弃,回看时没用。
+   */
+  finalPrompt: string;
+  /** 最终实际提交的负面全文;口径同上。 */
+  finalNegative: string;
+  /**
+   * characters 是否真的发给了后端。
+   * ComfyUI 链路**不支持**多角色提示(comfyui.ts / comfyTemplates.ts 全程不读该字段),
+   * 传了也是静默丢弃 —— 故显式回报,调用方据此决定要不要提示用户换后端。
+   * 不在这里「降级拼进 prompt」:那正是 0.2.3 修掉的重叠躯干问题(一张图里多份完整外貌)。
    */
   charactersApplied: boolean;
   /**
-   * The artist string / vibes / sampling parameters / model actually used, saved with the image (see generationMeta.ts).
-   * NAI's artist string and vibes are not in the tag text; if they don't bubble up here they are lost for good.
+   * 本次实际使用的画师串 / vibe / 采样参数 / 模型，供落盘随图记录（见 generationMeta.ts）。
+   * NAI 的画师串与 vibe 不在 tag 文本里，不在这里冒泡出去就只能永久丢失。
    */
   meta: GenerationMeta;
 }
 
-/** Backend readiness status. */
+/**
+ * 回报最终全文。**绝不抛**:埋点失败了不能把生图搞挂(理由同 state/history 的 safeHistory)。
+ * 空串不回报 —— 那表示「算不出来」,让调用方保留「未知」而不是收到一个假的空提示词。
+ */
+function reportPrompt(progress: GenerateProgress, positive: string, negative: string): void {
+  if (!positive && !negative) return;
+  try {
+    progress.onPrompt?.({ positive, negative });
+  } catch (error) {
+    console.warn('[BaiBai Image] Failed to report the final prompt (ignored)', error);
+  }
+}
+
+/** 后端就绪状态。 */
 export interface BackendStatus {
   backend: BackendId;
   configured: boolean;
-  /** Model name for NAI; current workflow preset name for ComfyUI. */
+  /** NAI 为模型名;ComfyUI 为当前工作流预设名。 */
   model: string;
-  /** Whether the current backend supports characters (true for NAI 4.5/V5, always false for ComfyUI). */
+  /** 当前后端是否支持 characters(NAI 4.5/V5 为 true,ComfyUI 恒 false)。 */
   supportsCharacters: boolean;
-  /** Human-readable reason when configured=false; empty string when ready. */
+  /** configured=false 时的人话原因;已就绪为空串。 */
   reason: string;
 }
 
 /**
- * Whether the current backend can generate images. **The single criterion**, shared by cards (configured) and the public API.
+ * 当前后端能不能出图。**唯一判据**,卡片(configured)与公开接口共用。
  *
- * ComfyUI is validated per mode (custom needs workflow JSON; simple needs model/VAE/CLIP all selected,
- * using the same validateSimpleConfig as assembly, avoiding "the card is clickable but generation errors"); NAI needs url + key.
+ * ComfyUI 要按模式分别校验(custom 要工作流 JSON;simple 要模型/VAE/CLIP 选齐,
+ * 与出图组装同一口径 validateSimpleConfig,避免「卡片能点、出图才报错」);NAI 要 url + key。
  */
 export function backendStatus(): BackendStatus {
   const backend = settings.defaultBackend;
 
   if (backend === 'nai') {
     const model = settings.nai.model;
-    // Support depends only on the model, not on whether configuration is complete: third parties need to know whether to pass characters before generating
+    // 支持与否只看模型,与配没配齐无关:第三方要在出图前就知道该不该传 characters
     const supportsCharacters = naiSupportsCharacterPrompts(model);
     const base = { backend, model, supportsCharacters };
-    // The address and key come from **the current endpoint** (see effectiveNai); channel-level nai.url/nai.key are legacy fields.
-    // The reason deliberately **omits the endpoint name**: it is passed to third parties as-is through getBackendStatus, and the name is
-    // typed by the user; some use the site domain as the name, so including it would leak the address into a public return value (see the allowlist in public/api.ts).
-    // Without the name it is still easy to locate: it is the one selected in the panel dropdown.
+    // 地址与 key 取**当前接入点**那一份(见 effectiveNai);渠道级 nai.url/nai.key 是存量字段。
+    // reason 里刻意**不带接入点名字**:它会经 getBackendStatus 原样递给第三方,而名字是用户
+    // 自己敲的——有人就拿站点域名当名字,带上等于把地址漏进公开返回值(见 public/api.ts 白名单)。
+    // 少了名字也不难定位:面板下拉里选中的就是这条。
     const conn = activeNaiEndpoint();
     if (!conn.url.trim()) {
       return { ...base, configured: false, reason: 'The current NAI endpoint has no API address' };
@@ -138,7 +183,7 @@ export function backendStatus(): BackendStatus {
     return { ...base, configured: true, reason: '' };
   }
 
-  // webui only survives as a legacy type (settings migration normalises it to comfyui/nai); if it shows up, it means "no backend selected"
+  // webui 只剩存量类型(设置迁移会把它归一成 comfyui/nai),真出现就是「没选后端」
   return {
     backend,
     configured: false,
@@ -149,11 +194,11 @@ export function backendStatus(): BackendStatus {
 }
 
 /**
- * Fixes the seed for this run. **It must be fixed before the request is sent**: first, some sampler nodes don't accept -1 for auto-random;
- * second, tracking and saving (entry.seed) both record it, which is what makes "another one with the same seed" possible later.
+ * 定本次种子。**必须在发请求前定好**:一是部分采样器节点不接受 -1 自动随机,
+ * 二是埋点与落盘(entry.seed)都要记下它,事后「同种子再来一张」才有依据。
  *
- * Rule: explicitly given > NAI panel fixed seed (>0) > random.
- * NAI and ComfyUI have different random upper bounds (each protocol's valid range), so they are drawn separately.
+ * 口径:显式指定 > NAI 面板固定种子(>0)> 随机。
+ * NAI 与 ComfyUI 的随机上界不同(各自协议的合法范围),故分开取。
  */
 export function decideSeed(backend: BackendId, override?: number): number {
   if (override !== undefined && Number.isFinite(override) && override > 0) return Math.floor(override);
@@ -162,13 +207,13 @@ export function decideSeed(backend: BackendId, override?: number): number {
 }
 
 /**
- * Generates one image with the current settings. **The single generation path for floor cards and the public API.**
+ * 按当前设置出一张图。**楼层卡片与公开接口的唯一生成路径。**
  *
- * Does not save, display, register runtime state or track; those are the caller's job.
- * signal is passed all the way down to fetch/polling; on cancel it throws AbortError (DOMException).
+ * 不负责落盘、不负责显示、不登记运行态、不做埋点 —— 那些是调用方的事。
+ * signal 一路透传到 fetch/轮询;取消时抛 AbortError(DOMException)。
  *
- * Gate discipline (see floor/genQueue.ts): the NAI path must hold a slot while sending, with release in finally;
- * missing one release permanently loses one unit of concurrency.
+ * 闸门纪律(见 floor/genQueue.ts):NAI 路径必须持槽发请求,release 放在 finally,
+ * 漏一格就永久少一格并发。
  */
 export async function generateImage(
   input: GenerateInput,
@@ -176,31 +221,42 @@ export async function generateImage(
   progress: GenerateProgress = {},
 ): Promise<GenerateOutput> {
   const status = backendStatus();
-  // Safety net: the card side already blocks the button via configured, and the public API reports not_configured first.
-  // Reaching here means the upstream criterion drifted; better to say so than send a request certain to fail with 401/404.
+  // 兜底:卡片侧已用 configured 拦在按钮上,公开接口侧也会先报 not_configured。
+  // 真漏到这里说明上游判据漂了,宁可明说也别发一个注定 401/404 的请求。
   if (!status.configured) throw new Error(status.reason || 'The image backend is not configured');
 
   const isNai = status.backend === 'nai';
   const characters = input.characters ?? [];
-  // The backend decides support: ComfyUI never supports it; NAI depends on whether the model is 4.5/V5
+  // 支持与否由后端说了算:ComfyUI 恒不支持;NAI 看模型是否 4.5/V5
   const charactersApplied = characters.length > 0 && status.supportsCharacters;
 
   let release: (() => void) | null = null;
   try {
-    // Hold the slot: once acquired, this function holds it until finally releases it
+    // 持槽:取到槽位后本函数内一直持有,直到 finally 释放
     if (isNai) release = await acquireNaiSlot(signal);
     progress.onStart?.();
 
-    // The orientation lock applies here for everyone (cards and the public API both go through this function): it only decides which size cell this run uses;
-    // the orientation recorded in the tag stays untouched, since promptHash hashes the raw tag and rewriting it would make old images stale for no reason.
+    // 画幅锁在这里统一生效(卡片与公开接口同走本函数):只决定这一次用哪格尺寸,
+    // tag 里记的方向原样不动——promptHash 吃 tag 原文,改写会让老图无辜变 stale。
     const size = effectiveOrientation(activeOrientationLock(), input.size ?? 'portrait');
     let result: ComfyImageResult;
     let meta: GenerationMeta;
+    // 最终全文在这里先算一遍(纯函数),**先于请求**报给调用方:失败也要能回看发了什么。
+    // 两处拼装都必须与后端内部用自己的那份完全同源 —— 逐字段照抄,不许「差不多」:
+    // 差一个字段,历史里记的就不是真正发出去的东西了。
+    let finalPrompt = '';
+    let finalNegative = '';
     if (isNai) {
+      const nai = effectiveNai();
+      // 先算成品再发请求:与 backends/nai 内部同一对纯函数(fullPositivePrompt /
+      // fullNegativePrompt),同一份 nai 快照 —— 所以这里算出的就是真正发出去的那条。
+      finalPrompt = fullPositivePrompt(nai, input.prompt, input.nl ?? '');
+      finalNegative = fullNegativePrompt(nai);
+      reportPrompt(progress, finalPrompt, finalNegative);
       const output = await generateNaiImage(
-        effectiveNai(),
-        // characters passes through unchanged: buildNaiParameters filters it out for unsupported models itself (same rule,
-        // naiSupportsCharacterPrompts); filtering again here would only add another criterion that can drift
+        nai,
+        // characters 原样透传:不支持的模型由 buildNaiParameters 自己滤掉(同一口径
+        // naiSupportsCharacterPrompts),在这儿再滤一遍只会多一处会漂的判据
         { prompt: input.prompt, nl: input.nl ?? '', characters, seed: input.seed, size },
         signal,
         { onRetry: info => progress.onRetry?.({ attempt: info.attempt, max: info.max }) },
@@ -209,11 +265,29 @@ export async function generateImage(
       meta = { backend: 'nai', model: status.model, ...output.usage };
     } else {
       const conn = effectiveComfyConn();
+      // 尺寸解析口径与 generateComfyImage 一致（未解析出时 0 = 用工作流自带尺寸）。
+      const px = parseSize(pickSize(conn, size));
+      const width = px?.width ?? 0;
+      const height = px?.height ?? 0;
+      // 与 generateComfyImage 内部同一对纯函数、同一份取值:算出来的就是发出去的那条。
+      const preview = previewComfyPrompt(conn, {
+        prompt: input.prompt,
+        nl: input.nl,
+        appearance: input.appearance,
+        negative_prompt: input.negative,
+        seed: input.seed,
+        width,
+        height,
+      });
+      finalPrompt = preview.positive;
+      finalNegative = preview.negative;
+      reportPrompt(progress, finalPrompt, finalNegative);
       result = await generateComfyImage(
         conn,
         {
           prompt: input.prompt,
           nl: input.nl ?? '',
+          appearance: input.appearance ?? '',
           negative_prompt: input.negative ?? '',
           seed: input.seed,
           size,
@@ -221,36 +295,32 @@ export async function generateImage(
         signal,
         { onQueue: ahead => progress.onQueue?.(ahead) },
       );
-      // ComfyUI has no runtime-skip concept; the whole recipe is in the preset, so it can be snapshotted here directly.
-      // Size parsing follows generateComfyImage (0 when unparsed = use the workflow's own size).
-      const px = parseSize(pickSize(conn, size));
-      const width = px?.width ?? 0;
-      const height = px?.height ?? 0;
-      const simpleValues: SimpleGenValues = {
-        prompt: input.prompt,
-        nl: input.nl,
-        negative: input.negative,
-        seed: input.seed,
-        width,
-        height,
-      };
+      // ComfyUI 没有运行期跳过的概念，配方全在预设里，可在此直接快照。
       meta = {
         backend: 'comfyui',
         model: status.model,
         width,
         height,
-        // In custom mode the prompt is decided by placeholders in the workflow, so the full text can't be built here; left empty.
-        positive: conn.mode === 'simple' ? composePositive(conn.simple, simpleValues) : '',
-        negative: conn.mode === 'simple' ? composeNegative(conn.simple, simpleValues) : '',
+        positive: finalPrompt,
+        negative: finalNegative,
         artist: null,
         vibes: [],
         params: conn.mode === 'simple' ? comfySimpleParams(conn.simple) : { mode: 'custom' },
       };
     }
 
-    // Backoff text stops here: the image is in hand and saving takes a moment; "retrying shortly" should no longer show
+    // 退避文案到此为止:图已拿到,落盘还要一会儿,不该继续显示「稍后重试」
     progress.onRetry?.(null);
-    return { result, seed: input.seed, size, backend: status.backend, charactersApplied, meta };
+    return {
+      result,
+      seed: input.seed,
+      size,
+      backend: status.backend,
+      charactersApplied,
+      finalPrompt,
+      finalNegative,
+      meta,
+    };
   } finally {
     release?.();
   }

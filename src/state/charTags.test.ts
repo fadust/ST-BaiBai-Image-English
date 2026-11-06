@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BBI_CHAR_EXTRA_KEY,
   applyCharTagOps,
+  charTagLib,
+  chineseAppearanceForText,
   computeLockedCharTagNames,
   createCharTagNewOp,
   createCharTagSetOp,
@@ -181,6 +183,109 @@ describe('floor-owned character changes', () => {
   });
 });
 
+describe('中文外貌(zh)的认人与拼接', () => {
+  /** 直接往派生库里塞条目:chineseAppearanceForText 读的是 charTagLib,不走 getContext。 */
+  function seed(entries: Array<{ name: string; zh?: string }>): void {
+    charTagLib.entries = entries.map(entry => ({
+      name: entry.name,
+      fields: emptyCharFields(),
+      raw: '1girl',
+      nl: '',
+      ...(entry.zh ? { zh: entry.zh } : {}),
+      source: 'manual' as const,
+      desc: '',
+      history: [],
+    }));
+  }
+
+  it('名字在 tag 或 nl 里字面出现时拼出该角色的中文外貌', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸,单眼皮,皮肤偏白。' }]);
+    // 每段前面带名字:多人同框时靠它把描述绑定到具体角色
+    expect(chineseAppearanceForText('1girl, 林夏, medium shot')).toBe('林夏：鹅蛋脸,单眼皮,皮肤偏白。');
+    expect(chineseAppearanceForText('林夏坐在窗边。')).toBe('林夏：鹅蛋脸,单眼皮,皮肤偏白。');
+  });
+
+  it('没出现的角色不拼;没填 zh 的也不拼', () => {
+    seed([
+      { name: '林夏', zh: '鹅蛋脸。' },
+      { name: '苏曼', zh: '圆脸,双眼皮。' },
+      { name: '许梨' },
+    ]);
+    expect(chineseAppearanceForText('1girl, medium shot')).toBe('');
+    expect(chineseAppearanceForText('苏曼站在门口。')).toBe('苏曼：圆脸,双眼皮。');
+    expect(chineseAppearanceForText('许梨走过来。')).toBe('');
+  });
+
+  it('长名覆盖短名:被测文本只提到「小雪」时不额外拼「雪」那一条', () => {
+    seed([
+      { name: '雪', zh: '短名描述。' },
+      { name: '小雪', zh: '长名描述。' },
+    ]);
+    // "小雪" 包含 "雪":若不做覆盖判断,同一个人会被拼两段
+    expect(chineseAppearanceForText('小雪走过来。')).toBe('小雪：长名描述。');
+    // 只有 "雪" 字出现时才轮到短名那条
+    expect(chineseAppearanceForText('雪落在肩上。')).toBe('雪：短名描述。');
+  });
+
+  it('两个不相干的角色都在场时各拼一段,顺序按名字长度降序', () => {
+    seed([
+      { name: '林夏', zh: '鹅蛋脸。' },
+      { name: '苏曼', zh: '圆脸。' },
+    ]);
+    expect(chineseAppearanceForText('林夏和苏曼站在门口。')).toBe('林夏：鹅蛋脸。 苏曼：圆脸。');
+  });
+
+  it('中文外貌里的换行被折成空格(与 nl 的 sanitizeContent 同口径)', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸,\r\n单眼皮,\n皮肤偏白。' }]);
+    // 不折的话,中文外貌会成为整条正向里唯一带换行的段落
+    expect(chineseAppearanceForText('林夏')).toBe('林夏：鹅蛋脸, 单眼皮, 皮肤偏白。');
+  });
+
+  it('名称为空或 zh 全是空白的条目不会被拼进来', () => {
+    seed([
+      { name: '林夏', zh: '   ' },
+      { name: '  ', zh: '不该出现。' },
+    ]);
+    expect(chineseAppearanceForText('林夏')).toBe('');
+  });
+
+  it('空文本与空库都返回空串', () => {
+    seed([{ name: '林夏', zh: '鹅蛋脸。' }]);
+    expect(chineseAppearanceForText('')).toBe('');
+    expect(chineseAppearanceForText('   ')).toBe('');
+    seed([]);
+    expect(chineseAppearanceForText('林夏')).toBe('');
+  });
+
+  it('zh 能经由 set op 写入,并随条目落库', () => {
+    const op = createCharTagSetOp('林夏', 'zh', '鹅蛋脸,单眼皮。', '补中文外貌');
+    expect(op).not.toBeNull();
+    const entries = applyCharTagOps(
+      [{
+        name: '林夏',
+        fields: emptyCharFields(),
+        raw: '1girl',
+        nl: '',
+        source: 'manual',
+        desc: '',
+        history: [],
+      }],
+      [op!],
+      -1,
+    );
+    expect(entries[0].zh).toBe('鹅蛋脸,单眼皮。');
+  });
+
+  it('存量条目没有 zh 键时不会因为读它而崩,也不会凭空多出空键', () => {
+    const [entry] = normalizeCharTagStore({
+      entries: [{ name: '阿黛尔', fields: { hair: 'long black hair' }, raw: '' }],
+    });
+    expect(entry.zh).toBeUndefined();
+    expect('zh' in entry).toBe(false);
+    expect(chineseAppearanceForText('阿黛尔')).toBe('');
+  });
+});
+
 describe('global library merge & lock', () => {
   const globalEntry = (name: string, fields: Record<string, string>) => ({
     name,
@@ -192,25 +297,25 @@ describe('global library merge & lock', () => {
     history: [],
   });
 
-  it('mergeCharTagSeed: same-name entries in this chat take priority; global only fills same-name gaps', () => {
+  it('mergeCharTagSeed: 本聊天同名条目优先,全局只补同名空缺', () => {
     const chat = [globalEntry('小雪', { hair: 'short red hair' })];
     const global = [globalEntry('小雪', { hair: 'long black hair' }), globalEntry('玩家', { sex: '1boy' })];
     const merged = mergeCharTagSeed(chat, global);
     expect(merged).toHaveLength(2);
     expect(merged.find(e => e.name === '小雪')?.fields.hair).toBe('short red hair');
     expect(merged.find(e => e.name === '玩家')?.fields.sex).toBe('1boy');
-    // Without global it returns as-is (zero-cost path)
+    // 无全局时原样返回(零开销路径)
     expect(mergeCharTagSeed(chat, [])).toBe(chat);
   });
 
-  it('computeLockedCharTagNames: only names unique to global are locked; a same name in this chat unlocks it', () => {
+  it('computeLockedCharTagNames: 只有「全局独有」的名字被锁定;本聊天同名即解锁', () => {
     const global = [globalEntry('玩家', { sex: '1boy' }), globalEntry('小雪', { sex: '1girl' })];
     expect([...computeLockedCharTagNames([], global)].sort()).toEqual(['小雪', '玩家']);
     expect([...computeLockedCharTagNames([globalEntry('小雪', { sex: '1girl' })], global)]).toEqual(['玩家']);
     expect(computeLockedCharTagNames([], []).size).toBe(0);
   });
 
-  it('applyCharTagOps: new and set for locked names are always discarded', () => {
+  it('applyCharTagOps: 锁定名的 new 与 set 一律丢弃', () => {
     const locked = new Set(['玩家']);
     const create = createCharTagNewOp({
       name: '玩家',
@@ -225,12 +330,12 @@ describe('global library merge & lock', () => {
     const out = applyCharTagOps(base, [create, dye], 3, locked);
     expect(out[0].fields.hair).toBe('short black hair');
     expect(out[0].history).toEqual([]);
-    // Without locked, the old behaviour is unchanged
+    // 不传 locked 时旧行为不变
     const out2 = applyCharTagOps(base, [dye], 3);
     expect(out2[0].fields.hair).toBe('long red hair');
   });
 
-  it('deriveCharTags: floor ops in old messages targeting locked characters have no effect on replay', () => {
+  it('deriveCharTags: 旧消息里针对锁定角色的楼层 ops 重放时失效', () => {
     const dye = createCharTagSetOp('玩家', 'hair', 'long red hair', '染发')!;
     const chat = [floorMessage([dye])];
     const base = [globalEntry('玩家', { sex: '1boy', hair: 'short black hair' })];

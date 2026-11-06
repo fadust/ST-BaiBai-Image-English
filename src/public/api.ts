@@ -294,6 +294,8 @@ export async function generate(
       seed: output.seed,
       backend: output.backend,
       charactersApplied: output.charactersApplied,
+      finalPrompt: output.finalPrompt,
+      finalNegative: output.finalNegative,
     };
   } catch (error) {
     throw toPublicError(error);
@@ -326,7 +328,7 @@ async function saveToGallery(
   const name =
     (typeof request.character === 'string' ? request.character.trim() : '') ||
     getContext()?.name2?.trim() ||
-    '未命名角色';
+    'Unnamed character';
   try {
     return await saveExternalImage(name, tag, seed, result, meta);
   } catch (error) {

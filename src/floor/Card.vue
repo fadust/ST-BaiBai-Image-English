@@ -36,7 +36,8 @@ import {
 import { isTagPlanning } from '@/floor/tagPlanState';
 import { formatGenerationMeta } from '@/generationMeta';
 import { activeComfyPreset, activeOrientationLock, imageDisplayMaxHeight, settings } from '@/state/settings';
-import { beginImage, failImage, finishImage, safeHistory } from '@/state/history';
+import { chineseAppearanceForText } from '@/state/charTags';
+import { beginImage, failImage, finishImage, patchImagePrompt, safeHistory } from '@/state/history';
 import { copyText } from '@/st/clipboard';
 import { getContext } from '@/st/context';
 import { formatPromptText } from '@/st/imageTagRegex';
@@ -269,6 +270,8 @@ async function generate(): Promise<void> {
     tag: props.tag,
     prompt: props.prompt,
     nl: props.nl,
+    // Resolve Chinese appearance at request time so later library edits still apply.
+    appearance: chineseAppearanceForText(`${props.prompt} ${props.nl}`),
     negative: props.negative,
     characters: props.characters.map(character => ({ ...character })),
     size: effectiveSize.value,
@@ -296,12 +299,16 @@ async function generate(): Promise<void> {
         size: job.size,
         floor: job.messageId,
         seq: job.seq,
+        appearance: job.appearance,
       }),
     );
     // The gate and backend dispatch are all inside generateImage (the public API takes the same path; see generate.ts);
     // this component only wires the progress callback to its own slot's runtime state.
-    const { result, meta } = await generateImage({ ...job, seed }, signal, {
+    const { result, meta, finalPrompt, finalNegative } = await generateImage({ ...job, seed }, signal, {
       onStart: () => setGenPhase(slot, token, 'generating'),
+      onPrompt: info => {
+        if (historyId !== null) safeHistory(() => patchImagePrompt(historyId!, info.positive, info.negative));
+      },
       onQueue: ahead => setQueueAhead(slot, token, ahead),
       onRetry: retry => setGenRetry(slot, token, retry),
     });
@@ -317,7 +324,7 @@ async function generate(): Promise<void> {
     // and the card is restored from extra as ready (ending the blob/data URL lifetime).
     await saveImageResult(job.messageId, job.swipeId, job.seq, job.tag, seed, result, meta);
     result.revoke();
-    if (historyId !== null) safeHistory(() => finishImage(historyId!));
+    if (historyId !== null) safeHistory(() => finishImage(historyId!, { finalPrompt, finalNegative }));
     // Clear runtime state before re-hydrating: re-hydration rebuilds this component, and only once cleared won't it come back still generating
     clearGen(slot, token);
     const ctx = getContext();

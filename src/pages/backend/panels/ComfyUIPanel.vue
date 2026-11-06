@@ -3,6 +3,12 @@ import {
   COMFY_TEMPLATE_OPTIONS,
   COMFY_TEMPLATES,
   isComfyTemplateId,
+  isMossTemplate,
+  MOSS_ANIME_DEFAULT_NEGATIVE,
+  MOSS_ANIME_DEFAULT_POSITIVE,
+  MOSS_DEFAULT_NEGATIVE,
+  MOSS_DEFAULT_POSITIVE,
+  simpleConfigWarnings,
   simpleDefaults,
   validateSimpleConfig,
   type ComfyPresetMode,
@@ -29,9 +35,11 @@ import ModalMask from '@/components/ModalMask.vue';
 import {
   activeComfyPreset,
   effectiveComfyConn,
+  LAYOUT_LOCKS,
   newComfyWorkflow,
   ORIENTATION_LOCKS,
   settings,
+  type SpecDialect,
 } from '@/state/settings';
 import { computed, nextTick, ref, watch } from 'vue';
 
@@ -133,10 +141,44 @@ const modeOptions: Array<{ value: ComfyPresetMode; label: string }> = [
   { value: 'simple', label: 'Simple parameters' },
 ];
 
+const specDialectOptions: Array<{ value: SpecDialect; label: string }> = [
+  { value: 'comfy', label: 'Standard ComfyUI (tag stream)' },
+  { value: 'moss', label: 'MOSS realistic (prose stream)' },
+  { value: 'moss-anime', label: 'MOSS anime (2D)' },
+];
+
+const specDialectSel = computed<string>({
+  get: () => active.value.specDialect,
+  set: v => {
+    active.value.specDialect = v as SpecDialect;
+  },
+});
+
 const templateOptions = COMFY_TEMPLATE_OPTIONS;
 
 /** Metadata of the current template (decides which fields the form shows). */
 const meta = computed(() => COMFY_TEMPLATES[active.value.simple.template] ?? COMFY_TEMPLATES.checkpoint);
+
+const isMossDialect = computed(() => active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime');
+const showLayoutLock = computed(() => active.value.specDialect === 'moss-anime');
+const fixedSampler = computed(() => meta.value.samplerFixed);
+const needMossNegative = computed(
+  () => isMossTemplate(active.value.simple.template) && !active.value.simple.negative.trim(),
+);
+const needMossPositive = computed(
+  () => isMossTemplate(active.value.simple.template) && !active.value.simple.positive.trim() && !meta.value.aiProvidesStyle,
+);
+
+function fillDefaultNegative() {
+  active.value.simple.negative =
+    active.value.simple.template === 'moss-anime' ? MOSS_ANIME_DEFAULT_NEGATIVE : MOSS_DEFAULT_NEGATIVE;
+}
+
+function fillDefaultPositive() {
+  active.value.simple.positive =
+    active.value.simple.template === 'moss-anime' ? MOSS_ANIME_DEFAULT_POSITIVE : MOSS_DEFAULT_POSITIVE;
+}
+
 
 const lists = ref<ComfyModelLists | null>(null);
 const fetching = ref(false);
@@ -220,6 +262,14 @@ function onTemplateChange(id: string) {
   if (current.template === id) return;
   const prevMeta = COMFY_TEMPLATES[current.template];
   const nextMeta = COMFY_TEMPLATES[id];
+  // Dialect follows the base model family when entering/leaving MOSS templates.
+  if (id === 'moss' || id === 'moss-anime') active.value.specDialect = id;
+  else if (
+    isMossTemplate(current.template) &&
+    (active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime')
+  ) {
+    active.value.specDialect = 'comfy';
+  }
   if (active.value.portraitSize === prevMeta.portraitSize) active.value.portraitSize = nextMeta.portraitSize;
   if (active.value.landscapeSize === prevMeta.landscapeSize) active.value.landscapeSize = nextMeta.landscapeSize;
   active.value.simple = {
@@ -246,10 +296,26 @@ const simpleState = computed(() => {
     : { tone: 'ok', text: 'valid', detail: '' };
 });
 
-const nlHint = computed(() =>
-  active.value.mode === 'simple'
+const nlHint = computed(() => {
+  if (active.value.specDialect === 'moss-anime') {
+    return 'MOSS anime line requires Chinese prose (camera / depth layers / light / people / materials); that prose is the main positive.';
+  }
+  if (active.value.specDialect === 'moss') {
+    return 'MOSS realistic line requires English prose (camera / depth layers / light / people); that prose is the main positive.';
+  }
+  return active.value.mode === 'simple'
     ? 'Also write a natural-language description; in simple mode it replaces tags as the positive prompt (recommended for Flux/Anima)'
-    : 'Also write a natural-language description and insert it into the workflow at %nl%',
+    : 'Also write a natural-language description and insert it into the workflow at %nl%';
+});
+
+const simpleWarning = computed(() => simpleConfigWarnings(active.value.simple));
+
+watch(
+  [fixedSampler, () => active.value.simple.sampler],
+  ([fixed, sampler]) => {
+    if (fixed && sampler !== fixed) active.value.simple.sampler = fixed;
+  },
+  { immediate: true },
 );
 
 /** The pill shows only one word; the specific reason goes in the title tooltip, taking no space. */
@@ -479,12 +545,49 @@ function applyAssist() {
             {{ simpleState.text }}
           </span>
         </div>
+        <p v-if="active.mode === 'simple' && simpleWarning" class="wf-note is-warn">
+          {{ simpleWarning }}
+        </p>
 
-        <label class="bbi-switch-row">
+        <label class="bbi-switch-row" :class="{ 'is-locked': isMossDialect }">
           <span class="bbi-field-label">Generate natural language</span>
-          <input v-model="active.naturalLanguage" type="checkbox" class="bbi-checkbox" />
+          <input
+            v-model="active.naturalLanguage"
+            type="checkbox"
+            class="bbi-checkbox"
+            :disabled="isMossDialect"
+          />
         </label>
         <p class="bbi-field-hint wf-switch-hint">{{ nlHint }}</p>
+
+        <div class="bbi-select-row">
+          <span class="bbi-field-label">Prompt dialect</span>
+          <BbiSelect v-model="specDialectSel" :options="specDialectOptions" aria-label="Prompt specification" />
+        </div>
+        <p class="bbi-field-hint wf-switch-hint">
+          Which specification this workflow uses. MOSS lines require a prose segment (English for realistic, Chinese for anime) and do not request AI dynamic negatives.
+        </p>
+        <div v-if="showLayoutLock" class="bbi-select-row">
+          <span class="bbi-field-label">Layout</span>
+          <div class="bbi-segmented" role="tablist" aria-label="Layout">
+            <button
+              v-for="opt in LAYOUT_LOCKS"
+              :key="opt.value"
+              class="bbi-seg"
+              :class="{ 'is-on': active.layoutLock === opt.value }"
+              type="button"
+              role="tab"
+              :aria-selected="active.layoutLock === opt.value"
+              :title="opt.hint"
+              @click="active.layoutLock = opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+        <p v-if="showLayoutLock" class="bbi-field-hint wf-switch-hint">
+          How many panels in one image. Strip / comic page make the AI write one shot-size/angle line per panel; comic page also asks for speech bubbles. Keep panel counts modest or faces and materials collapse.
+        </p>
 
         <div class="bbi-num-row">
           <span class="bbi-field-label">Portrait size (width × height)</span>
@@ -691,6 +794,24 @@ function applyAssist() {
               <span class="bbi-field-label">Prompts</span>
             </div>
             <div class="wf-prompts">
+              <div class="wf-prompt-actions" v-if="needMossPositive || needMossNegative">
+                <button
+                  v-if="needMossPositive"
+                  class="bbi-btn bbi-btn-sm"
+                  type="button"
+                  @click="fillDefaultPositive"
+                >
+                  Fill default positive
+                </button>
+                <button
+                  v-if="needMossNegative"
+                  class="bbi-btn bbi-btn-sm"
+                  type="button"
+                  @click="fillDefaultNegative"
+                >
+                  Fill default negative
+                </button>
+              </div>
               <BbiTextarea
                 v-model="active.simple.positive"
                 :rows="2"

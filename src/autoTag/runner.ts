@@ -7,9 +7,11 @@ import {
   type PositionedCharOp,
 } from '@/autoTag/charAnchors';
 import { prepareTargetText } from '@/autoTag/clean';
+import { auditLayers, formatLayerAudits, repairTagAges } from '@/autoTag/dupes';
 import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/generationGate';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
+import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
 import { buildSlotTaskNote } from '@/autoTag/slotPlan';
 import {
   BBI_CHAR_EXTRA_KEY,
@@ -358,6 +360,25 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           ) {
             throw new Error('NAI 4.5/V5 profiles must include an nl appearance description');
           }
+          // Mechanically repair age conflicts in tags; do not fail the run over a string fix.
+          // Composition / cross-layer issues stay warn-only (see shotspec / dupes audits below).
+          const repairs: string[] = [];
+          for (const image of candidate.images) {
+            const fixed = repairTagAges(image.tag);
+            if (!fixed.removed.length) continue;
+            image.tag = fixed.tag;
+            repairs.push(fixed.removed.join(', '));
+          }
+          if (repairs.length) {
+            console.warn(
+              '[BaiBai Image] Removed duplicate/conflicting ages from tags:',
+              [...new Set(repairs)].join(' / '),
+            );
+            toastr.info(
+              `Removed duplicate or conflicting ages from the prompt (${[...new Set(repairs)].join(', ')}); the image run continues.`,
+              'BaiBai Image',
+            );
+          }
           parsed.plan = candidate;
         };
         // With retries, add the attempt number to source, so two history records are visibly a retry pair
@@ -479,6 +500,34 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       const names = [...unknownNames].join(', ');
       console.warn('[BaiBai Image] AI references a character placeholder that is not in the library and has been stripped:', names);
       toastr.warning(`Character "${names}" has no profile, so their appearance is missing from this image.`, 'BaiBai Image');
+    }
+
+    // Pre-image text audits: warn only, never branch the run (see autoTag/shotspec and autoTag/dupes).
+    // Runs after placeholder replacement so audits see the final tag/nl that would be submitted.
+    if (plan.images.length) {
+      try {
+        const shotNotes = formatFrameAudits(
+          auditFrames(
+            plan.images.map(image => ({ tag: image.tag, nl: image.nl, size: image.size })),
+            { orientation: profile.lockedSize ?? undefined },
+          ),
+        );
+        if (shotNotes) console.warn(`[BaiBai Image] Composition audit:\n${shotNotes}`);
+
+        const layerNotes = formatLayerAudits(
+          auditLayers(
+            plan.images.map(image => ({
+              tag: image.tag,
+              nl: image.nl,
+              // Chinese appearance is injected later in Card.vue; runner only audits tag/nl here.
+              only: 'tag' as const,
+            })),
+          ),
+        );
+        if (layerNotes) console.warn(`[BaiBai Image] Cross-layer duplicates:\n${layerNotes}`);
+      } catch (error) {
+        console.warn('[BaiBai Image] Pre-image audit failed (ignored)', error);
+      }
     }
 
     // The single-slot rewrite returned no new prompt: keep the original prompt and image, replace nothing (empty images is not an error).

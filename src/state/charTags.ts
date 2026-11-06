@@ -38,7 +38,7 @@ export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
 };
 
 export type CharTagSource = 'book' | 'manual' | 'ai';
-export type CharTagHistoryField = CharTagField | 'new' | 'raw' | 'nl';
+export type CharTagHistoryField = CharTagField | 'new' | 'raw' | 'nl' | 'zh';
 
 export interface CharTagChangeRecord {
   field: CharTagHistoryField;
@@ -55,6 +55,13 @@ export interface CharTagEntry {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /**
+   * Optional Chinese appearance prose (free text, not tags). Unlike `nl` (AI reference),
+   * `zh` is mechanically appended into the final ComfyUI positive by the plugin for MOSS
+   * dialects where `nl || prompt` would otherwise drop English tag fields. Added in 0.3.4;
+   * readers must use `entry.zh?.trim() ?? ''`.
+   */
+  zh?: string;
   source: CharTagSource;
   desc: string;
   history: CharTagChangeRecord[];
@@ -66,6 +73,8 @@ export interface CharTagNewOp {
   fields: Record<CharTagField, string>;
   raw: string;
   nl: string;
+  /** Chinese appearance prose (see CharTagEntry.zh). */
+  zh?: string;
   source: 'book' | 'ai';
   desc: string;
   reason: string;
@@ -75,7 +84,7 @@ export interface CharTagNewOp {
 export interface CharTagSetOp {
   kind: 'set';
   name: string;
-  field: CharTagField | 'raw' | 'nl';
+  field: CharTagField | 'raw' | 'nl' | 'zh';
   value: string;
   reason: string;
   at: number;
@@ -166,11 +175,11 @@ export function buildEntryTag(entry: Pick<CharTagEntry, 'fields' | 'raw'>): stri
 }
 
 function isHistoryField(value: string): value is CharTagHistoryField {
-  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'new' || value === 'raw' || value === 'nl';
+  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'new' || value === 'raw' || value === 'nl' || value === 'zh';
 }
 
 function isSetField(value: string): value is CharTagSetOp['field'] {
-  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'raw' || value === 'nl';
+  return (CHAR_TAG_FIELDS as readonly string[]).includes(value) || value === 'raw' || value === 'nl' || value === 'zh';
 }
 
 function normalizeHistory(raw: unknown): CharTagChangeRecord[] {
@@ -212,7 +221,8 @@ function normalizeEntry(raw: unknown): CharTagEntry | null {
   const legacyTags = typeof value.tags === 'string' ? value.tags.trim() : '';
   const rawTag = typeof value.raw === 'string' ? value.raw.trim() : legacyTags;
   if (!rawTag && charFieldsEmpty(fields)) return null;
-  return {
+  const zh = typeof value.zh === 'string' ? value.zh.trim() : '';
+  const entry: CharTagEntry = {
     name,
     fields,
     raw: rawTag,
@@ -221,6 +231,8 @@ function normalizeEntry(raw: unknown): CharTagEntry | null {
     desc: typeof value.desc === 'string' ? value.desc : '',
     history: normalizeHistory(value.history),
   };
+  if (zh) entry.zh = zh;
+  return entry;
 }
 
 function cloneEntry(entry: CharTagEntry): CharTagEntry {
@@ -263,6 +275,7 @@ function normalizeAutoOp(raw: unknown): CharTagAutoOp | null {
       fields,
       raw: rawTag,
       nl: typeof value.nl === 'string' ? value.nl.trim() : '',
+      zh: typeof value.zh === 'string' ? value.zh.trim() : '',
       source: value.source === 'book' ? 'book' : 'ai',
       desc: typeof value.desc === 'string' ? value.desc : '',
       reason: typeof value.reason === 'string' ? value.reason : '',
@@ -302,7 +315,7 @@ function pushHistory(entry: CharTagEntry, record: CharTagChangeRecord): void {
 }
 
 export function createCharTagNewOp(
-  entry: Pick<CharTagEntry, 'name' | 'fields' | 'raw' | 'nl' | 'source' | 'desc'>,
+  entry: Pick<CharTagEntry, 'name' | 'fields' | 'raw' | 'nl' | 'source' | 'desc'> & { zh?: string },
   reason = '',
   at = Date.now(),
 ): CharTagNewOp | null {
@@ -314,6 +327,7 @@ export function createCharTagNewOp(
     fields: normalized.fields,
     raw: normalized.raw,
     nl: normalized.nl,
+    zh: normalized.zh ?? '',
     source: normalized.source === 'book' ? 'book' : 'ai',
     desc: normalized.desc,
     reason,
@@ -355,6 +369,7 @@ export function applyCharTagOps(
         desc: op.desc,
         history: [],
       };
+      if ((op.zh ?? '').trim()) entry.zh = op.zh!.trim();
       pushHistory(entry, {
         field: 'new',
         from: '',
@@ -369,11 +384,27 @@ export function applyCharTagOps(
 
     const entry = out.find(candidate => candidate.name === op.name);
     if (!entry) continue;
-    if (op.field !== 'raw' && op.field !== 'nl' && entry.raw.trim() && charFieldsEmpty(entry.fields)) continue;
-    const current = op.field === 'raw' ? entry.raw : op.field === 'nl' ? entry.nl : entry.fields[op.field];
+    if (
+      op.field !== 'raw' &&
+      op.field !== 'nl' &&
+      op.field !== 'zh' &&
+      entry.raw.trim() &&
+      charFieldsEmpty(entry.fields)
+    ) {
+      continue;
+    }
+    const current =
+      op.field === 'raw'
+        ? entry.raw
+        : op.field === 'nl'
+          ? entry.nl
+          : op.field === 'zh'
+            ? (entry.zh ?? '')
+            : entry.fields[op.field];
     if (current === op.value) continue;
     if (op.field === 'raw') entry.raw = op.value;
     else if (op.field === 'nl') entry.nl = op.value;
+    else if (op.field === 'zh') entry.zh = op.value;
     else entry.fields[op.field] = op.value;
     entry.source = 'ai';
     entry.desc = '';
@@ -488,6 +519,31 @@ export function findCharTag(name: string): CharTagEntry | undefined {
   return charTagLib.entries.find(entry => entry.name === name);
 }
 
+
+/**
+ * Collect Chinese appearance prose for characters named in `text`.
+ * Plugin-only injection path for MOSS: mechanically joins matched `zh` entries; no AI rewrite.
+ * Longer names win over shorter substring names; newlines collapse to spaces.
+ */
+export function chineseAppearanceForText(text: string): string {
+  const source = (text ?? '').trim();
+  if (!source) return '';
+  const candidates = charTagLib.entries
+    .filter(entry => entry.name.trim() && (entry.zh ?? '').trim())
+    .sort((left, right) => right.name.trim().length - left.name.trim().length);
+  const parts: string[] = [];
+  const accepted: string[] = [];
+  for (const entry of candidates) {
+    const name = entry.name.trim();
+    if (!source.includes(name)) continue;
+    if (accepted.some(longer => longer.includes(name))) continue;
+    accepted.push(name);
+    const zh = (entry.zh ?? '').trim().replace(/[\r\n]+/g, ' ');
+    if (zh) parts.push(`${name}：${zh}`);
+  }
+  return parts.join(' ');
+}
+
 export interface UpsertOptions {
   recordChanges?: boolean;
 }
@@ -511,6 +567,8 @@ export function upsertCharTag(
       ? entry.history.map(record => ({ ...record }))
       : (previous?.history.map(record => ({ ...record })) ?? []),
   };
+  const zh = (entry.zh ?? '').trim();
+  if (zh) next.zh = zh;
   if (opts.recordChanges && previous) {
     const at = Date.now();
     for (const field of CHAR_TAG_FIELDS) {
@@ -530,6 +588,11 @@ export function upsertCharTag(
     }
     if (previous.nl !== next.nl && (previous.nl || next.nl)) {
       pushHistory(next, { field: 'nl', from: previous.nl, to: next.nl, reason: 'Manual editing', floor: -1, at });
+    }
+    const prevZh = previous.zh ?? '';
+    const nextZh = next.zh ?? '';
+    if (prevZh !== nextZh && (prevZh || nextZh)) {
+      pushHistory(next, { field: 'zh', from: prevZh, to: nextZh, reason: 'Manual editing', floor: -1, at });
     }
   }
 
@@ -564,6 +627,7 @@ export function rollbackCharTag(name: string, record: CharTagChangeRecord): bool
   const next = cloneEntry(current);
   if (record.field === 'raw') next.raw = record.from;
   else if (record.field === 'nl') next.nl = record.from;
+  else if (record.field === 'zh') next.zh = record.from;
   else next.fields[record.field] = record.from;
   next.source = 'manual';
   next.desc = '';
