@@ -14,6 +14,12 @@ An English adaptation of [baibai-git/ST-BaiBai-Image](https://github.com/baibai-
 
 New controls and AI instructions use natural English. Names and saved-data keys are preserved. These features do not require NPC Codex. See the [scene-editing guide](docs/SCENE-EDITING.md) for details and source attribution.
 
+## ComfyUI image controls
+
+Under **Backend → Workflow**, custom API workflows now show the image model, six LoRA slots with individual strengths, sampler, scheduler, steps, and CFG. Lists come from your connected ComfyUI server; file names can also be entered directly. Changes save to the selected workflow preset.
+
+Standard LoRA loaders and rgthree LoRA stacks are supported, including negative strengths. Custom mode edits existing loader slots and preserves the rest of the graph. Extra slots and linked inputs remain available in Workflow JSON. For standard LoRA loaders, changing strength updates both model and CLIP strength. Simple mode also starts with six visible LoRA slots.
+
 ## Optional NPC Codex integration
 
 When NPC Codex exposes `imageActors`, chat-image planning reads accepted appearance for the matching chat/message boundary. It overlays unlocked automatic profiles for that request only, preserves manual/global overrides, and rejects a changed appearance before saving a plan. Book and the existing render library remain the fallback for unavailable or ambiguous identities/history. No dossiers or stored image profiles are rewritten. For semantic models, enable the workflow's Natural language option and connect `%nl%` to its positive encoder; `%nl%`-only workflows are supported. NPC Codex portraits supply that same input. Seeds remain scene-specific and do not establish character identity.
