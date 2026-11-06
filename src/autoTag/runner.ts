@@ -9,6 +9,10 @@ import {
 import { prepareTargetText } from '@/autoTag/clean';
 import { auditLayers, formatLayerAudits, repairTagAges } from '@/autoTag/dupes';
 import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/generationGate';
+import { focusImageCount, passageTaskNote } from '@/rewriteHint/passage';
+import { addFocusedTags, addedExtraUpdates, dropAddedMark, pinFocusPosition } from '@/rewriteHint/move';
+import { focusSourceUpdate } from '@/rewriteHint/sources';
+import { rememberPrompt } from '@/promptVersions/restore';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
 import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
@@ -114,6 +118,8 @@ interface RunOptions {
    * and this run's AI changes are ignored (the first full analysis already created profiles for the whole floor).
    */
   slot?: { seq: number };
+  focus?: string;
+  add?: boolean;
 }
 
 /** User-readable reason for abandoning the write. Text changes are no longer among them; that is normal and gets rebased and written as usual. */
@@ -178,7 +184,7 @@ function planChangeOps(plan: ImagePlan): PositionedCharOp[] {
   return ops.sort((left, right) => left.sourceLine - right.sourceLine);
 }
 
-async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> {
+async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolean | void> {
   const context = getContext();
   diagnostic('runForFloor:enter', {
     floor,
@@ -223,6 +229,10 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     });
     return;
   }
+  if (opts.focus && running.has(`${context.getCurrentChatId()}\u0000${floor}`)) {
+    toastr.info('Image planning is already running for this message. Try again when it finishes.', 'BaiBai Image');
+    return;
+  }
   const rawSource = message.mes;
   const slot = opts.slot;
   // Target of a single-slot rewrite: snapshot the raw text of tag number seq at start, and before writing back confirm seq still points at the same tag
@@ -240,7 +250,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
   // Detection shares its source with the button layer (imageTagRegex.hasImageTagTrace): the two once drifted:
   // the button only recognised open tags while this recognised both, so a floor with only `</bbi_image>` left got stuck at "clicked, nothing happened".
   // A single-slot rewrite presupposes "this floor already has tags", so this gate doesn't block it.
-  if (hasImageTagTrace(rawSource) && !opts.replace && !slot) {
+  if (hasImageTagTrace(rawSource) && !opts.replace && !slot && !opts.add) {
     abort(
       floor,
       'already-has-image-tag',
@@ -252,7 +262,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
   }
   // replace / slot: analysis is based on the text with old tags removed. On write-back, replace makes the old tags disappear with it;
   // slot replaces in place by seq, and other tags stay intact in the write-back base.
-  const source = opts.replace || slot ? stripImageTags(rawSource) : rawSource;
+  const source = opts.replace || slot || opts.add ? stripImageTags(rawSource) : rawSource;
   if (!source.trim()) {
     abort(floor, 'empty-source', opts.manual, 'This floor has no text (or only image tags), so there is nothing to analyse.');
     return;
@@ -301,7 +311,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     const memory = readBookMemory(floor, context.chat[floor]?.mes ?? '', context.name1);
     // Single-slot rewrite: the library text must include this floor's profiles already recorded (created by the first full analysis), otherwise the AI would
     // rewrite profiled characters as newcomers. charTagsBeforeFloor(floor + 1) includes exactly this floor (applies when the swipe matches).
-    const entriesBefore = slot ? charTagsBeforeFloor(floor + 1) : charTagsBeforeFloor(floor);
+    const entriesBefore = slot || opts.add ? charTagsBeforeFloor(floor + 1) : charTagsBeforeFloor(floor);
     // Locked names (global library ⊖ this chat's baseline): AI changes never apply to these names; they carry a [locked] marker in the library text
     const codex = codexAppearance(context, floor, rawSource, entriesBefore, lockedCharTagNames(), memory?.roles.map(role => role.name));
     const lockedNames = codex.locked;
@@ -310,7 +320,9 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // Single-slot rewrite: the protocol forces "exactly 1 image" and gives the model this slot's current prompt plus summaries of the other slots
     // (anchoring the same scene and not taking others' scenes). min/max must cover both the rule text in build and the parse validation below;
     // changing only one would contradict itself.
-    const promptOptions = slot
+    const promptOptions = opts.focus
+      ? { ...settings.autoTag, minImages: focusImageCount(opts.focus), maxImages: focusImageCount(opts.focus) }
+      : slot
       ? { ...settings.autoTag, minImages: 1, maxImages: 1 }
       : settings.autoTag;
     // Snapshot the protocol shape once at start: protocol writing, validation and finishing share it, so a toggle flipped midway can't make them disagree
@@ -322,7 +334,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       memory,
       preparedTarget,
       anchors.text,
-      slot ? buildSlotTaskNote(rawSource, slot.seq) : '',
+      slot ? buildSlotTaskNote(rawSource, slot.seq) : opts.focus ? passageTaskNote(opts.focus) : '',
       profile,
       codex.note,
     );
@@ -353,7 +365,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
           // A single-slot rewrite ignores this run's changes and doesn't validate the profile nl; validating it would waste retries
           // on changes that will be discarded anyway. When NAI natural language is off the protocol asks for no nl, so it isn't validated either.
           if (
-            !slot &&
+            !slot && !opts.add &&
             profile.naiCharPrompts &&
             profile.nl &&
             candidate.changes.some(change => change.field === 'new' && !change.nl?.trim())
@@ -427,7 +439,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // Single-slot rewrites do not apply changes: the first full analysis already created profiles for the whole floor; applying again would only produce
     // duplicate profile/change records. The library text already includes this floor's delta (see entriesBefore above); the AI just copies it.
     if (!codex.isCurrent()) throw new Error('NPC Codex appearance changed during image planning. Run image planning again.');
-    const planOps = slot ? [] : planChangeOps(plan);
+    if (opts.focus) pinFocusPosition(plan.images, preparedTarget.segments, opts.focus);
+    const planOps = slot || opts.add ? [] : planChangeOps(plan);
     // Locked characters (global library) don't accept AI changes: discard them; they are not written to the floor and take no part in @ replacement.
     // The replay side's applyCharTagOps blocks locked names again (old messages may already hold such ops).
     const effectiveOps = lockedNames.size
@@ -547,7 +560,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     // A single-slot rewrite is the user's explicit intent on the card (like "Apply and regenerate" in the prompt editor dialog),
     // so it isn't bound by the autoTag.autoGenerate toggle and always force-generates.
     const markSwipeId = message.swipe_id ?? 0;
-    const marked = plan.images.length > 0 && (settings.autoTag.autoGenerate || !!slot);
+    const marked = !opts.add && plan.images.length > 0 && (settings.autoTag.autoGenerate || !!slot || !!opts.focus);
     if (marked) {
       if (slot) {
         markForAutoGenerate(chatId, floor, markSwipeId, slot.seq, 'force');
@@ -564,6 +577,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       floor,
       currentText => {
         if (!codex.isCurrent()) return null;
+        if (opts.add) {
+          // Do not reorder slots if the story or existing prompts changed during planning.
+          if (currentText !== rawSource) return null;
+          return addFocusedTags(currentText, { chatId, floor, swipeId: markSwipeId }, plan.images.map(image => ({ tag: serializeImageTag(image), passageId: image.position })));
+        }
         // Single-slot rewrite: replace only tag number seq; the text and other tags stay untouched, and no relocation is needed.
         // The position the model returns deliberately plays no part here: the scene is pinned in place; the model only rewrites the content.
         // The raw text snapshotted at start doesn't match = changed by the user/another flow meanwhile; don't overwrite (same as the prompt editor dialog).
@@ -589,15 +607,18 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       chatId,
       swipeId,
       message,
-      // Single slot writes nothing extra: this floor's character delta and other slots' images aren't its business; not passing extraUpdate leaves them as-is.
-      slot
-        ? undefined
-        : {
-            key: BBI_CHAR_EXTRA_KEY,
-            value: makeCharTagFloorDelta(floorOps, swipeId ?? 0),
-          },
+      // Text, slot positions, prompt history, and scene markers commit or roll back together.
+      [
+        ...(opts.add ? addedExtraUpdates(floor) : slot ? [rememberPrompt(message, markSwipeId, slot.seq, slotRawTag!)].filter((item): item is NonNullable<typeof item> => !!item) : [{ key: BBI_CHAR_EXTRA_KEY, value: makeCharTagFloorDelta(floorOps, swipeId ?? 0) }]),
+        ...(opts.focus ? [focusSourceUpdate(message.extra, markSwipeId, plan.images, preparedTarget.segments, opts.focus)] : []),
+      ],
     );
     if (result === 'saved') {
+      if (opts.focus) {
+        if (!opts.add) recomputeCharTags();
+        toastr.success(`Added ${plan.images.length} illustration(s) to message ${floor}. Existing images were kept.`, 'BaiBai Image');
+        return true;
+      }
       if (slot) {
         toastr.success(`Rewrote the prompt for image ${slot.seq + 1}; generating with the new prompt`, 'BaiBai Image');
         return;
@@ -613,6 +634,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
       }
       return;
     }
+    if (opts.add) dropAddedMark();
     // Revoke only our own mark: clearAutoGenerateForFloor would also clear pending marks for other slots on the same floor.
     if (marked) {
       if (slot) consumeAutoGenerate(chatId, floor, markSwipeId, slot.seq);
@@ -630,7 +652,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<void> 
     processed.delete(identity);
     // If the error happened after the marks were set (e.g. a save failure rolled back), revoke this floor's marks, leaving nothing behind.
     // A single slot revokes only its own mark: clearAutoGenerateForFloor would also clear pending marks for other slots on the same floor.
-    if (slot) consumeAutoGenerate(chatId, floor, swipeId ?? 0, slot.seq);
+    if (opts.add) dropAddedMark();
+    else if (slot) consumeAutoGenerate(chatId, floor, swipeId ?? 0, slot.seq);
     else clearAutoGenerateForFloor(chatId, floor);
     if (controller.signal.aborted) return;
     const message = error instanceof Error ? error.message : String(error);
@@ -759,4 +782,10 @@ export function bindAutoTagging(): void {
     diagnostic('CHAT_CHANGED', { args, currentChatId: getContext()?.getCurrentChatId?.() ?? '' });
     cancelAll();
   });
+}
+
+export async function requestFocusedTags(floor: number, focus: string): Promise<boolean> {
+  if (!focus.trim()) return false;
+  const add = hasImageTagTrace(getContext()?.chat?.[floor]?.mes ?? '');
+  return (await runForFloor(floor, { manual: true, focus, add })) === true;
 }

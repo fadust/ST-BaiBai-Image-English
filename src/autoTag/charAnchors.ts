@@ -87,21 +87,19 @@ export function buildAnchorText(entries: CharTagEntry[], lockedNames?: ReadonlyS
 
 /* ============ 中文外貌 → 结构化字段 的批量转换 ============ */
 
-const CONVERT_SPEC = `你是外貌 tag 转换器。把给出的角色中文外貌描述拆成固定字段的 danbooru 短 tag:英文小写、逗号分隔、多词用空格连接(不要用下划线)。
+const CONVERT_SPEC = `Convert the supplied character appearance descriptions into stable appearance fields. Use lowercase English Danbooru tags, separated by commas; use spaces rather than underscores inside tags.
 
-字段与示例:
-- sex(性别):1girl / 1boy / androgynous 等
-- hair(头发):long black hair / short silver hair 等
-- eyes(眼睛):red eyes / blue eyes 等
-- skin(肤色):tan / dark skin 等(没提就留空;白皙是默认肤色,不需要记录)
-- body(体型):petite / tall / slim / small breasts 等
-- extra(标志特征):heterochromia / scar on cheek / pointy ears 等(没提就留空)
+Fields:
+- sex: the stated gender or presentation.
+- hair: hair color, length, and style, such as long black hair.
+- eyes: eye color, such as green eyes.
+- skin: a stated skin tone; leave blank when unspecified.
+- body: overall build and height, such as tall, slender.
+- bust: explicitly described bust size, such as small breasts; leave blank when unspecified.
+- extra: distinctive permanent traits, such as heterochromia, pointy ears, or a facial scar.
 
-规则:
-1. 只提取固定基础特征;服装、饰品、状态、表情、动作、场景一律不写。
-2. hair 与 eyes 是二次元角色身份锚点：描述里只要出现发色、发型/长度或瞳色线索就必须写入对应字段，不得遗漏或塞进 extra；hair 尽量同时保留颜色和长度/发型，eyes 保留颜色。
-3. 描述里没提的细节不要脑补,对应字段留空字符串。
-4. 只返回一个 JSON 对象:{"角色名":{"sex":"...","hair":"...","eyes":"...","skin":"...","body":"...","extra":"..."}},键与输入的角色名完全一致;不要 Markdown 代码块、不要解释。`;
+Extract only stable physical traits. Omit clothing, accessories, temporary conditions, expressions, actions, and scenery. Keep stated hair and eye details in their own fields. Do not invent missing details.
+Return only one JSON object mapping each original character name to its fields: {"Original name":{"sex":"...","hair":"...","eyes":"...","skin":"...","body":"...","bust":"...","extra":"..."}}. Preserve names exactly and use empty strings for unspecified fields. Do not add explanations or Markdown fences.`;
 
 /** 字段值清洗:换行压成空格、剥 bbi_image 系子标签字面量(防止污染注入格式)。 */
 function sanitizeTagValue(value: unknown): string {

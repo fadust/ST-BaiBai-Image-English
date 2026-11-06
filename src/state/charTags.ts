@@ -1,5 +1,6 @@
 import { getContext, type STMessage } from '@/st/context';
 import { reactive } from 'vue';
+import { splitBust, withSplitBust } from '@/charBust/split';
 
 /**
  * Character fixed-appearance library.
@@ -13,7 +14,7 @@ import { reactive } from 'vue';
  * charTagLib is only a reactive derived cache: merged baseline (this chat first, global fills missing names) + replay of automatic changes in physical floor order.
  */
 
-export type CharTagField = 'fandom' | 'sex' | 'hair' | 'eyes' | 'skin' | 'body' | 'extra' | 'outfit';
+export type CharTagField = 'fandom' | 'sex' | 'hair' | 'eyes' | 'skin' | 'body' | 'bust' | 'extra' | 'outfit';
 
 export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
   'fandom',
@@ -22,6 +23,7 @@ export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
   'eyes',
   'skin',
   'body',
+  'bust',
   'extra',
   'outfit',
 ];
@@ -33,6 +35,7 @@ export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
   eyes: 'Eyes',
   skin: 'Skin',
   body: 'Build',
+  bust: 'Bust',
   extra: 'Distinctive features',
   outfit: 'Signature outfit',
 };
@@ -160,7 +163,7 @@ export function lockedCharTagNames(): ReadonlySet<string> {
 }
 
 export function emptyCharFields(): Record<CharTagField, string> {
-  return { fandom: '', sex: '', hair: '', eyes: '', skin: '', body: '', extra: '', outfit: '' };
+  return { fandom: '', sex: '', hair: '', eyes: '', skin: '', body: '', bust: '', extra: '', outfit: '' };
 }
 
 export function charFieldsEmpty(fields: Record<CharTagField, string>): boolean {
@@ -209,7 +212,7 @@ function normalizeFields(raw: unknown): Record<CharTagField, string> {
     const value = (raw as Record<string, unknown>)[field];
     if (typeof value === 'string') fields[field] = value.trim();
   }
-  return fields;
+  return splitBust(fields);
 }
 
 function normalizeEntry(raw: unknown): CharTagEntry | null {
@@ -434,7 +437,7 @@ export function deriveCharTags(
     if (!delta || delta.swipe !== activeSwipe(message)) continue;
     entries = applyCharTagOps(entries, delta.ops, floor, locked);
   }
-  return entries;
+  return entries.map(withSplitBust);
 }
 
 export function charTagsBeforeFloor(floor: number): CharTagEntry[] {

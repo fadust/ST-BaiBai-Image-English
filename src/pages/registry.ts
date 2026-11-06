@@ -4,6 +4,7 @@ import Characters from './characters/index.vue';
 import Gallery from './gallery/index.vue';
 import History from './history/index.vue';
 import Settings from './settings/index.vue';
+import CharacterSearch from './search/index.vue';
 
 export interface PageDef {
   /** Unique id, stored in ui.activePage / localStorage; also used as the Icon name */
@@ -20,6 +21,7 @@ export interface PageDef {
 export const PAGES: PageDef[] = [
   { id: 'backend', label: 'Backend', component: Backend },
   { id: 'characters', label: 'Characters', component: Characters },
+  { id: 'search', label: 'Character Search', component: CharacterSearch },
   { id: 'gallery', label: 'Gallery', component: Gallery },
   { id: 'history', label: 'Request History', component: History },
   { id: 'settings', label: 'Settings', component: Settings },

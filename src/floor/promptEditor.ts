@@ -1,4 +1,5 @@
 import { h, render } from 'vue';
+import { rememberPrompt } from '@/promptVersions/restore';
 
 import PromptEditor from '@/floor/PromptEditor.vue';
 import { cancelFloorTags, requestSlotTag } from '@/autoTag/runner';
@@ -123,6 +124,7 @@ async function writeBack(
       at.chatId,
       at.swipeId,
       message,
+      rememberPrompt(message, at.swipeId, at.seq, at.rawTag),
     );
   } catch (error) {
     // Revoke the mark: take back only our own one; clearAutoGenerateForFloor can't be used (it would hit sibling slots on the same floor)
