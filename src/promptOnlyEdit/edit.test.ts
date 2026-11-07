@@ -1,10 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/api/client', () => ({ requestCompletion: vi.fn(), requestViaMainApi: vi.fn() }));
-vi.mock('@/state/settings', () => ({ getTagGenChannel: () => null }));
+vi.mock('@/state/settings', () => ({ getTagGenChannel: () => null, settings: { defaultBackend: 'nai' }, activeComfyPreset: () => ({ specDialect: 'moss' }) }));
+import { settings } from '@/state/settings';
 import { editPromptOnly, parsePromptOnlyReply, promptOnlyMessages } from './edit';
 import { requestViaMainApi } from '@/api/client';
 const original = { tag: '1woman, red hair', nl: 'A woman waits at sunset.', negative: '', characters: [{ name: '小雪', tag: 'red hair', nl: '' }], size: 'portrait' as const };
 describe('prompt-only editing', () => {
+  it('uses full picture-only prose for MOSS without requesting story or sheet context', () => {
+    settings.defaultBackend = 'comfyui';
+    try {
+      const messages = promptOnlyMessages(original, 'Use moonlight.');
+      expect(messages[0].content).toContain('photo realistic prompt design assistant');
+      expect(messages[0].content).toContain('tag is only a short subject reference');
+      expect(messages[0].content).toContain('never add lettering, speech bubbles or thought bubbles');
+      expect(messages[0].content).toContain('do not claim access to a character sheet');
+    } finally { settings.defaultBackend = 'nai'; }
+  });
   it('sends only the current prompt and instructions, with English prose rules and unchanged names', () => {
     const messages = promptOnlyMessages(original, 'Use moonlight.');
     expect(messages).toHaveLength(2);

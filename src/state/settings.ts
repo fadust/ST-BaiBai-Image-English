@@ -1,3 +1,4 @@
+import { LEGACY_MOSS_PROMPTS } from './legacyMossPrompts';
 import {
   normalizeSimpleConfig,
   simpleDefaults,
@@ -69,9 +70,7 @@ export interface BackendConn {
  *   吃 tag 的模型,tag 是主体、nl 是可选补充。
  * - `moss`:写实散文流。MOSS-Image 的文本编码器是 Qwen3.5 9B,吃连贯英文散文,
  *   短 tag 堆给它等于把画面信息砍掉大半。故该方言下**强制写 nl**、**不请求 AI 动态负面**。
- * - `moss-anime`:动漫线。**同一份底模**,审美完全不同(纯中文自然段落 + 固定画风层),
- *   所以它不能复用 moss 那份规范 —— 写实线要求 tag 锁元素、英文身体段锁解剖,
- *   而动漫线要的是「像对画师口述一个镜头」。同样强制 nl、同样不请求动态负面。
+ * - `moss-anime`: shares the natural-language MOSS design, with an anime illustration opening.
  *
  * 为什么挂在工作流预设上而不是渠道级:这是**底模的属性**,和横竖尺寸、自然语言开关
  * 同一边——一切工作流就该整套口径跟着换。
@@ -582,113 +581,8 @@ Two people in frame do not force landscape. Match the shot tag: wide shots usual
 
 `;
 
-/**
- * MOSS 写实线的提示词规范(SpecDialect='moss' 时替代 ComfyUI 那份)。
- *
- * 与 DEFAULT_COMFY_SPEC 的根本差别不是措辞,是**契约形态**:那条线 tag 是主体、nl 可选;
- * 这条线 tag 只锁元素、nl 是主体且必填。故本常量不挂 {{nl}} 宏 —— 它整份只在开启侧存在
- * (autoTagProfile 在 moss 方言下把 nl 恒置 true,开关不再参与)。
- *
- * 素材来自本机 story-image 的 moss-real 真人线实测口径(见该仓库 configs/moss-real.md
- * 与 prompts/specs/moss-photo.md),已改写成柏宝绘的协议形态(tag + nl + characters)。
- */
-export const DEFAULT_MOSS_SPEC = `【MOSS-Image realistic-line prompt specification】
-Your prompts go to MOSS-Image (official SFT int8 realistic base). Its text encoder is Qwen3.5 9B and reads coherent prose, not stacked danbooru short tags. This line is a two-layer mix: an English tag line that locks elements + a Chinese scene-prose block that describes the shot. Only when the image involves nudity, exposure, sex, or needs precise body/organ contact control do you append an English body block after the Chinese prose (rules in section III). The plugin concatenates in that order.
-
-⚠ Layers divide labour; they do not repeat the same fact. Tags say what is in the frame; Chinese prose says framing, space, and light; the English body block (only when needed) says the body's state right now. Writing the same fact in two layers stacks weight and the model will twist the camera to satisfy both. Ethnicity and age feel are the first casualty of that mistake: write them once in tags; never restate them in any nl segment.
-
-## I. Nail the camera first; every layer obeys it
-1.1 Choose one orientation in the tag line (after shot size): front view / three-quarter view / side view / from behind. The first Chinese sentence must match it.
-1.1.5 Fix canvas orientation before pose: lying/spanning bodies need landscape; portrait only fits the upright segment.
-1.2 Describe only what that camera can see (side/behind/front/three-quarter visibility rules from upstream).
-1.3 If a detail needs another camera, change the camera or delete the detail — never keep both.
-1.4 Do not hide orientation inside bent over / looking back; rewrite or lock the camera.
-1.5 One gaze direction for the whole string.
-
-## II. tag (JSON tag key)
-English only, comma-separated. Order: headcount → shot size → camera → ethnicity/age → appearance → clothing → action → expression/gaze → scene → light.
-Under 40 tags; no weight syntax/BREAK/sampler/LoRA triggers. Quality words stay in fixed positive.
-Expression/gaze use standard words, or "-" when the face is omitted.
-Ethnicity/age once in tags only (chinese / east asian + concrete age). Multi-person actions need owners.
-
-## III. nl (JSON nl key): required
-Default: Chinese scene-prose A (2-4 sentences, ~120-350 Chinese characters). Append English body B only for nudity/exposure/sex or large contact surfaces.
-
-### A. Chinese scene prose
-First sentence = camera geometry. Depth layers foreground/mid/background with furniture in only one layer. Name light source side. No appearance words; cover action, clothing, environment, light, capture medium.
-
-### B. English body block (conditional, 60-120 words)
-Not a translation of A. Contour → clothed/nude extent → organs/contact → pose deformation. Place both legs when side-lying. Plain organ words. If character has [中文外貌已填], skip body-summary lines and write moment state only. Face-omitted: no face/eyes/expression/gaze words. Rough-side texture only.
-
-## IV. Appearance marks
-[中文外貌已填] means the plugin injects Chinese appearance verbatim — do not redraw fixed appearance; still write ethnicity/age in tags and shot-specific action/clothing. Unmarked characters get one full appearance pass.
-
-## V. Self-check
-Camera consistency; each fact once; furniture once; one light story; omit-face rule when face share is tiny.
-`;
-
-
-/**
- * MOSS 写实线的思维链。与规范配套:
- * 槽位块要求填的每一项,都必须在 DEFAULT_MOSS_SPEC 里有判据,否则模型会去填它没被教过的东西。
- */
-export const DEFAULT_MOSS_THINKING = `【Pre-output checklist (MOSS realistic line)】
-This is a checklist, not a reasoning puzzle. Do not recopy the specification. Answer each item in one short line, then emit the JSON.
-1. Headcount and names.
-2. Shot size (one).
-3. Camera orientation — lock before content.
-4. Ethnicity + one concrete age in tags only.
-5. Whether English body segment B is needed.
-6. Chinese prose A geometry/action/depth/light.
-7. Appearance ownership via [中文外貌已填].
-8. Rough-side texture; capture medium in Chinese prose.
-9. One full description per character; original-script names.
-10. Expressions/gaze or "-" if face omitted.
-11. Run the five self-check items; fix; submit.
-`;
-
-
-/**
- * MOSS 动漫线的提示词规范(SpecDialect='moss-anime' 时替代前两份)。
- *
- * 与写实线共底模而审美相反,故这份文本与 DEFAULT_MOSS_SPEC 几乎不共享一句:
- * 那条线是「tag 锁元素 + 中文散文 + 英文身体段锁解剖」,这条线是「极简中文元素行 +
- * 纯中文四段散文」——二次元插画不需要英文解剖段,画风靠渠道预设的固定正面 + 画风 LoRA。
- *
- * 素材来自本机 story-image 的 moss-anime 动漫线实测口径(见该工作区 configs/moss-anime.md
- * 与 prompts/specs/moss-anime.md),已改写成柏宝绘的协议形态(tag + nl + characters)。
- */
-export const DEFAULT_MOSS_ANIME_SPEC = `【MOSS anime-line prompt specification】
-Same MOSS-Image base, anime aesthetic. Output is Chinese narrative prose (director-style) plus a fixed style layer. Natural language is required; dynamic negatives are not requested.
-
-## Layout lock
-- auto: choose single/strip/page from the scene
-- single: one moment, no grid
-- strip: 2-3 panels, no bubbles
-- page: 2-4 panels with dialogue bubbles
-
-## What to write
-Chinese narrative paragraphs for camera, blocking, acting, light, panel flow. Keep original-script names. Do not double-weight ethnicity/age in prose. With [中文外貌已填], skip fixed appearance; write shot-specific clothing/action/expression/gaze (omit expression/gaze if face not drawn).
-
-## Self-check
-Panel count matches layout lock; no contradictory cameras in one panel; marked appearances not restated; bubbles only for page layout.
-`;
-
-
-/**
- * MOSS 动漫线的思维链。与规范配套:
- * 槽位块要求填的每一项,都必须在 DEFAULT_MOSS_ANIME_SPEC 里有判据。
- */
-export const DEFAULT_MOSS_ANIME_THINKING = `【Pre-output checklist (MOSS anime line)】
-This is a checklist, not a reasoning puzzle. Do not recopy the specification.
-1. Layout lock and panel count.
-2. Names and headcount per panel.
-3. Camera and blocking per panel.
-4. Appearance ownership via [中文外貌已填].
-5. Face-share / omit-face decisions.
-6. Emit JSON after the checklist only.
-`;
-
+/** Shared natural-language MOSS design; nl is required for both variants. */
+export { DEFAULT_MOSS_SPEC, DEFAULT_MOSS_THINKING, DEFAULT_MOSS_ANIME_SPEC, DEFAULT_MOSS_ANIME_THINKING } from '@/autoTag/mossPrompts';
 
 /** {{nl}} 宏的展开内容(「生成自然语言」开启时);关闭时宏展开为空串。 */
 export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): natural language - an English caption of the same image, written as connected prose for image models with large text encoders (such as MOSS-Image). No word count: keep a simple scene short and add detail only where it makes the image more specific. No tag lists inside sentences, and nothing the image does not show (no feelings, backstory, intentions or narrative commentary).
@@ -1951,10 +1845,10 @@ function normalize(raw: unknown): ImageSettings {
         comfyThinking: typeof rp.comfyThinking === 'string' ? rp.comfyThinking : legacyThinking,
         naiThinking: typeof rp.naiThinking === 'string' ? rp.naiThinking : legacyThinking,
         naiV5Thinking: typeof rp.naiV5Thinking === 'string' ? rp.naiV5Thinking : '',
-        mossSpec: typeof rp.mossSpec === 'string' ? rp.mossSpec : '',
-        mossThinking: typeof rp.mossThinking === 'string' ? rp.mossThinking : '',
-        mossAnimeSpec: typeof rp.mossAnimeSpec === 'string' ? rp.mossAnimeSpec : '',
-        mossAnimeThinking: typeof rp.mossAnimeThinking === 'string' ? rp.mossAnimeThinking : '',
+        mossSpec: typeof rp.mossSpec === 'string' && rp.mossSpec.trim() !== LEGACY_MOSS_PROMPTS.mossSpec.trim() ? rp.mossSpec : '',
+        mossThinking: typeof rp.mossThinking === 'string' && rp.mossThinking.trim() !== LEGACY_MOSS_PROMPTS.mossThinking.trim() ? rp.mossThinking : '',
+        mossAnimeSpec: typeof rp.mossAnimeSpec === 'string' && rp.mossAnimeSpec.trim() !== LEGACY_MOSS_PROMPTS.mossAnimeSpec.trim() ? rp.mossAnimeSpec : '',
+        mossAnimeThinking: typeof rp.mossAnimeThinking === 'string' && rp.mossAnimeThinking.trim() !== LEGACY_MOSS_PROMPTS.mossAnimeThinking.trim() ? rp.mossAnimeThinking : '',
       };
     })(),
   };

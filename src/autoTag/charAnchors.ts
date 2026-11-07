@@ -47,7 +47,7 @@ export const ZH_FILLED_MARK = '[中文外貌已填]';
  *
  * 输出正文同样不行:AI 看见 zh 就会照抄进 tag/nl,插件再拼一遍,等于双写。
  */
-export function formatEntryForPrompt(entry: CharTagEntry, locked = false): string {
+export function formatEntryForPrompt(entry: CharTagEntry, locked = false, prose = false): string {
   const parts: string[] = [];
   for (const f of CHAR_TAG_FIELDS) {
     const v = entry.fields[f]?.trim();
@@ -55,29 +55,31 @@ export function formatEntryForPrompt(entry: CharTagEntry, locked = false): strin
   }
   if (!parts.length && entry.raw.trim()) parts.push(`tag=${entry.raw.trim()}`);
   if (entry.nl.trim()) parts.push(`nl=${entry.nl.trim()}`);
-  const marks = [locked ? '[locked]' : '', (entry.zh ?? '').trim() ? ZH_FILLED_MARK : '']
+  if (prose && entry.zh?.trim()) parts.push(`Saved appearance=${entry.zh.trim()}`);
+  const marks = [locked ? '[locked]' : '', !prose && (entry.zh ?? '').trim() ? ZH_FILLED_MARK : '']
     .filter(Boolean)
     .join(' ');
-  return `- ${entry.name}${marks ? ` ${marks}` : ''}: ${parts.join(', ') || '(未记录字段)'}`;
+  return `- ${entry.name}${marks ? ` ${marks}` : ''}: ${parts.join(', ') || '(no recorded fields)'}`;
 }
 
 /**
  * 库文本:发给 AI 的角色库部分。AI 依据它决定 changes,并在 tag/nl 中照抄对应字段;
  * 名单与字段值都由插件生成,AI 只读。锁定名(全局库)带 [locked] 标记并在头部声明不可变。
  */
-export function buildLibraryText(entries: CharTagEntry[], lockedNames?: ReadonlySet<string>): string {
+export function buildLibraryText(entries: CharTagEntry[], lockedNames?: ReadonlySet<string>, prose = false): string {
   if (!entries.length) return '';
-  const lines = entries.map(entry => formatEntryForPrompt(entry, lockedNames?.has(entry.name) ?? false));
+  const lines = entries.map(entry => formatEntryForPrompt(entry, lockedNames?.has(entry.name) ?? false, prose));
   const lockedNote = lockedNames?.size
     ? '; entries marked [locked] are global and immutable: never report changes for them, always copy their fields as-is'
     : '';
   // 有 [中文外貌已填] 标记时在头部解释它的含义:标记只表示「插件会另行注入这段外貌」,
   // 不表示 AI 可以少写服装/动作,也不表示该角色的英文字段可以省。
-  const zhNote = entries.some(entry => (entry.zh ?? '').trim())
+  const zhNote = !prose && entries.some(entry => (entry.zh ?? '').trim())
     ? `
 [中文外貌已填] = the plugin will append this character's Chinese appearance into the positive at generation time; you cannot see that text and should not rewrite it. For marked characters write only the name plus shot-specific clothing, action, expression, and gaze — do not redraw features/hair/skin/body. Unmarked characters need one appearance pass from you.`
     : '';
-  return `【Character fixed-appearance library】[system-maintained; copy fields verbatim into character prompts${lockedNote}]\n${lines.join('\n')}${zhNote}`;
+  const instruction = prose ? 'character sheet reference; describe each visible subject once in nl; preserve stored fields' : 'copy fields verbatim into character prompts';
+  return `【Character fixed-appearance library】[system-maintained; ${instruction}${lockedNote}]\n${lines.join('\n')}${zhNote}`;
 }
 
 /** 旧接口兼容:runner 之外仍有调用方依赖锚定文本形态。 */
@@ -199,8 +201,9 @@ export interface ResolvedCharAnchors {
 export function resolveCharAnchors(
   entriesBefore: CharTagEntry[],
   lockedNames?: ReadonlySet<string>,
+  prose = false,
 ): ResolvedCharAnchors {
-  const text = buildLibraryText(entriesBefore, lockedNames);
+  const text = buildLibraryText(entriesBefore, lockedNames, prose);
   return { text: text || null, entries: entriesBefore };
 }
 

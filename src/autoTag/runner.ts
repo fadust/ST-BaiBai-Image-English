@@ -316,7 +316,8 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
     const codex = codexAppearance(context, floor, rawSource, entriesBefore, lockedCharTagNames(), memory?.roles.map(role => role.name));
     const lockedNames = codex.locked;
     // Purely local rendering: profile creation is done by the main request in the same output (changes with field="new")
-    const anchors = resolveCharAnchors(codex.entries, lockedNames);
+    const profile = autoTagProfile();
+    const anchors = resolveCharAnchors(codex.entries, lockedNames, profile.dialect === 'moss' || profile.dialect === 'moss-anime');
     // Single-slot rewrite: the protocol forces "exactly 1 image" and gives the model this slot's current prompt plus summaries of the other slots
     // (anchoring the same scene and not taking others' scenes). min/max must cover both the rule text in build and the parse validation below;
     // changing only one would contradict itself.
@@ -326,7 +327,6 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
       ? { ...settings.autoTag, minImages: 1, maxImages: 1 }
       : settings.autoTag;
     // Snapshot the protocol shape once at start: protocol writing, validation and finishing share it, so a toggle flipped midway can't make them disagree
-    const profile = autoTagProfile();
     const messages = await buildAutoTagMessages(
       context,
       floor,

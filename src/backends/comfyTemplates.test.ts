@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LEGACY_MOSS_ANIME_POSITIVE } from '@/state/legacyMossPrompts';
 
 import {
   buildSimpleWorkflow,
@@ -18,6 +19,12 @@ import {
 } from '@/backends/comfyTemplates';
 
 const VALUES = { prompt: '1girl, silver hair', seed: 42, width: 832, height: 1216 };
+
+it('translates only the exact legacy anime style default and preserves custom positives', () => {
+  expect(normalizeSimpleConfig({ template: 'moss-anime', positive: LEGACY_MOSS_ANIME_POSITIVE }).positive).toBe(MOSS_ANIME_DEFAULT_POSITIVE);
+  expect(normalizeSimpleConfig({ template: 'moss-anime', positive: 'My custom style' }).positive).toBe('My custom style');
+  expect(normalizeSimpleConfig({ template: 'moss-anime', positive: '' }).positive).toBe('');
+});
 
 function config(patch: Partial<ComfySimpleConfig>): ComfySimpleConfig {
   return { ...simpleDefaults(), ...patch };
@@ -439,8 +446,9 @@ describe('defaultPositive - 两条 MOSS 线的默认固定正面', () => {
     // sonsp 是画风 LoRA 的触发词,必须留在串里
     expect(pos).toContain('sonsp');
     // 一句整体上色/线/材质 + 一句脸部单独刻画
-    expect(pos).toContain('二次元插画');
-    expect(pos).toContain('人物脸部单独精细刻画');
+    expect(pos).toContain('2D anime illustration');
+    expect(pos).toContain('Faces are carefully rendered');
+    expect(pos).not.toMatch(/[\u3400-\u9fff]/u);
     // 不要写成 <lora:…> 语法:LoRA 由简易模式的 LoRA 链挂载
     expect(pos).not.toContain('<lora:');
     // 规范禁 AI 写的风格名:实测加了反而把 sonsp 的画风拽歪
