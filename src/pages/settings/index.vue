@@ -197,7 +197,7 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'mossSpec',
     label: 'MOSS Specification',
-    hint: 'Used when the default backend is ComfyUI and the workflow prompt dialect is MOSS. Defines the MOSS-Image realistic line (English tag line + scene prose + anatomy/material/light rules). Leave blank for the built-in default.',
+    hint: 'Used when the default backend is ComfyUI and the workflow prompt dialect is MOSS. Full natural-language picture in nl, preferably English, using the character sheet; no lettering or speech bubbles. Leave blank for the built-in default.',
     builtin: DEFAULT_MOSS_SPEC,
     macros: [],
   },
@@ -211,7 +211,7 @@ const TAG_PROMPT_METAS: TagPromptMeta[] = [
   {
     key: 'mossAnimeSpec',
     label: 'MOSS Anime Specification',
-    hint: 'Used when the workflow prompt dialect is MOSS Anime. Defines the anime-line narrative/style rules. Leave blank for the built-in default.',
+    hint: 'Used when the workflow prompt dialect is MOSS Anime. Shares the realistic MOSS design with an anime illustration opening; full natural-language picture in nl. Leave blank for the built-in default.',
     builtin: DEFAULT_MOSS_ANIME_SPEC,
     macros: [],
   },

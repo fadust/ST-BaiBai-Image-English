@@ -94,12 +94,18 @@ describe('MOSS dialect wiring (English fork)', () => {
     expect(autoTagProfile()).toMatchObject({ dialect: 'moss', nl: true, layoutLock: 'auto' });
     const messages = await buildAutoTagMessages(context(), 1, options(), null);
     const joined = messages.map(m => m.content).join('\n');
-    expect(joined).toContain('MOSS-Image realistic-line prompt specification');
-    expect(joined).toContain('Pre-output checklist (MOSS realistic line)');
+    expect(joined).toContain('MOSS-Image photo realistic prompt design assistant');
+    expect(joined).toContain('Pre-output checklist (MOSS natural-language trial)');
+    expect(joined).toContain('Use the supplied CHARACTER SHEET');
+    expect(joined).toContain('Prefer English');
+    expect(joined).toContain('Write the complete picture as coherent natural-language prose in nl');
+    expect(joined).not.toContain('tag and nl both carry');
+    expect(joined).not.toContain('lock one shot size');
+    expect(joined).not.toContain('Chinese scene');
     expect(joined).not.toContain('%negative_prompt%');
   });
 
-  it('uses anime defaults and layout-lock thinking for moss-anime', async () => {
+  it('uses the same body for anime and suppresses legacy page bubbles', async () => {
     const preset = settings.comfyui.workflows[0];
     preset.specDialect = 'moss-anime';
     preset.layoutLock = 'page';
@@ -107,11 +113,13 @@ describe('MOSS dialect wiring (English fork)', () => {
     expect(autoTagProfile()).toMatchObject({ dialect: 'moss-anime', nl: true, layoutLock: 'page' });
     const messages = await buildAutoTagMessages(context(), 1, options(), null);
     const joined = messages.map(m => m.content).join('\n');
-    expect(joined).toContain('MOSS anime-line prompt specification');
-    expect(joined).toContain('Layout locked to comic page');
-    expect(DEFAULT_MOSS_ANIME_SPEC).toContain('Layout lock');
+    expect(joined).toContain('MOSS-Image anime illustration prompt design assistant');
+    expect(joined).toContain('Legacy strip/page settings do not request panels or speech bubbles');
+    expect(joined).not.toContain('tailed oval bubbles');
+    expect(joined).not.toContain('Chinese narrative');
     expect(DEFAULT_MOSS_THINKING).toContain('checklist, not a reasoning puzzle');
-    expect(DEFAULT_MOSS_ANIME_THINKING).toContain('Layout lock and panel count');
-    expect(DEFAULT_MOSS_SPEC).toContain('[中文外貌已填]');
+    expect(DEFAULT_MOSS_ANIME_THINKING).toBe(DEFAULT_MOSS_THINKING);
+    expect(DEFAULT_MOSS_SPEC.split('\n').slice(1)).toEqual(DEFAULT_MOSS_ANIME_SPEC.split('\n').slice(1));
+    expect(DEFAULT_MOSS_SPEC).not.toMatch(/[\u3400-\u9fff]/u);
   });
 });

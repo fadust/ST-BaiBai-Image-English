@@ -1,6 +1,7 @@
 import { requestCompletion, requestViaMainApi, type ChatMsg } from '@/api/client';
 import type { ImageCharacterPrompt } from '@/autoTag/protocol';
-import { getTagGenChannel } from '@/state/settings';
+import { activeComfyPreset, getTagGenChannel, settings } from '@/state/settings';
+import { DEFAULT_MOSS_SPEC, DEFAULT_MOSS_ANIME_SPEC, MOSS_LANGUAGE_RULE } from '@/autoTag/mossPrompts';
 import { containsTagMarkup, type ImageTagContent } from '@/st/imageTagRegex';
 
 
@@ -16,6 +17,12 @@ const SYSTEM = [
 ].join('\n');
 
 export function promptOnlyMessages(content: ImageTagContent, hint: string): ChatMsg[] {
+  const dialect = settings.defaultBackend === 'comfyui' ? activeComfyPreset().specDialect : 'comfy';
+  const moss = dialect === 'moss' || dialect === 'moss-anime';
+  const system = moss
+    ? [SYSTEM, dialect === 'moss' ? DEFAULT_MOSS_SPEC : DEFAULT_MOSS_ANIME_SPEC, MOSS_LANGUAGE_RULE,
+      'EDITOR OUTPUT OVERRIDE: Return the same single prompt object supplied below, not images/changes or Studio fields. Write the complete picture in nl, adding nl if empty; tag is only a short subject reference. The current draft is your only appearance reference; do not claim access to a character sheet. Preserve characters and size. Prefer English unless the user requests another language. Picture only: never add lettering, speech bubbles or thought bubbles.'].join('\n\n')
+    : SYSTEM;
   const current = {
     tag: content.tag,
     nl: content.nl,
@@ -24,7 +31,7 @@ export function promptOnlyMessages(content: ImageTagContent, hint: string): Chat
     size: content.size,
   };
   return [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: system },
     { role: 'user', content: `Current image prompt:\n${JSON.stringify(current, null, 2)}\n\nRequested changes:\n${hint.trim()}` },
   ];
 }

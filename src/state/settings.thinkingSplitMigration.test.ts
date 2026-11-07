@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { LEGACY_MOSS_PROMPTS } from './legacyMossPrompts';
 
 /**
  * The thought chain went from one copy shared by three backends to three: comfy / nai / naiV5.
@@ -26,6 +27,13 @@ async function hydrateWithAutoTag(autoTag: Record<string, unknown> | undefined) 
 }
 
 describe('settings migration splitting the thought chain by backend', () => {
+  it('replaces exact legacy MOSS defaults while preserving customized prompts', async () => {
+    const migrated = await hydrateWithAutoTag({ prompts: { ...LEGACY_MOSS_PROMPTS, mossThinking: 'My custom checklist' } });
+    expect(migrated.prompts.mossSpec).toBe('');
+    expect(migrated.prompts.mossAnimeSpec).toBe('');
+    expect(migrated.prompts.mossAnimeThinking).toBe('');
+    expect(migrated.prompts.mossThinking).toBe('My custom checklist');
+  });
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('toastr', { info: vi.fn(), success: vi.fn(), error: vi.fn() });

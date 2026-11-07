@@ -271,8 +271,9 @@ async function generate(): Promise<void> {
     tag: props.tag,
     prompt: props.prompt,
     nl: props.nl,
-    // Resolve Chinese appearance at request time so later library edits still apply.
-    appearance: chineseAppearanceForText(`${props.prompt} ${props.nl}`),
+    // MOSS nl already describes the sheet's appearance; appending it again doubles conditioning.
+    appearance: settings.defaultBackend === 'comfyui' && ['moss', 'moss-anime'].includes(activeComfyPreset().specDialect) && props.nl.trim()
+      ? '' : chineseAppearanceForText(`${props.prompt} ${props.nl}`),
     negative: props.negative,
     characters: props.characters.map(character => ({ ...character })),
     size: effectiveSize.value,

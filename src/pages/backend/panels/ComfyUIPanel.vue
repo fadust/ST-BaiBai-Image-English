@@ -36,7 +36,6 @@ import ComfyWorkflowControls from './ComfyWorkflowControls.vue';
 import {
   activeComfyPreset,
   effectiveComfyConn,
-  LAYOUT_LOCKS,
   newComfyWorkflow,
   ORIENTATION_LOCKS,
   settings,
@@ -161,7 +160,6 @@ const templateOptions = COMFY_TEMPLATE_OPTIONS;
 const meta = computed(() => COMFY_TEMPLATES[active.value.simple.template] ?? COMFY_TEMPLATES.checkpoint);
 
 const isMossDialect = computed(() => active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime');
-const showLayoutLock = computed(() => active.value.specDialect === 'moss-anime');
 const fixedSampler = computed(() => meta.value.samplerFixed);
 const needMossNegative = computed(
   () => isMossTemplate(active.value.simple.template) && !active.value.simple.negative.trim(),
@@ -311,12 +309,7 @@ const simpleState = computed(() => {
 });
 
 const nlHint = computed(() => {
-  if (active.value.specDialect === 'moss-anime') {
-    return 'MOSS anime line requires Chinese prose (camera / depth layers / light / people / materials); that prose is the main positive.';
-  }
-  if (active.value.specDialect === 'moss') {
-    return 'MOSS realistic line requires English prose (camera / depth layers / light / people); that prose is the main positive.';
-  }
+  if (isMossDialect.value) return 'MOSS requires a complete natural-language picture in %nl%, preferably English. No lettering or speech bubbles; use character-sheet appearance.';
   return active.value.mode === 'simple'
     ? 'Also write a natural-language description; in simple mode it replaces tags as the positive prompt (recommended for Flux/Anima)'
     : 'Also write a natural-language description and insert it into the workflow at %nl%';
@@ -579,29 +572,9 @@ function applyAssist() {
           <BbiSelect v-model="specDialectSel" :options="specDialectOptions" aria-label="Prompt specification" />
         </div>
         <p class="bbi-field-hint wf-switch-hint">
-          Which specification this workflow uses. MOSS lines require a prose segment (English for realistic, Chinese for anime) and do not request AI dynamic negatives.
+          MOSS uses a full natural-language picture description in %nl%, preferably English, with appearance from the character sheet. Dynamic negatives are not requested.
         </p>
-        <div v-if="showLayoutLock" class="bbi-select-row">
-          <span class="bbi-field-label">Layout</span>
-          <div class="bbi-segmented" role="tablist" aria-label="Layout">
-            <button
-              v-for="opt in LAYOUT_LOCKS"
-              :key="opt.value"
-              class="bbi-seg"
-              :class="{ 'is-on': active.layoutLock === opt.value }"
-              type="button"
-              role="tab"
-              :aria-selected="active.layoutLock === opt.value"
-              :title="opt.hint"
-              @click="active.layoutLock = opt.value"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </div>
-        <p v-if="showLayoutLock" class="bbi-field-hint wf-switch-hint">
-          How many panels in one image. Strip / comic page make the AI write one shot-size/angle line per panel; comic page also asks for speech bubbles. Keep panel counts modest or faces and materials collapse.
-        </p>
+        <p v-if="isMossDialect" class="bbi-field-hint wf-switch-hint">Picture-only trial: one moment per image, with spatial layout described in prose. Legacy panel settings are preserved but inactive.</p>
 
         <div class="bbi-num-row">
           <span class="bbi-field-label">Portrait size (width × height)</span>

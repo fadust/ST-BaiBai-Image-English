@@ -1,3 +1,4 @@
+import { LEGACY_MOSS_ANIME_POSITIVE } from '@/state/legacyMossPrompts';
 /**
  * ComfyUI 简易模式:选模型/LoRA + 填基础参数,插件把预设组装成 API 工作流。
  *
@@ -216,11 +217,11 @@ export const MOSS_DEFAULT_POSITIVE =
  * 加了反而会把 sonsp 的画风拽歪。
  */
 export const MOSS_ANIME_DEFAULT_POSITIVE =
-  '画面是 sonsp 那样的二次元插画（a 2D anime illustration），光影通透、明暗层次分明、有厚涂的笔触感；' +
-  '上色通透精致，色块边界干净，暗部里再压一层冷色，皮肤透出淡淡的血色，头发一缕一缕分出高光与暗部，' +
-  '布料有清楚的织纹和褶皱阴影，线条细而精、轮廓干净利落，人体曲线画得修长好看。' +
-  '人物脸部单独精细刻画：眼白、虹膜、瞳孔和睫毛分开画，眼睑分出层次，脸颊透出淡淡的血色，' +
-  '唇上带一层薄薄的高光，鼻尖与下颌的转折干净利落，光先落在脸上、眼睛里点出细小的反光。';
+  'A sonsp-style 2D anime illustration with luminous lighting, distinct light and shadow, and painterly brushwork. ' +
+  'Refined colors have clean boundaries and cool shadows; skin has a subtle warm blush, hair separates into highlighted and shaded strands, ' +
+  'and fabric shows visible weave and fold shadows. Fine lines define crisp contours and graceful, elongated figures. ' +
+  'Faces are carefully rendered with distinct eye whites, irises, pupils and lashes, layered eyelids, softly flushed cheeks, ' +
+  'a thin lip highlight, clean nose and chin contours, and small catchlights in the eyes.';
 
 export const COMFY_TEMPLATES: Record<ComfySimpleTemplateId, ComfyTemplateMeta> = {
   checkpoint: {
@@ -426,7 +427,7 @@ export function normalizeSimpleConfig(raw: unknown): ComfySimpleConfig {
     // 为什么不能「空串也回填默认值」:老用户既存预设里存的就是 positive: '' —— 升级后当场把它
     // 改成默认正面,等于替用户改了他一直在用的串,而他再也看不出自己清过、也调不回来。
     // 为什么空着也不报错:那正是 simpleConfigWarnings 存在的理由(见下),不是这里漏了。
-    positive: typeof o.positive === 'string' ? o.positive : base.positive,
+    positive: template === 'moss-anime' && o.positive === LEGACY_MOSS_ANIME_POSITIVE ? base.positive : typeof o.positive === 'string' ? o.positive : base.positive,
     negative: typeof o.negative === 'string' ? o.negative : base.negative,
   };
 }

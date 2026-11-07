@@ -29,6 +29,16 @@ function entry(name: string, fields: Partial<Record<string, string>>, source: Ch
 }
 
 describe('formatEntryForPrompt / buildLibraryText', () => {
+  it('provides full saved sheet descriptions to MOSS prose planning without the injection marker', () => {
+    const e = entry('Mira', { sex: '1woman', hair: 'long black hair' });
+    e.zh = '鹅蛋脸,皮肤偏白。';
+    const text = buildLibraryText([e], new Set(['Mira']), true);
+    expect(text).toContain('Saved appearance=鹅蛋脸,皮肤偏白。');
+    expect(text).toContain('[locked]');
+    expect(text).toContain('describe each visible subject once in nl');
+    expect(text).not.toContain(ZH_FILLED_MARK);
+    expect(e.zh).toBe('鹅蛋脸,皮肤偏白。');
+  });
   it('renders non-empty fields with labels in fixed order', () => {
     const text = formatEntryForPrompt(entry('小雪', { sex: '1girl', hair: 'long black hair', eyes: 'red eyes' }));
     expect(text).toBe('- 小雪: Gender=1girl, Hair=long black hair, Eyes=red eyes');
