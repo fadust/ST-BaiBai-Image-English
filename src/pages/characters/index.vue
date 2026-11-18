@@ -295,12 +295,11 @@ async function regenerateFromBook() {
       toastr.warning('The model returned no tags for this character. Try again or fill them in by hand.', 'BaiBai Image');
       return;
     }
-    const fields = { ...emptyCharFields(), ...result.fields };
-    d.fields = fields;
-    d.raw = '';
+    // The converter returns only traits found in Book. Keep the rest of the draft.
+    d.fields = { ...d.fields, ...result.fields };
     draftSource.value = 'book';
     draftDesc.value = role.desc;
-    toastr.success('Generated from BaiBai Book\'s latest appearance. Click "Done" to save.', 'BaiBai Image');
+    toastr.success('Updated the fields found in BaiBai Book. Review the draft and click "Done" to save.', 'BaiBai Image');
   } catch (error) {
     toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
   } finally {
