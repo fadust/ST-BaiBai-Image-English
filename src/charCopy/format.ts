@@ -52,6 +52,8 @@ const ALIASES: Record<CharCopyKey | 'name', string[]> = {
   name: ['角色', '角色名', '名字', '姓名', 'name', 'character'],
   fandom: ['同人身份', '同人', '同人身份标签', '作品', 'fandom', 'copyright'],
   sex: ['性别', 'sex', 'gender'],
+  race: ['种族', '人种', '族裔', 'ethnicity', 'species'],
+  face: ['脸型', '脸部', '面部特征', 'face shape', 'facial features'],
   hair: ['头发', '发型', '发色', '发型发色', 'hair'],
   eyes: ['眼睛', '眼', '眼睛颜色', '瞳色', '瞳孔', 'eyes', 'eye'],
   skin: ['肤色', '皮肤', 'skin'],

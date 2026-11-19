@@ -70,6 +70,8 @@ const pendingRollback = ref<{ name: string; record: CharTagChangeRecord } | null
 const FIELD_PLACEHOLDERS: Record<CharTagField, string> = {
   fandom: 'For fan-work characters: character name (copyright name), brackets not escaped; blank for originals',
   sex: 'e.g. 1girl / 1boy',
+  race: 'Ethnicity or species, e.g. elf',
+  face: 'e.g. oval face, high cheekbones',
   hair: 'e.g. long black hair',
   eyes: 'e.g. red eyes',
   skin: 'e.g. pale skin (optional)',

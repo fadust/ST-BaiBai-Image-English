@@ -54,15 +54,7 @@ export interface CharChange {
 }
 
 const HISTORY_FIELDS: ReadonlySet<string> = new Set([
-  'fandom',
-  'sex',
-  'hair',
-  'eyes',
-  'skin',
-  'body',
-  'bust',
-  'extra',
-  'outfit',
+  ...CHAR_TAG_FIELDS,
   'new',
   'raw',
   'nl',

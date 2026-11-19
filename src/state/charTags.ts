@@ -14,11 +14,11 @@ import { splitBust, withSplitBust } from '@/charBust/split';
  * charTagLib is only a reactive derived cache: merged baseline (this chat first, global fills missing names) + replay of automatic changes in physical floor order.
  */
 
-export type CharTagField = 'fandom' | 'sex' | 'hair' | 'eyes' | 'skin' | 'body' | 'bust' | 'extra' | 'outfit';
-
-export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
+export const CHAR_TAG_FIELDS = [
   'fandom',
   'sex',
+  'race',
+  'face',
   'hair',
   'eyes',
   'skin',
@@ -26,11 +26,15 @@ export const CHAR_TAG_FIELDS: readonly CharTagField[] = [
   'bust',
   'extra',
   'outfit',
-];
+] as const;
+
+export type CharTagField = (typeof CHAR_TAG_FIELDS)[number];
 
 export const CHAR_TAG_FIELD_LABELS: Record<CharTagField, string> = {
   fandom: 'Fan-work identity tag',
   sex: 'Gender',
+  race: 'Race',
+  face: 'Face',
   hair: 'Hair',
   eyes: 'Eyes',
   skin: 'Skin',
@@ -163,7 +167,7 @@ export function lockedCharTagNames(): ReadonlySet<string> {
 }
 
 export function emptyCharFields(): Record<CharTagField, string> {
-  return { fandom: '', sex: '', hair: '', eyes: '', skin: '', body: '', bust: '', extra: '', outfit: '' };
+  return { fandom: '', sex: '', race: '', face: '', hair: '', eyes: '', skin: '', body: '', bust: '', extra: '', outfit: '' };
 }
 
 export function charFieldsEmpty(fields: Record<CharTagField, string>): boolean {

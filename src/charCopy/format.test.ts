@@ -2,9 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { emptyCharFields } from '@/state/charTags';
 import { formatCharForCopy, parseCharPaste } from './format';
 describe('English appearance copy and paste', () => {
-  const source = { name: '小雪', fields: { ...emptyCharFields(), hair: 'long black hair', bust: 'small breasts' }, raw: '', nl: 'An adult woman with long black hair.' };
+  const source = {
+    name: '小雪',
+    fields: { ...emptyCharFields(), race: 'elf', face: 'oval face', hair: 'long black hair', bust: 'small breasts' },
+    raw: '',
+    nl: 'An adult woman with long black hair.',
+  };
   it('round-trips all exported English labels while preserving original names', () => {
     const copied = formatCharForCopy(source);
+    expect(copied).toContain('[Race] elf');
+    expect(copied).toContain('[Face] oval face');
     expect(copied).toContain('[Appearance description]');
     expect(copied).toContain('[Distinctive features] None');
     expect(copied).toContain('[Character] 小雪');

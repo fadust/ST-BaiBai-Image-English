@@ -93,15 +93,17 @@ const CONVERT_SPEC = `Convert the supplied character appearance descriptions int
 
 Fields:
 - sex: the stated gender or presentation.
+- race: explicitly stated ethnicity or species.
+- face: stable face shape or facial features, such as an oval face or high cheekbones.
 - hair: hair color, length, and style, such as long black hair.
 - eyes: eye color, such as green eyes.
 - skin: a stated skin tone; leave blank when unspecified.
 - body: overall build and height, such as tall, slender.
 - bust: explicitly described bust size, such as small breasts; leave blank when unspecified.
-- extra: distinctive permanent traits, such as heterochromia, pointy ears, or a facial scar.
+- extra: other distinctive permanent traits, such as pointy ears or horns.
 
 Extract only stable physical traits. Omit clothing, accessories, temporary conditions, expressions, actions, and scenery. Keep stated hair and eye details in their own fields. Do not invent missing details.
-Return only one JSON object mapping each original character name to its fields: {"Original name":{"sex":"...","hair":"...","eyes":"...","skin":"...","body":"...","bust":"...","extra":"..."}}. Preserve names exactly and use empty strings for unspecified fields. Do not add explanations or Markdown fences.`;
+Return only one JSON object mapping each original character name to its fields: {"Original name":{"sex":"...","race":"...","face":"...","hair":"...","eyes":"...","skin":"...","body":"...","bust":"...","extra":"..."}}. Preserve names exactly and use empty strings for unspecified fields. Do not add explanations or Markdown fences.`;
 
 /** 字段值清洗:换行压成空格、剥 bbi_image 系子标签字面量(防止污染注入格式)。 */
 function sanitizeTagValue(value: unknown): string {

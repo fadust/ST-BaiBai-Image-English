@@ -52,11 +52,12 @@ it('previews and saves a partial Book import without discarding the rest of the 
     };
   };
   const fields = {
-    ...emptyCharFields(), hair: 'black hair', eyes: 'green eyes', outfit: 'red cloak', skin: 'fair skin',
+    ...emptyCharFields(),
+    race: 'elf', face: 'oval face', hair: 'black hair', eyes: 'green eyes', outfit: 'red cloak', skin: 'fair skin',
   };
   editor.openEntry({ name: 'Mara', fields, raw: '', nl: '', desc: '', source: 'manual', history: [] }, 'chat');
   await editor.regenerateFromBook();
-  expect(editor.previewTag).toContain('black hair, green eyes, pale skin');
+  expect(editor.previewTag).toContain('elf, oval face, black hair, green eyes, pale skin');
   expect(upsertCharTag).not.toHaveBeenCalled();
   editor.confirmEntry();
   expect(upsertCharTag).toHaveBeenCalledWith(
