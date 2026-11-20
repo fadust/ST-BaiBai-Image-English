@@ -619,6 +619,12 @@ async function confirmUpdate() {
           When on, images show as a thin bar and expand on click, handy in public. Cards you expand/collapse by hand keep that state (reset when the page refreshes).
         </p>
 
+        <label class="bbi-switch-row">
+          <span class="bbi-field-label">Immersive chat images</span>
+          <input v-model="settings.ui.immersiveImages" type="checkbox" class="bbi-checkbox" />
+        </label>
+        <p class="bbi-field-hint">Tap or click an image to reveal its menu and page controls. Select it again to open the preview.</p>
+
         <div class="bbi-select-row">
           <span class="bbi-field-label">Floor image display size</span>
           <BbiSelect v-model="imageDisplaySel" :options="IMAGE_DISPLAY_OPTIONS" aria-label="Floor image display size" />
@@ -885,6 +891,7 @@ async function confirmUpdate() {
 
       <!-- Custom prompts (same entry point as BaiBai Book, in its own section) -->
       <Collapsible title="Custom prompts" :open="false">
+        <p class="bbi-field-hint">Workflows with “Dialect defaults” selected use the corresponding ComfyUI or MOSS specification and checklist below.</p>
         <ul class="bbi-prompt-list">
           <li v-for="m in TAG_PROMPT_METAS" :key="m.key" class="bbi-prompt-item">
             <button class="bbi-prompt-open" type="button" @click="openTagPrompt(m)">

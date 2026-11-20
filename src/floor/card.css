@@ -85,6 +85,15 @@
   touch-action: auto;
 }
 
+.bbi-figure__img--reveal {
+  cursor: pointer;
+}
+
+.bbi-figure__img:focus-visible {
+  outline: 2px solid var(--bbi-accent);
+  outline-offset: -2px;
+}
+
 /* ——— Display size cap: setting "Floor image display size" (Card.vue sets data-capped and --bbi-figure-max-h) ———
    It caps height, not width: what feels too big on PC is a portrait image filling the floor width and becoming taller than one screen; a width cap
    would leave portrait images just as tall and shrink landscape ones. The stage's fit-content shrinks it to the image's own width: floating buttons, the pager and badges

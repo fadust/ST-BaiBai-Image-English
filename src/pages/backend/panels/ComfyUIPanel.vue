@@ -32,6 +32,7 @@ import Collapsible from '@/components/Collapsible.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
+import ComfyPromptSets from './ComfyPromptSets.vue';
 import ComfyWorkflowControls from './ComfyWorkflowControls.vue';
 import {
   activeComfyPreset,
@@ -149,10 +150,14 @@ const specDialectOptions: Array<{ value: SpecDialect; label: string }> = [
 
 const specDialectSel = computed<string>({
   get: () => active.value.specDialect,
-  set: v => {
-    active.value.specDialect = v as SpecDialect;
-  },
+  set: v => setDialect(v as SpecDialect),
 });
+
+function setDialect(dialect: SpecDialect) {
+  if (active.value.specDialect === dialect) return;
+  active.value.specDialect = dialect;
+  active.value.promptSetId = '';
+}
 
 const templateOptions = COMFY_TEMPLATE_OPTIONS;
 
@@ -264,12 +269,12 @@ function onTemplateChange(id: string) {
   const prevMeta = COMFY_TEMPLATES[current.template];
   const nextMeta = COMFY_TEMPLATES[id];
   // Dialect follows the base model family when entering/leaving MOSS templates.
-  if (id === 'moss' || id === 'moss-anime') active.value.specDialect = id;
+  if (id === 'moss' || id === 'moss-anime') setDialect(id);
   else if (
     isMossTemplate(current.template) &&
     (active.value.specDialect === 'moss' || active.value.specDialect === 'moss-anime')
   ) {
-    active.value.specDialect = 'comfy';
+    setDialect('comfy');
   }
   if (active.value.portraitSize === prevMeta.portraitSize) active.value.portraitSize = nextMeta.portraitSize;
   if (active.value.landscapeSize === prevMeta.landscapeSize) active.value.landscapeSize = nextMeta.landscapeSize;
@@ -575,6 +580,8 @@ function applyAssist() {
           MOSS uses a full natural-language picture description in %nl%, preferably English, with appearance from the character sheet. Dynamic negatives are not requested.
         </p>
         <p v-if="isMossDialect" class="bbi-field-hint wf-switch-hint">Picture-only trial: one moment per image, with spatial layout described in prose. Legacy panel settings are preserved but inactive.</p>
+
+        <ComfyPromptSets :key="active.id" :workflow="active" />
 
         <div class="bbi-num-row">
           <span class="bbi-field-label">Portrait size (width × height)</span>

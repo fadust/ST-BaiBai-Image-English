@@ -125,6 +125,8 @@ const collapsed = computed<boolean>({
 
 /** Expanded state of the touch overflow menu (⋯ button); desktop hover shows the row directly and doesn't use it. */
 const menuOpen = ref(false);
+const card = ref<HTMLElement | null>(null);
+const controlsRevealed = ref(false);
 
 /** Runtime record (may be undefined = no in-flight task). */
 const record = computed(() => getGenRecord(key.value));
@@ -188,6 +190,25 @@ const promptText = computed(() =>
  */
 const shownEntry = computed(() => (liveHistory.value.length ? current.value : liveStale.value));
 const imageSrc = computed(() => shownEntry.value?.path ?? '');
+const controlsHidden = computed(
+  () => settings.ui.immersiveImages && !!imageSrc.value && !controlsRevealed.value,
+);
+
+function hideControls() {
+  controlsRevealed.value = false;
+  menuOpen.value = false;
+}
+
+watch(() => settings.ui.immersiveImages, hideControls);
+watch(controlsRevealed, (revealed, _previous, onCleanup) => {
+  if (!revealed) return;
+  // Floor cards mount in shadow roots. The event path still includes the card for clicks inside it.
+  function dismissOutside(event: PointerEvent) {
+    if (card.value && !event.composedPath().includes(card.value)) hideControls();
+  }
+  document.addEventListener('pointerdown', dismissOutside, true);
+  onCleanup(() => document.removeEventListener('pointerdown', dismissOutside, true));
+});
 /**
  * For the lightbox: prompt + read-only metadata (artist string/vibes/sampling parameters).
  * Kept apart from the card's editable `promptText`: metadata is read-only and must never mix into the tag text that gets written back.
@@ -348,6 +369,14 @@ function cancel(): void {
   cancelGen(key.value);
 }
 
+function activateImage(): void {
+  if (controlsHidden.value) {
+    controlsRevealed.value = true;
+  } else {
+    openImage();
+  }
+}
+
 function openImage(): void {
   const entry = shownEntry.value;
   if (!entry) return;
@@ -472,6 +501,7 @@ onMounted(() => {
   <!-- Immersive design: the image is the card. No border/background panel/brand bar; controls float over the image,
        appearing on hover on desktop and always faintly visible on touch; the prompt lives in a panel opened by a floating button, taking no space normally. -->
   <div
+    ref="card"
     class="bbi-figure"
     :data-phase="phase"
     :data-capped="displayMaxHeight ? '1' : ''"
@@ -505,9 +535,15 @@ onMounted(() => {
       <img
         v-if="imageSrc"
         class="bbi-figure__img"
+        :class="{ 'bbi-figure__img--reveal': controlsHidden }"
         :src="imageSrc"
         alt="Drawing results"
-        @click="openImage"
+        role="button"
+        tabindex="0"
+        :aria-label="controlsHidden ? 'Show image controls' : 'Open image preview'"
+        @click="activateImage"
+        @keydown.enter.prevent="activateImage"
+        @keydown.space.prevent="activateImage"
         @error="onImageError"
       />
 
@@ -544,7 +580,7 @@ onMounted(() => {
 
       <!-- Floating action group: the ⋯ overflow button is pinned top right, always faintly visible; on desktop hover or touch tap, the menu lays out horizontally to its left
            (wrapping if the image is narrow) and collapses automatically after any action (normally the image only shows a small dot) -->
-      <span v-if="!busy && !planning" class="bbi-figure__actions" :data-open="menuOpen ? '1' : ''">
+      <span v-if="!busy && !planning && !controlsHidden" class="bbi-figure__actions" :data-open="menuOpen ? '1' : ''">
         <button
           class="bbi-fab bbi-figure__more"
           type="button"
@@ -615,12 +651,13 @@ onMounted(() => {
       </span>
 
       <!-- Pager: a pill overlaid at the image's bottom right -->
-      <span v-if="pageable" class="bbi-figure__pager">
-        <button class="bbi-figure__pager-btn" type="button" :disabled="index <= 0" @click="index--">◀</button>
+      <span v-if="pageable && !controlsHidden" class="bbi-figure__pager">
+        <button class="bbi-figure__pager-btn" type="button" aria-label="Previous image" :disabled="index <= 0" @click="index--">◀</button>
         <span class="bbi-figure__pager-count">{{ index + 1 }}/{{ liveHistory.length }}</span>
         <button
           class="bbi-figure__pager-btn"
           type="button"
+          aria-label="Next image"
           :disabled="index >= liveHistory.length - 1"
           @click="index++"
         >
@@ -637,7 +674,7 @@ onMounted(() => {
       </button>
     </p>
     <p v-else-if="isStale && !busy && !planning" class="bbi-figure__status bbi-figure__status--warn">
-      The prompt has changed. The image above comes from the old prompt; click Redraw at the top right to generate one from the new prompt.
+      The prompt has changed. {{ controlsHidden ? 'Select the image to reveal Redraw.' : 'Select Redraw to generate an image from the new prompt.' }}
     </p>
     <!-- Files deleted (usually from the gallery): records remain but the images are gone; say so plainly so it doesn't look like images vanished for no reason -->
     <p v-else-if="filesGone" class="bbi-figure__status bbi-figure__status--warn">

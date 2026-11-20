@@ -6,6 +6,8 @@ import {
   DEFAULT_NAI_THINKING,
   DEFAULT_NAI_V5_SPEC,
   DEFAULT_NAI_V5_THINKING,
+  newComfyPromptSet,
+  newComfyWorkflow,
   settings,
   type AutoTagPrompts,
   type AutoTagSettings,
@@ -63,6 +65,62 @@ function context(): STContext {
 }
 
 describe('auto tag prompt', () => {
+  it('uses the saved Moss 1 defaults until a compatible shared prompt set is selected', async () => {
+    const originalBackend = settings.defaultBackend;
+    const originalComfy = settings.comfyui;
+    const moss1 = { ...newComfyWorkflow('Moss 1'), specDialect: 'moss-anime' as const };
+    const second = { ...newComfyWorkflow('Moss 2'), specDialect: 'moss-anime' as const };
+    const pair = newComfyPromptSet('Shared anime', 'moss-anime', {
+      specification: 'Use the shared anime rules.',
+      thinking: 'Run the shared checklist.',
+    });
+    const options: AutoTagSettings = {
+      ...settings.autoTag,
+      prompts: prompts({
+        jailbreak: ' Preserve the core prompt. ',
+        mossAnimeSpec: ' Use my Moss 1 specification. ',
+        mossAnimeThinking: ' Run my Moss 1 checklist. ',
+      }),
+    };
+    const contents = async (profile = autoTagProfile()) =>
+      (await buildAutoTagMessages(context(), 1, options, null, undefined, null, '', profile)).map(m => m.content);
+
+    try {
+      settings.defaultBackend = 'comfyui';
+      settings.comfyui = {
+        ...originalComfy,
+        workflows: [moss1, second],
+        activeWorkflowId: moss1.id,
+        promptSets: [pair],
+      };
+      const defaults = await contents();
+      expect(defaults[0]).toBe('Preserve the core prompt.');
+      expect(defaults).toContain('Use my Moss 1 specification.');
+      expect(defaults).toContain('Run my Moss 1 checklist.');
+
+      activeComfyPreset().promptSetId = pair.id;
+      settings.comfyui.workflows[1].promptSetId = pair.id;
+      const expected = defaults.map(content => {
+        if (content === 'Use my Moss 1 specification.') return pair.specification;
+        if (content === 'Run my Moss 1 checklist.') return pair.thinking;
+        return content;
+      });
+      expect(await contents()).toEqual(expected);
+      settings.comfyui.activeWorkflowId = second.id;
+      expect(await contents()).toEqual(expected);
+
+      const snapshot = autoTagProfile();
+      settings.comfyui.promptSets[0].thinking = 'Use the revised checklist.';
+      expect(await contents(snapshot)).toEqual(expected);
+      expect(await contents()).toContain('Use the revised checklist.');
+      activeComfyPreset().promptSetId = '';
+      expect(await contents()).toEqual(defaults);
+    } finally {
+      settings.defaultBackend = originalBackend;
+      settings.comfyui = originalComfy;
+    }
+  });
+
   it('marks only clean target paragraphs without pulling user messages before the earliest selected AI floor', async () => {
     const options: AutoTagSettings = {
       enabled: true,

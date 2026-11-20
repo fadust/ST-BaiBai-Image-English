@@ -1,5 +1,11 @@
 import { LEGACY_MOSS_PROMPTS } from './legacyMossPrompts';
 import {
+  DEFAULT_MOSS_ANIME_SPEC,
+  DEFAULT_MOSS_ANIME_THINKING,
+  DEFAULT_MOSS_SPEC,
+  DEFAULT_MOSS_THINKING,
+} from '@/autoTag/mossPrompts';
+import {
   normalizeSimpleConfig,
   simpleDefaults,
   type ComfyPresetMode,
@@ -77,6 +83,17 @@ export interface BackendConn {
  */
 export type SpecDialect = 'comfy' | 'moss' | 'moss-anime';
 
+export interface ComfyPromptPair {
+  specification: string;
+  thinking: string;
+}
+
+export interface ComfyPromptSet extends ComfyPromptPair {
+  id: string;
+  name: string;
+  dialect: SpecDialect;
+}
+
 export interface ComfyWorkflowPreset extends SizePair {
   id: string;
   /** 显示名(下拉列表与切换用;允许重名,以 id 为键)。 */
@@ -97,6 +114,8 @@ export interface ComfyWorkflowPreset extends SizePair {
   orientationLock: OrientationLock;
   /** 提示词规范方言(见 SpecDialect);老预设缺该字段一律落 'comfy',不做迁移。 */
   specDialect: SpecDialect;
+  /** Empty uses the workflow's default prompts from Settings. */
+  promptSetId: string;
   /**
    * 版式锁(见 LayoutLock):只对 MOSS 动漫线生效,其余方言忽略。
    * 老预设无此字段时落 auto —— 与升级前的行为一致,升级不改动用户的既有产出形态;
@@ -124,6 +143,7 @@ export interface ComfyUISettings extends BackendConn {
   workflows: ComfyWorkflowPreset[];
   /** 当前使用的工作流 id;指向已删条目时由 normalize 回落到第一条。 */
   activeWorkflowId: string;
+  promptSets: ComfyPromptSet[];
 }
 
 /**
@@ -367,6 +387,7 @@ export interface UiPrefs {
    * 只是「默认」——卡片上手动展开/折叠过的槽位以手动状态为准(会话内,见 floor/collapseState.ts)。
    */
   autoCollapseImages: boolean;
+  immersiveImages: boolean;
   /**
    * 楼层图片显示大小(合法值见 IMAGE_DISPLAY_SIZES)。只管聊天里显示多大,
    * 与出图分辨率、横竖方向无关,生成的文件一字节不变。
@@ -582,7 +603,7 @@ Two people in frame do not force landscape. Match the shot tag: wide shots usual
 `;
 
 /** Shared natural-language MOSS design; nl is required for both variants. */
-export { DEFAULT_MOSS_SPEC, DEFAULT_MOSS_THINKING, DEFAULT_MOSS_ANIME_SPEC, DEFAULT_MOSS_ANIME_THINKING } from '@/autoTag/mossPrompts';
+export { DEFAULT_MOSS_SPEC, DEFAULT_MOSS_THINKING, DEFAULT_MOSS_ANIME_SPEC, DEFAULT_MOSS_ANIME_THINKING };
 
 /** {{nl}} 宏的展开内容(「生成自然语言」开启时);关闭时宏展开为空串。 */
 export const DEFAULT_COMFY_NL_SPEC = `nl (nl key of JSON): natural language - an English caption of the same image, written as connected prose for image models with large text encoders (such as MOSS-Image). No word count: keep a simple scene short and add detail only where it makes the image more specific. No tag lists inside sentences, and nothing the image does not show (no feelings, backstory, intentions or narrative commentary).
@@ -1060,6 +1081,16 @@ const DEFAULT_PORTRAIT_SIZE = '832×1216';
 const DEFAULT_LANDSCAPE_SIZE = '1216×832';
 
 let workflowSeq = 0;
+let promptSetSeq = 0;
+
+export function newComfyPromptSet(
+  name: string,
+  dialect: SpecDialect,
+  prompts: ComfyPromptPair,
+): ComfyPromptSet {
+  promptSetSeq += 1;
+  return { id: `ps_${Date.now()}_${promptSetSeq}`, name, dialect, ...prompts };
+}
 
 /** 新建一条空工作流预设(id 生成口径同 newChannel)。 */
 export function newComfyWorkflow(name = DEFAULT_WORKFLOW_NAME): ComfyWorkflowPreset {
@@ -1075,6 +1106,7 @@ export function newComfyWorkflow(name = DEFAULT_WORKFLOW_NAME): ComfyWorkflowPre
     landscapeSize: DEFAULT_LANDSCAPE_SIZE,
     orientationLock: 'auto',
     specDialect: 'comfy',
+    promptSetId: '',
     layoutLock: 'auto',
   };
 }
@@ -1090,6 +1122,7 @@ function comfyDefaults(): ComfyUISettings {
     ...backendDefaults('http://127.0.0.1:8188'),
     workflows: [preset],
     activeWorkflowId: preset.id,
+    promptSets: [],
   };
 }
 
@@ -1164,6 +1197,7 @@ function defaults(): ImageSettings {
       orbSize: 48,
       cardTheme: 'st',
       autoCollapseImages: false,
+      immersiveImages: false,
       imageDisplaySize: 'medium',
     },
     // 出图后端默认 ComfyUI(当前唯一实现的出图后端);webui 渠道已隐藏,不再作为可选值
@@ -1259,6 +1293,35 @@ export function getTagGenChannel(): ApiChannel | null {
 export function activeComfyPreset(): ComfyWorkflowPreset {
   const list = settings.comfyui.workflows;
   return list.find(w => w.id === settings.comfyui.activeWorkflowId) ?? list[0] ?? newComfyWorkflow();
+}
+
+export function comfyPromptSetFor(preset: ComfyWorkflowPreset): ComfyPromptSet | undefined {
+  return settings.comfyui.promptSets.find(
+    set => set.id === preset.promptSetId && set.dialect === preset.specDialect,
+  );
+}
+
+export function defaultComfyPromptPair(
+  dialect: SpecDialect,
+  prompts?: AutoTagPrompts,
+): ComfyPromptPair {
+  if (dialect === 'moss-anime') {
+    return { specification: prompts?.mossAnimeSpec ?? '', thinking: prompts?.mossAnimeThinking ?? '' };
+  }
+  if (dialect === 'moss') {
+    return { specification: prompts?.mossSpec ?? '', thinking: prompts?.mossThinking ?? '' };
+  }
+  return { specification: prompts?.comfySpec ?? '', thinking: prompts?.comfyThinking ?? '' };
+}
+
+export function builtinComfyPromptPair(dialect: SpecDialect): ComfyPromptPair {
+  if (dialect === 'moss-anime') {
+    return { specification: DEFAULT_MOSS_ANIME_SPEC, thinking: DEFAULT_MOSS_ANIME_THINKING };
+  }
+  if (dialect === 'moss') {
+    return { specification: DEFAULT_MOSS_SPEC, thinking: DEFAULT_MOSS_THINKING };
+  }
+  return { specification: DEFAULT_COMFY_SPEC, thinking: DEFAULT_COMFY_THINKING };
 }
 
 /**
@@ -1427,6 +1490,7 @@ function normalizeWorkflowPreset(raw: unknown, seq: number): ComfyWorkflowPreset
     // 只有 moss 两族才是新语义,脏值也回落 'comfy'。
     specDialect:
       o.specDialect === 'moss' || o.specDialect === 'moss-anime' ? o.specDialect : 'comfy',
+    promptSetId: typeof o.promptSetId === 'string' ? o.promptSetId : '',
     layoutLock: normalizeLayoutLock(o.layoutLock),
   };
 }
@@ -1471,7 +1535,18 @@ function normalizeComfyUI(raw: unknown, def: ComfyUISettings): ComfyUISettings {
       ? o.activeWorkflowId
       : workflows[0].id;
 
-  return { ...conn, workflows, activeWorkflowId };
+  const promptSets = (Array.isArray(o.promptSets) ? o.promptSets : []).filter(
+    set => set && typeof set.id === 'string' && set.id
+      && typeof set.name === 'string' && set.name.trim()
+      && (set.dialect === 'comfy' || set.dialect === 'moss' || set.dialect === 'moss-anime')
+      && typeof set.specification === 'string' && typeof set.thinking === 'string',
+  );
+  for (const workflow of workflows) {
+    if (!promptSets.some(set => set.id === workflow.promptSetId && set.dialect === workflow.specDialect)) {
+      workflow.promptSetId = '';
+    }
+  }
+  return { ...conn, workflows, activeWorkflowId, promptSets };
 }
 
 const NAI_MODEL_VALUES = new Set<string>(NAI_MODELS.map(m => m.value));
@@ -1782,6 +1857,8 @@ function normalize(raw: unknown): ImageSettings {
     cardTheme: typeof ru.cardTheme === 'string' ? ru.cardTheme : d.ui.cardTheme,
     autoCollapseImages:
       typeof ru.autoCollapseImages === 'boolean' ? ru.autoCollapseImages : d.ui.autoCollapseImages,
+    immersiveImages:
+      typeof ru.immersiveImages === 'boolean' ? ru.immersiveImages : d.ui.immersiveImages,
     // 老配置缺字段 → 默认档(中)。不为「保持铺满」做迁移:铺满正是要修的问题,想要回去下拉里选
     imageDisplaySize: IMAGE_DISPLAY_SIZES.some(option => option.value === ru.imageDisplaySize)
       ? (ru.imageDisplaySize as ImageDisplaySize)

@@ -18,9 +18,12 @@ vi.mock('@/st/context', () => ({
   getContext: () => mocks.context,
 }));
 
-async function hydrateWithComfy(comfyui: Record<string, unknown> | undefined) {
+async function hydrateWithComfy(
+  comfyui: Record<string, unknown> | undefined,
+  profile: Record<string, unknown> = {},
+) {
   mocks.context = {
-    extensionSettings: { baibai_image: comfyui === undefined ? {} : { comfyui } },
+    extensionSettings: { baibai_image: { ...profile, comfyui } },
     saveSettingsDebounced: vi.fn(),
   };
   const { hydrateSettings, settings } = await import('@/state/settings');
@@ -82,6 +85,62 @@ describe('ComfyUI 工作流库迁移', () => {
     expect(settings.comfyui.workflows.map(w => w.id)).toEqual(['wf_a', 'wf_b']);
     expect(settings.comfyui.workflows.map(w => w.name)).toEqual(['Illustrious', 'Flux']);
     expect(settings.comfyui.activeWorkflowId).toBe('wf_b');
+  });
+
+  it('preserves an active Moss 1 graph and custom planner text, with immersive mode off until enabled', async () => {
+    const workflow = ' { "248": { "inputs": { "text": "%prompt%\\n%nl%" } } } ';
+    const prompts = {
+      jailbreak: '  My core prompt\r\nKeep this spacing. ',
+      mossAnimeSpec: '  My Moss 1 specification\r\nDescribe the scene. ',
+      mossAnimeThinking: '\n Check the current character sheets.  \n',
+    };
+    const settings = await hydrateWithComfy(
+      {
+        activeWorkflowId: 'moss-1',
+        workflows: [{ id: 'moss-1', name: 'Moss 1', workflow, specDialect: 'moss-anime' }],
+      },
+      { autoTag: { prompts, enabled: true, autoGenerate: true } },
+    );
+
+    expect(settings.comfyui.activeWorkflowId).toBe('moss-1');
+    expect(settings.comfyui.workflows[0]).toMatchObject({ workflow, specDialect: 'moss-anime', promptSetId: '' });
+    expect(settings.autoTag).toMatchObject({ prompts, enabled: true, autoGenerate: true });
+    expect(settings.comfyui.promptSets).toEqual([]);
+    expect(settings.ui.immersiveImages).toBe(false);
+
+    const { nextTick } = await import('vue');
+    settings.ui.immersiveImages = true;
+    await nextTick();
+    const stored = mocks.context!.extensionSettings.baibai_image;
+    expect(stored.ui.immersiveImages).toBe(true);
+    expect(stored.comfyui.workflows[0].workflow).toBe(workflow);
+    expect(stored.autoTag.prompts).toMatchObject(prompts);
+  });
+
+  it('restores shared prompt sets and drops mismatched or missing references on load', async () => {
+    const set = {
+      id: 'ps_anime',
+      name: 'Anime',
+      dialect: 'moss-anime',
+      specification: ' Custom specification ',
+      thinking: '  Custom checklist ',
+    };
+    const settings = await hydrateWithComfy(
+      {
+        activeWorkflowId: 'a',
+        promptSets: [set],
+        workflows: [
+          { id: 'a', specDialect: 'moss-anime', promptSetId: set.id },
+          { id: 'b', specDialect: 'moss-anime', promptSetId: set.id },
+          { id: 'c', specDialect: 'moss', promptSetId: set.id },
+          { id: 'd', specDialect: 'moss-anime', promptSetId: 'ps_missing' },
+        ],
+      },
+      { ui: { immersiveImages: true } },
+    );
+    expect(settings.comfyui.promptSets).toEqual([set]);
+    expect(settings.comfyui.workflows.map(w => w.promptSetId)).toEqual([set.id, set.id, '', '']);
+    expect(settings.ui.immersiveImages).toBe(true);
   });
 
   it('当前项指向已删条目 → 回落第一条(悬空 id 会让面板空白、出图取不到工作流)', async () => {
