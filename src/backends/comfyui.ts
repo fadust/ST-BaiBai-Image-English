@@ -38,6 +38,8 @@ const PLACEHOLDER_PATTERN = /%([a-z][a-z0-9_]*)%/g;
 const SERVER_BASE = '/api/sd/comfy';
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const READ_RETRY_DELAYS_MS = [750, 1500, 3000];
+const TRANSIENT_READ_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 /**
  * 生成随机种子（0 ≤ seed < 2^53，与 Python random.randint(0, 2**53 - 1) 同范围）。
@@ -279,6 +281,60 @@ function fileFormat(filename: string, mime = ''): string {
   return mime.split('/').pop()?.toLowerCase() || 'png';
 }
 
+/** Retry read-only operations after ComfyUI has accepted the render. */
+async function retryResultRead<T>(
+  task: string,
+  signal: AbortSignal | undefined,
+  read: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    try {
+      return await read();
+    } catch (error) {
+      const status = error instanceof ComfyUIError ? error.status : undefined;
+      const transient = error instanceof TypeError || error instanceof SyntaxError
+        || (status !== undefined && TRANSIENT_READ_STATUSES.has(status));
+      if (signal?.aborted || !transient) throw error;
+
+      const delay = READ_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new ComfyUIError(`Could not retrieve ComfyUI result for ${task}. The render was queued once. ${detail}`, status);
+      }
+      await abortableDelay(delay, signal);
+    }
+  }
+}
+
+async function readImage(
+  conn: ComfyRunConn,
+  file: ComfyOutputFile,
+  task: string,
+  signal?: AbortSignal,
+): Promise<ComfyImageResult> {
+  const query = new URLSearchParams({
+    filename: file.filename,
+    subfolder: file.subfolder ?? '',
+    type: file.type ?? 'output',
+  });
+  const blob = await retryResultRead(task, signal, async () => {
+    const response = await fetch(`${endpoint(conn.url, 'view')}?${query}`, { signal });
+    if (!response.ok) throw await responseError(response, '读取 ComfyUI 输出图片失败');
+    const image = await response.blob();
+    if (!image.size) throw new TypeError('ComfyUI returned an empty image');
+    return image;
+  });
+  signal?.throwIfAborted();
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    filename: file.filename,
+    format: fileFormat(file.filename, blob.type),
+    revoke: () => URL.revokeObjectURL(url),
+  };
+}
+
 async function generateViaServer(
   conn: ComfyRunConn,
   workflow: ComfyWorkflow,
@@ -445,9 +501,11 @@ async function pollDirectResult(
     let watchQueue = !!hooks?.onQueue;
     while (!file) {
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) throw new ComfyUIError('等待 ComfyUI 结果超时（10 分钟）');
-      const historyResponse = await fetch(endpoint(conn.url, `history/${encodeURIComponent(promptId)}`), { signal });
-      if (!historyResponse.ok) throw await responseError(historyResponse, '读取 ComfyUI 任务状态失败');
-      const history = (await historyResponse.json()) as JsonObject;
+      const history = await retryResultRead(`job ${promptId}`, signal, async () => {
+        const response = await fetch(endpoint(conn.url, `history/${encodeURIComponent(promptId)}`), { signal });
+        if (!response.ok) throw await responseError(response, '读取 ComfyUI 任务状态失败');
+        return (await response.json()) as JsonObject;
+      });
       const item = history[promptId];
       const error = executionError(item);
       if (error) throw new ComfyUIError(error);
@@ -464,24 +522,48 @@ async function pollDirectResult(
       await abortableDelay(POLL_INTERVAL_MS, signal);
     }
 
-    const query = new URLSearchParams({
-      filename: file.filename,
-      subfolder: file.subfolder ?? '',
-      type: file.type ?? 'output',
-    });
-    const imageResponse = await fetch(`${endpoint(conn.url, 'view')}?${query}`, { signal });
-    if (!imageResponse.ok) throw await responseError(imageResponse, '读取 ComfyUI 输出图片失败');
-    const blob = await imageResponse.blob();
-    const url = URL.createObjectURL(blob);
-    return {
-      url,
-      filename: file.filename,
-      format: fileFormat(file.filename, blob.type),
-      revoke: () => URL.revokeObjectURL(url),
-    };
+    return await readImage(conn, file, `job ${promptId}`, signal);
   } finally {
     signal?.removeEventListener('abort', onAbort);
   }
+}
+
+/** Native proxy recovery requires a transport error that identifies an existing result. */
+async function recoverServerResult(
+  conn: ComfyRunConn,
+  error: unknown,
+  signal?: AbortSignal,
+  hooks?: ComfyProgressHooks,
+): Promise<ComfyImageResult> {
+  if (!(error instanceof ComfyUIError) || error.status !== 500 || signal?.aborted) throw error;
+  const match = /request to (https?:\/\/\S+) failed\b|error sending request for url \((https?:\/\/[^)\s]+)\)/i.exec(error.message);
+  if (!match) throw error;
+
+  let base: URL;
+  let failed: URL;
+  try {
+    base = new URL(conn.url.trim());
+    failed = new URL(match[1] ?? match[2]);
+  } catch {
+    throw error;
+  }
+  const prefix = `${base.pathname.replace(/\/+$/, '')}/`;
+  if (failed.origin !== base.origin || !failed.pathname.startsWith(prefix) || failed.username || failed.password) {
+    throw error;
+  }
+  const path = failed.pathname.slice(prefix.length);
+  const history = /^history\/([a-zA-Z0-9_-]{1,128})$/.exec(path);
+  if (history) return pollDirectResult(conn, history[1], signal, hooks);
+
+  const filename = failed.searchParams.get('filename');
+  if (path === 'view' && filename) {
+    return readImage(conn, {
+      filename,
+      subfolder: failed.searchParams.get('subfolder') ?? '',
+      type: failed.searchParams.get('type') || 'output',
+    }, `file ${filename}`, signal);
+  }
+  throw error;
 }
 
 /**
@@ -580,15 +662,20 @@ export async function generateComfyImage(
     workflow = renderWorkflowTemplate(conn.workflow, { ...values, ...preview, ...size });
   }
 
-  // 通道自动选择:浏览器直连优先;仅当请求根本没送达 ComfyUI(网络级失败)时回退 ST 后端转发。
-  // 回退只发生在「排队」之前——拿到 prompt_id 后任务已入队,轮询阶段的任何失败都不重发,避免重复生图。
-  let queued = false;
+  // Probe connectivity before submission. A failed POST can still have queued a render.
+  signal?.throwIfAborted();
   try {
-    const promptId = await queueDirect(conn, workflow, signal);
-    queued = true;
-    return await pollDirectResult(conn, promptId, signal, hooks);
+    await fetch(endpoint(conn.url, 'system_stats'), { signal });
   } catch (error) {
-    if (queued || signal?.aborted || !isNetworkError(error)) throw error;
-    return generateViaServer(conn, workflow, signal);
+    if (signal?.aborted || !isNetworkError(error)) throw error;
+    try {
+      return await generateViaServer(conn, workflow, signal);
+    } catch (serverError) {
+      return recoverServerResult(conn, serverError, signal, hooks);
+    }
   }
+
+  signal?.throwIfAborted();
+  const promptId = await queueDirect(conn, workflow, signal);
+  return pollDirectResult(conn, promptId, signal, hooks);
 }
