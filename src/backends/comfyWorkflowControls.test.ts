@@ -22,7 +22,7 @@ function mossWorkflow(): string {
 }
 
 describe('custom workflow generation controls', () => {
-  it('reads the model, sampler, scheduler, steps, CFG, and six usable slots across two rgthree stacks', () => {
+  it('reads the model, sampler, scheduler, steps, CFG, and eight slots across two rgthree stacks', () => {
     const controls = workflowControls(mossWorkflow());
     expect(controls.models[0]).toMatchObject({ node: '252', input: 'unet_name', value: 'moss.safetensors', kind: 'unet' });
     expect(controls.loras).toHaveLength(8);
@@ -40,6 +40,24 @@ describe('custom workflow generation controls', () => {
     expected['245'].inputs.strength_02 = -2.5;
     expect(JSON.parse(edited)).toEqual(expected);
     expect(JSON.parse(original)['245'].inputs.lora_02).toBe('None');
+  });
+  it('exposes all twelve slots in chain order and edits the last one in place', () => {
+    const graph = JSON.parse(mossWorkflow());
+    graph['268'] = structuredClone(graph['245']);
+    graph['245'].inputs.model = ['268', 0];
+    graph['245'].inputs.clip = ['268', 1];
+    const source = JSON.stringify(graph);
+    const { loras } = workflowControls(source);
+    expect(loras.map(slot => slot.name.node)).toEqual([
+      '215', '215', '215', '215', '268', '268', '268', '268', '245', '245', '245', '245',
+    ]);
+    const last = loras[11];
+    expect(last.name.input).toBe('lora_04');
+    const withFile = updateWorkflowField(source, last.name, 'last-style.safetensors');
+    const withStrength = updateWorkflowField(withFile, last.strength, -0.75);
+    graph['245'].inputs.lora_04 = 'last-style.safetensors';
+    graph['245'].inputs.strength_04 = -0.75;
+    expect(JSON.parse(withStrength)).toEqual(graph);
   });
   it('lets model and sampling controls edit exactly their existing fields', () => {
     const original = mossWorkflow();

@@ -38,6 +38,7 @@ function field(node: string, inputs: Record<string, unknown>, input: string, kin
 export function workflowControls(text: string): WorkflowControls {
   const workflow = parse(text);
   const result: WorkflowControls = { models: [], loras: [], sampling: [] };
+  const lorasByNode = new Map<string, WorkflowLora[]>();
   for (const [id, node] of Object.entries(workflow)) {
     if (!node || typeof node !== 'object' || !node.inputs || typeof node.inputs !== 'object') continue;
     const inputs = node.inputs;
@@ -48,17 +49,22 @@ export function workflowControls(text: string): WorkflowControls {
     if (model) result.models.push({ ...model, title, kind: modelInput === 'ckpt_name' ? 'checkpoint' : node.class_type === 'UnetLoaderGGUF' ? 'gguf' : 'unet' });
 
     if (/lora/i.test(node.class_type)) {
+      const loras: WorkflowLora[] = [];
       const name = field(id, inputs, 'lora_name', 'string');
       const strength = field(id, inputs, 'strength_model', 'number') ?? field(id, inputs, 'strength', 'number');
       if (name && strength) {
         const clip = field(id, inputs, 'strength_clip', 'number');
-        result.loras.push({ name, strength: { ...strength, ...(clip ? { also: ['strength_clip'] } : {}) } });
+        loras.push({ name, strength: { ...strength, ...(clip ? { also: ['strength_clip'] } : {}) } });
       }
-      for (const key of Object.keys(inputs).filter(key => /^lora_\d+$/.test(key)).sort()) {
+      const numberedSlots = Object.keys(inputs)
+        .filter(key => /^lora_\d+$/.test(key))
+        .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
+      for (const key of numberedSlots) {
         const name = field(id, inputs, key, 'string');
         const strength = field(id, inputs, key.replace('lora_', 'strength_'), 'number');
-        if (name && strength) result.loras.push({ name, strength });
+        if (name && strength) loras.push({ name, strength });
       }
+      if (loras.length) lorasByNode.set(id, loras);
     }
     if (node.class_type === 'KSampler' || node.class_type === 'KSamplerAdvanced') {
       result.sampling.push({
@@ -70,6 +76,19 @@ export function workflowControls(text: string): WorkflowControls {
       });
     }
   }
+  // A loader inserted into a chain can have a higher node ID than the loader it feeds.
+  const visited = new Set<string>();
+  function appendLoras(id: string): void {
+    const loras = lorasByNode.get(id);
+    if (!loras || visited.has(id)) return;
+    visited.add(id);
+    const { model, clip } = workflow[id].inputs;
+    for (const link of [model, clip]) {
+      if (Array.isArray(link)) appendLoras(String(link[0]));
+    }
+    result.loras.push(...loras);
+  }
+  for (const id of lorasByNode.keys()) appendLoras(id);
   return result;
 }
 

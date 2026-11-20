@@ -8,7 +8,8 @@ const props = defineProps<{ modelValue: string; lists: ComfyModelLists | null; f
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void; (e: 'fetch'): void }>();
 const error = ref('');
 const controls = computed(() => { try { return workflowControls(props.modelValue); } catch { return null; } });
-const slots = computed(() => Array.from({ length: 6 }, (_, index) => controls.value?.loras[index]));
+const LORA_CONTROL_LIMIT = 12;
+const slots = computed(() => Array.from({ length: LORA_CONTROL_LIMIT }, (_, index) => controls.value?.loras[index]));
 const samplers = computed(() => props.lists?.samplers.length ? props.lists.samplers : FALLBACK_SAMPLERS);
 const schedulers = computed(() => props.lists?.schedulers.length ? props.lists.schedulers : FALLBACK_SCHEDULERS);
 const loras = computed(() => ['None', ...(props.lists?.loras ?? []).filter(name => name !== 'None')]);
@@ -50,8 +51,8 @@ function number(binding: WorkflowField, event: Event) {
         </div>
       </div>
       <p class="bbi-field-hint">Choose None to disable a LoRA. Negative strengths are supported. LoRA order follows the workflow.</p>
-      <p v-if="controls.loras.length < 6" class="bbi-field-hint">{{ controls.loras.length }} editable LoRA {{ controls.loras.length === 1 ? 'slot was' : 'slots were' }} found. To add more, add LoRA loaders in ComfyUI and export the workflow again.</p>
-      <p v-if="controls.loras.length > 6" class="bbi-field-hint">Additional LoRA slots are preserved and can be edited in Workflow JSON.</p>
+      <p v-if="controls.loras.length < LORA_CONTROL_LIMIT" class="bbi-field-hint">{{ controls.loras.length }} of {{ LORA_CONTROL_LIMIT }} slots are available in this workflow. To enable more, add LoRA loaders in ComfyUI and export the workflow again.</p>
+      <p v-if="controls.loras.length > LORA_CONTROL_LIMIT" class="bbi-field-hint">Edit additional LoRA slots in Workflow JSON.</p>
 
       <section v-for="(sampling, index) in controls.sampling" :key="index" class="workflow-sampling">
         <span class="bbi-field-label">{{ controls.sampling.length > 1 ? `Sampling · ${sampling.title}` : 'Sampling' }}</span>

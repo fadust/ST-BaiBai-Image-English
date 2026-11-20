@@ -18,9 +18,9 @@ New controls and AI instructions use natural English. Names and saved-data keys 
 
 MOSS realistic and anime now share a full natural-language prompt design in `nl`, preferably English, with character-sheet appearance and picture-only output. See the [MOSS trial guide](docs/MOSS-NL-TRIAL.md) for migration and a one-scene test.
 
-Under **Backend → Workflow**, custom API workflows now show the image model, six LoRA slots with individual strengths, sampler, scheduler, steps, and CFG. Lists come from your connected ComfyUI server; file names can also be entered directly. Changes save to the selected workflow preset.
+Under **Backend → Workflow**, custom API workflows show the image model, up to 12 editable LoRA slots with individual strengths, sampler, scheduler, steps, and CFG. Lists come from your connected ComfyUI server. You can also enter file names directly. Changes save to the selected workflow preset.
 
-Standard LoRA loaders and rgthree LoRA stacks are supported, including negative strengths. Custom mode edits existing loader slots and preserves the rest of the graph. Extra slots and linked inputs remain available in Workflow JSON. For standard LoRA loaders, changing strength updates both model and CLIP strength. Simple mode also starts with six visible LoRA slots.
+Standard LoRA loaders and rgthree LoRA stacks are supported, including negative strengths. Custom mode shows directly connected loaders in chain order and edits their existing slots. Extra slots and linked inputs remain available in Workflow JSON. For standard LoRA loaders, changing strength updates both model and CLIP strength. Simple mode starts with six visible slots and accepts additional LoRAs.
 
 ## Optional NPC Codex integration
 
