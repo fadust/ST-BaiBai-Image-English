@@ -88,6 +88,7 @@ export function buildSlotTaskNote(
     `【本次只重写第 ${seq + 1} 张的提示词】`,
     '这一张画的仍然是它原本的那个瞬间：**不要另选画面、不要换构图主体、不要挪到正文别处**。',
     '你的任务是把这同一个画面的提示词重写一遍——依据正文把它写得更准确、更具体，补上漏掉的关键信息，修掉与正文不符或含糊的部分。',
+    'Use the supplied character sheets for stable appearance, including Race and Face when present. Use the selected moment for clothing, action and other temporary details.',
     'images 数组必须恰好返回 1 项。',
   ];
   if (current) {

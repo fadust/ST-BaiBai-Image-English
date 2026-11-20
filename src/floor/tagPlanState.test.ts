@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { awaitTagPlan, clearAllTagPlans, isTagPlanning, runTagPlan } from '@/floor/tagPlanState';
+import type { SlotRewritePreview } from '@/autoTag/runner';
+import { awaitTagPlan, clearAllTagPlans, discardTagPreview, getTagPreview, isTagPlanning, runTagPlan } from '@/floor/tagPlanState';
 
 const KEY = 'c|1|0|0';
 
 /** A deferred with manually controlled completion (no timers, so tests don't rely on sleeping) */
-function deferred(): { promise: Promise<void>; resolve: () => void; reject: (e: unknown) => void } {
-  let resolve!: () => void;
+function deferred() {
+  let resolve!: (result: SlotRewritePreview | null) => void;
   let reject!: (e: unknown) => void;
-  const promise = new Promise<void>((res, rej) => {
+  const promise = new Promise<SlotRewritePreview | null>((res, rej) => {
     resolve = res;
     reject = rej;
   });
@@ -24,7 +25,7 @@ describe('tagPlanState', () => {
     const gate = deferred();
     const task = runTagPlan(KEY, () => gate.promise);
     expect(isTagPlanning(KEY)).toBe(true);
-    gate.resolve();
+    gate.resolve(null);
     await task;
     expect(isTagPlanning(KEY)).toBe(false);
   });
@@ -34,11 +35,11 @@ describe('tagPlanState', () => {
     const second = deferred();
     const firstTask = runTagPlan(KEY, () => first.promise);
     const secondTask = runTagPlan(KEY, () => second.promise);
-    first.resolve();
+    first.resolve(null);
     await firstTask;
     // The first one started has finished, but the key now holds the later one, so the display state must stay lit
     expect(isTagPlanning(KEY)).toBe(true);
-    second.resolve();
+    second.resolve(null);
     await secondTask;
     expect(isTagPlanning(KEY)).toBe(false);
   });
@@ -52,13 +53,28 @@ describe('tagPlanState', () => {
     const task = runTagPlan(KEY, () => gate.promise);
     const rejoined = awaitTagPlan(KEY);
     expect(rejoined).toBe(task);
-    gate.resolve();
+    gate.resolve(null);
     await task;
     expect(awaitTagPlan(KEY)).toBeNull();
   });
 
   it('awaitTagPlan returns null with no in-flight task', () => {
     expect(awaitTagPlan(KEY)).toBeNull();
+  });
+
+  it('keeps the finished preview available on reopen until discarded', async () => {
+    const preview: SlotRewritePreview = {
+      content: { tag: 'dusk', nl: '', negative: '', characters: [], size: 'portrait' },
+      rawTag: '<bbi_image>daylight</bbi_image>',
+      message: { name: 'Mara', is_user: false, is_system: false, mes: 'Mara crosses the bridge.' },
+      swipeId: null,
+      matchesScene: () => true,
+    };
+    await runTagPlan(KEY, async () => preview);
+    expect(isTagPlanning(KEY)).toBe(false);
+    expect(getTagPreview(KEY)).toBe(preview);
+    discardTagPreview(KEY);
+    expect(getTagPreview(KEY)).toBeUndefined();
   });
 
   /** A failed request must also remove the runtime state, otherwise that slot would be stuck in "Rewriting" forever and never clickable again. */

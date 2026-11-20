@@ -126,9 +126,12 @@ function unmountAll(): void {
  * and every image was requested again (ST's static server uses max-age=0, so each needs revalidation); the more images on the floor,
  * the bigger the request storm when one generation completes. On the patch path an unchanged src leaves the DOM untouched: zero requests.
  */
-export function hydrateMessage(messageId: number, ctx: STContext): void {
+export function hydrateMessage(messageId: number, ctx: STContext, redrawSeq?: number): void {
   const chatId = ctx.getCurrentChatId();
   const message = ctx.chat[messageId];
+  const redrawKey = redrawSeq === undefined
+    ? null
+    : slotRegistry.key(chatId, messageId, message?.swipe_id ?? 0, redrawSeq);
 
   /** Slots that "should exist" after this hydration: key → {anchor, vnode}. Empty if the message is gone; unmounted together below. */
   const desired = new Map<string, { anchor: HTMLElement; vnode: VNode }>();
@@ -193,10 +196,9 @@ export function hydrateMessage(messageId: number, ctx: STContext): void {
   // Mount or diff-update
   for (const [key, { anchor, vnode }] of desired) {
     const existing = slotRegistry.get(key);
-    if (existing && existing.container.host === anchor) {
+    if (existing && existing.container.host === anchor && key !== redrawKey) {
       // Same anchor: render the same component type → props patch, without remounting the DOM or rerunning onMounted.
-      // autoGenerate marks are consumed by onMounted, but they only appear on anchors where "tags were just written"
-      // (writing the text always triggers an ST re-render, so the anchor is always rebuilt), so this branch is never reached for them.
+      // An explicit redraw remounts just its target so onMounted can consume its post-save mark.
       existing.vnode = vnode;
       render(vnode, existing.container);
     } else {

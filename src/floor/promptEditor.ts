@@ -2,15 +2,15 @@ import { h, render } from 'vue';
 import { rememberPrompt } from '@/promptVersions/restore';
 
 import PromptEditor from '@/floor/PromptEditor.vue';
-import { cancelFloorTags, requestSlotTag } from '@/autoTag/runner';
-import { markForAutoGenerate, consumeAutoGenerate } from '@/floor/autoGenerate';
+import { cancelFloorTags, previewSlotRewrite, type SlotRewritePreview } from '@/autoTag/runner';
+import { markForAutoGenerate } from '@/floor/autoGenerate';
 import { hydrateMessage } from '@/floor/hydrate';
-import { awaitTagPlan, isTagPlanning, runTagPlan } from '@/floor/tagPlanState';
+import { awaitTagPlan, discardTagPreview, getTagPreview, isTagPlanning, runTagPlan } from '@/floor/tagPlanState';
 import { slotKey } from '@/floor/genState';
 import { confirmDialog } from '@/components/confirm';
+import { backendStatus } from '@/generate';
 import { getContext } from '@/st/context';
 import {
-  parseImageTagContent,
   parseImageTags,
   replaceImageTagAt,
   serializeImageTag,
@@ -87,10 +87,11 @@ function failureReason(result: Exclude<ApplyMessageResult, 'saved'>): string {
  * Every failure shows a toast and returns false, **without closing the dialog**: the user may have just typed dozens of tags,
  * and swallowing the draft because of a swipe switch is unacceptable.
  */
-async function writeBack(
+export async function writeBack(
   at: PromptEditorAt,
   content: ImageTagContent,
   regenerate: boolean,
+  preview?: SlotRewritePreview,
 ): Promise<boolean> {
   const context = getContext();
   if (!context) {
@@ -104,12 +105,12 @@ async function writeBack(
   }
 
   const nextTag = serializeImageTag(content);
-  // The mark must be set **before** writing back: write-back triggers re-hydration, and the card consumes the mark on mount (same as autoTag/runner.ts).
-  // force mode always starts: the user clicked "Regenerate", even if this prompt produced images before.
-  if (regenerate) {
-    markForAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq, 'force');
+  if (regenerate && !backendStatus().configured) {
+    toastr.warning('Configure an image backend before redrawing.', 'BaiBai Image');
+    return false;
   }
 
+  let sceneChanged = false;
   let result: Awaited<ReturnType<typeof applyMessageText>>;
   try {
     result = await applyMessageText(
@@ -119,57 +120,40 @@ async function writeBack(
         // (that is key to coexisting with other text-editing plugins), so "the tag count changed / someone else edited this tag"
         // can't be caught there; it has to be checked here against the original text: does seq still point at the same tag.
         if (parseImageTags(currentText)[at.seq] !== at.rawTag) return null;
+        if (preview && !preview.matchesScene(currentText)) {
+          sceneChanged = true;
+          return null;
+        }
         return replaceImageTagAt(currentText, at.seq, nextTag);
       },
       at.chatId,
-      at.swipeId,
-      message,
+      preview ? preview.swipeId : at.swipeId,
+      preview?.message ?? message,
       rememberPrompt(message, at.swipeId, at.seq, at.rawTag),
     );
   } catch (error) {
-    // Revoke the mark: take back only our own one; clearAutoGenerateForFloor can't be used (it would hit sibling slots on the same floor)
-    if (regenerate) consumeAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq);
     toastr.error(error instanceof Error ? error.message : String(error), 'BaiBai Image');
     return false;
   }
 
   if (result !== 'saved') {
-    if (regenerate) consumeAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq);
-    toastr.warning(failureReason(result), 'BaiBai Image');
+    toastr.warning(sceneChanged ? 'The scene or its appearance reference changed. Discard this preview and rewrite it again.' : failureReason(result), 'BaiBai Image');
     return false;
   }
 
-  // applyMessageText internally fires MESSAGE_EDITED / MESSAGE_UPDATED, so the floor usually re-hydrates by itself;
-  // but while ST's edit box is open it takes the settleActiveEditor branch (**no MESSAGE_UPDATED**), and nobody hydrates,
-  // so we do it here. Twice, for the same reason as scheduleHydration in hydrate.ts: other ST listeners may replace .mes_text
-  // after this; if the anchor hasn't changed, the late run is just a cheap props patch (zero rebuilds, no mark consumed twice).
-  hydrateMessage(at.messageId, context);
+  // Schedule drawing only after the chat save succeeds. Remount just the selected slot to consume the mark.
+  const current = getContext();
+  const saved = current?.chat?.[at.messageId];
+  if (!current || current.getCurrentChatId() !== at.chatId || !saved || (saved.swipe_id ?? 0) !== at.swipeId
+    || parseImageTags(saved.mes)[at.seq] !== nextTag) return true;
+  if (regenerate) markForAutoGenerate(at.chatId, at.messageId, at.swipeId, at.seq, 'force');
+  hydrateMessage(at.messageId, current, regenerate ? at.seq : undefined);
   setTimeout(() => {
     const later = getContext();
     if (!later || later.getCurrentChatId() !== at.chatId) return;
     hydrateMessage(at.messageId, later);
   }, LATE_HYDRATION_MS);
   return true;
-}
-
-/**
- * Re-reads tag number seq from the story text and works out what the dialog should switch to after a rewrite is saved (pure function, easy to unit test).
- *
- * Returns null = touch nothing: the text can't be read, seq no longer exists, or the raw text didn't change at all. No guessing, no fallback:
- * the story text is the prompt's single source of truth (see the file header), and if it can't be read, what the user sees should stay.
- *
- * **rawTag and content must change together**: changing only content (refilling the input) without rawTag means the user's next click on
- * "Apply" runs into "this tag has been changed", and the change was our own rewrite.
- */
-export function nextEditorState(
-  text: string | undefined,
-  seq: number,
-  currentRawTag: string,
-): { rawTag: string; content: ImageTagContent } | null {
-  if (typeof text !== 'string') return null;
-  const nextRaw = parseImageTags(text)[seq];
-  if (nextRaw === undefined || nextRaw === currentRawTag) return null;
-  return { rawTag: nextRaw, content: parseImageTagContent(nextRaw) };
 }
 
 export function openPromptEditor(options: PromptEditorOptions): void {
@@ -187,21 +171,6 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   /** Asking "Discard changes?": ConfirmDialog doesn't handle Esc itself, while this dialog's capture listener is still active;
    *  without blocking, repeated Esc presses would stack several confirm dialogs. */
   let asking = false;
-  /**
-   * Content the dialog currently shows. After an AI rewrite is saved it switches to the new version from the text, and the component's watch refills the input.
-   * Kept apart from options.content: that is the snapshot from opening and must not change.
-   */
-  let content: ImageTagContent = options.content;
-  /**
-   * Raw tag text used for the write-back CAS. **It must switch to the new one after a rewrite is saved**;
-   * otherwise the user's next click on "Apply" runs into "this tag has been changed", and the change was ours.
-   */
-  let rawTag = options.at.rawTag;
-  /**
-   * An AI rewrite has already been saved in this dialog. The dialog doesn't close automatically, and the prompt the user sees is one "already saved in the text",
-   * which looks the same as a draft they typed and haven't applied; without saying so, there is no way to tell which one is in effect.
-   */
-  let rewritten = false;
   /** This slot's runtime key, same shape as genState / tagPlanState. */
   const planKey = slotKey(options.at.chatId, options.at.messageId, options.at.swipeId, options.at.seq);
   /**
@@ -231,80 +200,33 @@ export function openPromptEditor(options: PromptEditorOptions): void {
   };
   closeCurrent = close;
 
-  /**
-   * After a rewrite finishes: re-reads this slot's tag from the **current text** and refills the input.
-   * The decision is in nextEditorState (pure function, unit tested); this only fetches the text and assigns.
-   * Returns true = the prompt really changed (used to show a one-line "saved" note).
-   */
-  const refreshFromMessage = (): boolean => {
-    const next = nextEditorState(
-      getContext()?.chat?.[options.at.messageId]?.mes,
-      options.at.seq,
-      rawTag,
-    );
-    if (!next) return false;
-    rawTag = next.rawTag;
-    content = next.content;
-    rewritten = true;
-    return true;
+  const watchRewrite = (task: Promise<void>) => {
+    void task.catch(() => {}).finally(() => paint());
   };
 
-  /**
-   * Actually starts the rewrite.
-   *
-   * Runs in tagPlanState rather than this dialog: **closing the dialog does not interrupt the rewrite** (an explicit user requirement).
-   * The runner saves and force-generates by itself, so this only reads the new prompt back after it finishes and re-renders.
-   * The dialog **does not close automatically**: vanishing after one click looks like a crash.
-   */
-  const startRewrite = (): void => {
-    if (busy || closing || isTagPlanning(planKey)) return;
-    const task = runTagPlan(planKey, () => requestSlotTag(options.at.messageId, options.at.seq));
+  const rewrite = () => {
+    if (busy || closing || isTagPlanning(planKey) || getTagPreview(planKey)) return;
+    watchRewrite(runTagPlan(planKey, () => previewSlotRewrite(options.at)));
     paint();
-    void task
-      .catch(() => {
-        // The runner already showed the failure reason as a toast; this only stops the spinner
-      })
-      .finally(() => {
-        refreshFromMessage();
-        paint();
-      });
   };
 
-  /**
-   * The "AI rewrite prompt" button.
-   *
-   * If the draft was changed, ask first: the rewrite **really saves**, and after it finishes the draft is necessarily replaced by the new prompt
-   * (not replacing it would be worse: the user's next click on "Apply" would overwrite the fresh rewrite with the old draft). Silently swallowing
-   * a long hand-typed draft in one click is data loss, same rule as requestClose; sharing asking prevents stacking several confirm dialogs.
-   */
-  const rewrite = (): void => {
-    if (busy || asking || closing || isTagPlanning(planKey)) return;
-    if (!dirty) {
-      startRewrite();
-      return;
-    }
-    asking = true;
-    void confirmDialog({
-      title: 'AI rewrite prompt',
-      text: 'Your manual edits are not applied yet. The AI rewrite saves directly and will replace them.',
-      confirmText: 'rewrite',
-    }).then(ok => {
-      asking = false;
-      if (ok) startRewrite();
+  const rejoin = awaitTagPlan(planKey);
+  if (rejoin) watchRewrite(rejoin);
+
+  const apply = (value: ImageTagContent, regenerate: boolean, preview?: SlotRewritePreview) => {
+    if (busy || closing || isTagPlanning(planKey)) return;
+    busy = true;
+    paint();
+    void writeBack(options.at, value, regenerate, preview).then(ok => {
+      busy = false;
+      if (ok) {
+        discardTagPreview(planKey);
+        close();
+      } else {
+        paint();
+      }
     });
   };
-
-  // When the dialog reopens, resume the in-flight rewrite: the request belongs to the store, and closing the dialog didn't interrupt it.
-  // Don't start another; just wait for it to finish and refill as usual (the "resume" users want).
-  const rejoin = awaitTagPlan(planKey);
-  if (rejoin) {
-    void rejoin
-      .catch(() => {})
-      .finally(() => {
-        refreshFromMessage();
-        paint();
-      });
-  }
 
   /** Close request: if the draft was changed, ask first, so a long hand-typed draft isn't swallowed by one Esc. */
   const requestClose = () => {
@@ -338,29 +260,30 @@ export function openPromptEditor(options: PromptEditorOptions): void {
     // Late re-renders are always discarded (see the comment on closed): the container is detached, but ModalMask teleports out,
     // so rendering into it would stick the closed dialog back on screen, and it could never be closed again.
     if (closed) return;
+    const preview = getTagPreview(planKey);
+    if (!closing && preview && preview.rawTag !== options.at.rawTag) discardTagPreview(planKey);
     render(
       h(PromptEditor, {
-        content,
+        content: options.content,
         historyCount: options.historyCount,
         configured: options.configured,
         busy,
         rewriting: isTagPlanning(planKey),
-        rewritten,
+        preview: preview?.rawTag === options.at.rawTag ? preview.content : undefined,
         closing,
         onDirty: (value: boolean) => {
           dirty = value;
         },
         onRewrite: rewrite,
         onCancelRewrite: () => cancelFloorTags(options.at.messageId),
-        onApply: (value: ImageTagContent, regenerate: boolean) => {
-          if (busy || closing) return;
-          busy = true;
+        onApply: (value: ImageTagContent, regenerate: boolean) => apply(value, regenerate),
+        onApplyPreview: (regenerate: boolean) => {
+          const preview = getTagPreview(planKey);
+          if (preview?.rawTag === options.at.rawTag) apply(preview.content, regenerate, preview);
+        },
+        onDiscardPreview: () => {
+          discardTagPreview(planKey);
           paint();
-          void writeBack({ ...options.at, rawTag }, value, regenerate).then(ok => {
-            busy = false;
-            if (ok) close();
-            else paint();
-          });
         },
         onClose: requestClose,
       }),

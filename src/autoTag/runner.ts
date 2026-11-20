@@ -12,7 +12,6 @@ import { beginGeneration, clearGeneration, consumeGeneration } from '@/autoTag/g
 import { focusImageCount, passageTaskNote } from '@/rewriteHint/passage';
 import { addFocusedTags, addedExtraUpdates, dropAddedMark, pinFocusPosition } from '@/rewriteHint/move';
 import { focusSourceUpdate } from '@/rewriteHint/sources';
-import { rememberPrompt } from '@/promptVersions/restore';
 import { autoTagProfile, buildAutoTagMessages } from '@/autoTag/prompt';
 import { rebaseImagePositions, type RebaseReport } from '@/autoTag/rebase';
 import { auditFrames, formatFrameAudits } from '@/autoTag/shotspec';
@@ -34,7 +33,6 @@ import {
 import { injectImageTags, parseImagePlan, type ImagePlan } from '@/autoTag/protocol';
 import {
   clearAutoGenerateForFloor,
-  consumeAutoGenerate,
   markForAutoGenerate,
 } from '@/floor/autoGenerate';
 import { applyMessageText, type ApplyMessageResult } from '@/st/messageEdit';
@@ -42,9 +40,9 @@ import { getContext, isAiStoryMessage, type STMessage } from '@/st/context';
 import {
   hasImageTagTrace,
   parseImageTags,
-  replaceImageTagAt,
   serializeImageTag,
   stripImageTags,
+  type ImageTagContent,
 } from '@/st/imageTagRegex';
 import { getTagGenChannel, isCurrentChatExcluded, settings } from '@/state/settings';
 
@@ -106,18 +104,29 @@ function textHash(text: string): string {
   return (hash >>> 0).toString(36);
 }
 
+interface SlotRewriteTarget {
+  chatId: string;
+  messageId: number;
+  swipeId: number;
+  seq: number;
+  rawTag: string;
+}
+
+export interface SlotRewritePreview {
+  content: ImageTagContent;
+  rawTag: string;
+  message: STMessage;
+  swipeId: number | null;
+  matchesScene: (text: string) => boolean;
+}
+
 interface RunOptions {
   /** Manual trigger (floor button): bypasses autoTag.enabled and processed deduplication; gives feedback even for empty results. */
   manual?: boolean;
   /** Regenerate: removes existing tags from the text before analysing/injecting; old images stay in the card history. */
   replace?: boolean;
-  /**
-   * Single-slot prompt rewrite (the card's "AI rewrite prompt"): replaces only that seq's tag; other tags and images stay untouched.
-   * **The scene doesn't change**: write-back replaces in place by seq, and the position the model returns plays no part in it; for the wording rule see
-   * slotPlan.buildSlotTaskNote. The analysis base also strips all old tags, but output is forced to exactly 1 image,
-   * and this run's AI changes are ignored (the first full analysis already created profiles for the whole floor).
-   */
-  slot?: { seq: number };
+  /** The editor owns saving and redrawing a single-slot rewrite. */
+  slot?: SlotRewriteTarget;
   focus?: string;
   add?: boolean;
 }
@@ -184,7 +193,7 @@ function planChangeOps(plan: ImagePlan): PositionedCharOp[] {
   return ops.sort((left, right) => left.sourceLine - right.sourceLine);
 }
 
-async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolean | void> {
+async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolean | SlotRewritePreview | void> {
   const context = getContext();
   diagnostic('runForFloor:enter', {
     floor,
@@ -235,16 +244,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
   }
   const rawSource = message.mes;
   const slot = opts.slot;
-  // Target of a single-slot rewrite: snapshot the raw text of tag number seq at start, and before writing back confirm seq still points at the same tag
-  // (same discipline as the prompt editor dialog). If the text no longer has this tag = it was deleted/the swipe changed meanwhile, give up.
-  const slotRawTag = slot ? parseImageTags(rawSource)[slot.seq] : undefined;
-  if (slot && slotRawTag === undefined) {
-    abort(
-      floor,
-      'slot-missing',
-      true,
-      `The prompt for image ${slot.seq + 1} no longer exists (the swipe may have changed or the text was edited), so it was not rewritten.`,
-    );
+  const chatId = context.getCurrentChatId?.() ?? '';
+  const swipeId = activeSwipeId(message);
+  if (slot && (slot.chatId !== chatId || slot.swipeId !== (swipeId ?? 0)
+    || parseImageTags(rawSource)[slot.seq] !== slot.rawTag)) {
+    abort(floor, 'slot-changed', true, 'The original image prompt changed. Reopen the prompt editor to start a new rewrite.');
     return;
   }
   // Detection shares its source with the button layer (imageTagRegex.hasImageTagTrace): the two once drifted:
@@ -279,12 +283,10 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
     return;
   }
 
-  const chatId = context.getCurrentChatId?.() ?? '';
   if (!chatId) {
     abort(floor, 'missing-chat-id', opts.manual, 'No chat is open, so no image tags were generated');
     return;
   }
-  const swipeId = activeSwipeId(message);
   const identity = `${chatId}\u0000${floor}\u0000${swipeId ?? 'none'}\u0000${textHash(source)}`;
   // Manual means explicit intent: run even if the automatic flow already processed this text (e.g. concluded no image was needed),
   // but still record it in processed, so the automatic flow doesn't request the same text again afterwards.
@@ -543,10 +545,15 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
       }
     }
 
-    // The single-slot rewrite returned no new prompt: keep the original prompt and image, replace nothing (empty images is not an error).
-    if (slot && !plan.images.length) {
-      toastr.info('The model gave no new prompt, so this image stays as it is.', 'BaiBai Image');
-      return;
+    if (slot) {
+      const { tag, nl, negative, characters, size } = plan.images[0];
+      return {
+        content: { tag, nl, negative, characters, size },
+        rawTag: slot.rawTag,
+        message,
+        swipeId,
+        matchesScene: text => stripImageTags(text) === source && codex.isCurrent(),
+      };
     }
     // With no images, no character changes and no old floor changes to clean up, keep the original early exit without writing.
     if (!plan.images.length && !floorOps.length && !previousDelta) {
@@ -557,17 +564,11 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
 
     // Fires MESSAGE_EDITED / MESSAGE_UPDATED; cards consume the mark on hydration/mount and start generating automatically
     // (see floor/autoGenerate.ts); if write-back fails the mark is revoked.
-    // A single-slot rewrite is the user's explicit intent on the card (like "Apply and regenerate" in the prompt editor dialog),
-    // so it isn't bound by the autoTag.autoGenerate toggle and always force-generates.
     const markSwipeId = message.swipe_id ?? 0;
-    const marked = !opts.add && plan.images.length > 0 && (settings.autoTag.autoGenerate || !!slot || !!opts.focus);
+    const marked = !opts.add && plan.images.length > 0 && (settings.autoTag.autoGenerate || !!opts.focus);
     if (marked) {
-      if (slot) {
-        markForAutoGenerate(chatId, floor, markSwipeId, slot.seq, 'force');
-      } else {
-        for (let seq = 0; seq < plan.images.length; seq++) {
-          markForAutoGenerate(chatId, floor, markSwipeId, seq);
-        }
+      for (let seq = 0; seq < plan.images.length; seq++) {
+        markForAutoGenerate(chatId, floor, markSwipeId, seq);
       }
     }
     // The text is computed in buildNext from "the real text at the moment of writing": edits other plugins made during the analysis
@@ -581,13 +582,6 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
           // Do not reorder slots if the story or existing prompts changed during planning.
           if (currentText !== rawSource) return null;
           return addFocusedTags(currentText, { chatId, floor, swipeId: markSwipeId }, plan.images.map(image => ({ tag: serializeImageTag(image), passageId: image.position })));
-        }
-        // Single-slot rewrite: replace only tag number seq; the text and other tags stay untouched, and no relocation is needed.
-        // The position the model returns deliberately plays no part here: the scene is pinned in place; the model only rewrites the content.
-        // The raw text snapshotted at start doesn't match = changed by the user/another flow meanwhile; don't overwrite (same as the prompt editor dialog).
-        if (slot) {
-          if (parseImageTags(currentText)[slot.seq] !== slotRawTag) return null;
-          return replaceImageTagAt(currentText, slot.seq, serializeImageTag(plan.images[0]));
         }
         // The replace path likewise strips old tags with the current text as base; the old snapshot can't be used
         const base = opts.replace ? stripImageTags(currentText) : currentText;
@@ -609,7 +603,7 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
       message,
       // Text, slot positions, prompt history, and scene markers commit or roll back together.
       [
-        ...(opts.add ? addedExtraUpdates(floor) : slot ? [rememberPrompt(message, markSwipeId, slot.seq, slotRawTag!)].filter((item): item is NonNullable<typeof item> => !!item) : [{ key: BBI_CHAR_EXTRA_KEY, value: makeCharTagFloorDelta(floorOps, swipeId ?? 0) }]),
+        ...(opts.add ? addedExtraUpdates(floor) : [{ key: BBI_CHAR_EXTRA_KEY, value: makeCharTagFloorDelta(floorOps, swipeId ?? 0) }]),
         ...(opts.focus ? [focusSourceUpdate(message.extra, markSwipeId, plan.images, preparedTarget.segments, opts.focus)] : []),
       ],
     );
@@ -618,10 +612,6 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
         if (!opts.add) recomputeCharTags();
         toastr.success(`Added ${plan.images.length} illustration(s) to message ${floor}. Existing images were kept.`, 'BaiBai Image');
         return true;
-      }
-      if (slot) {
-        toastr.success(`Rewrote the prompt for image ${slot.seq + 1}; generating with the new prompt`, 'BaiBai Image');
-        return;
       }
       recomputeCharTags();
       if (rebaseNote) console.info(`[BaiBai Image] Floor ${floor} tag relocation: ${rebaseNote}`);
@@ -635,26 +625,15 @@ async function runForFloor(floor: number, opts: RunOptions = {}): Promise<boolea
       return;
     }
     if (opts.add) dropAddedMark();
-    // Revoke only our own mark: clearAutoGenerateForFloor would also clear pending marks for other slots on the same floor.
-    if (marked) {
-      if (slot) consumeAutoGenerate(chatId, floor, markSwipeId, slot.seq);
-      else clearAutoGenerateForFloor(chatId, floor);
-    }
+    if (marked) clearAutoGenerateForFloor(chatId, floor);
     console.info(`[BaiBai Image] Floor ${floor} gave up writing image tags: ${result}`);
-    // A single-slot rewrite abandons for a different reason than the full run: whether other parts of the text changed doesn't matter; what matters is that this one tag was changed
-    if (slot && result === 'build-failed') {
-      toastr.warning('This image prompt changed during generation, so it was not overwritten.', 'BaiBai Image');
-    } else {
-      toastr.warning(ABANDON_REASON[result] ?? 'No image tags were written this time', 'BaiBai Image');
-    }
+    toastr.warning(ABANDON_REASON[result] ?? 'No image tags were written this time', 'BaiBai Image');
   } catch (error) {
     // When the request fails or is cancelled by a chat switch, allow the same text to be retried after a later re-render.
     processed.delete(identity);
     // If the error happened after the marks were set (e.g. a save failure rolled back), revoke this floor's marks, leaving nothing behind.
-    // A single slot revokes only its own mark: clearAutoGenerateForFloor would also clear pending marks for other slots on the same floor.
     if (opts.add) dropAddedMark();
-    else if (slot) consumeAutoGenerate(chatId, floor, swipeId ?? 0, slot.seq);
-    else clearAutoGenerateForFloor(chatId, floor);
+    else if (!slot) clearAutoGenerateForFloor(chatId, floor);
     if (controller.signal.aborted) return;
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[BaiBai Image] No. ${floor} Floor automatic generation tag failed`, error);
@@ -693,20 +672,10 @@ export async function requestFloorTags(floor: number, opts: { replace?: boolean 
   await runForFloor(floor, { manual: true, replace: opts.replace });
 }
 
-/**
- * Manual entry point for "AI rewrite prompt": rewrites and replaces only tag number seq (0-based).
- *
- * The entry is in the prompt editor dialog (floor/promptEditor.ts): editing by hand and by AI are two means to the same end.
- * The caller hands this function to runTagPlan in floor/tagPlanState.ts: the request's lifetime belongs to that
- * store, so **closing the dialog doesn't interrupt the rewrite**.
- *
- * It still depicts the original moment: write-back replaces in place by seq and the model's returned position plays no part; for the wording rule see
- * slotPlan.buildSlotTaskNote (which feeds this slot's current prompt back as the anchor).
- * The analysis base strips all old tags (the AI shouldn't take tags for story text), and output is forced to 1 image; other tags and images on this floor
- * stay untouched, and the old image stays in this slot's history. This run's AI changes are always ignored (profiles were created by the first full analysis).
- */
-export async function requestSlotTag(floor: number, seq: number): Promise<void> {
-  await runForFloor(floor, { manual: true, slot: { seq } });
+/** Plans a fresh prompt for the original scene without saving a tag, profile change, or image. */
+export async function previewSlotRewrite(target: SlotRewriteTarget): Promise<SlotRewritePreview | null> {
+  const result = await runForFloor(target.messageId, { manual: true, slot: target });
+  return typeof result === 'object' ? result : null;
 }
 
 /** Aborts a floor's in-flight tag request (full analysis and single-slot rewrite share the same "one per floor" lock). */

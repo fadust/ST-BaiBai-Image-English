@@ -37,8 +37,8 @@ const props = defineProps<{
    * Closing the dialog doesn't interrupt the rewrite, and a reopened dialog still sees it lit, so the caller passes it in from the store.
    */
   rewriting?: boolean;
-  /** An AI rewrite has already been saved in this dialog: the inputs below hold the **saved** version; say so plainly. */
-  rewritten?: boolean;
+  /** A scene-aware rewrite waiting for the user’s decision. */
+  preview?: ImageTagContent;
   /**
    * The caller requests closing: once true, this component plays its leave animation.
    * **Never get the component instance via ref instead**: this component is mounted imperatively with render(h(...)),
@@ -52,8 +52,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Apply; regenerate=true means start generating right after write-back. */
   (e: 'apply', value: ImageTagContent, regenerate: boolean): void;
-  /** Requests an AI rewrite of this image's prompt (the caller saves and generates; this component only reads the result back into the draft). */
+  /** Requests a scene-aware preview of this image's prompt. */
   (e: 'rewrite'): void;
+  (e: 'apply-preview', regenerate: boolean): void;
+  (e: 'discard-preview'): void;
   /** Cancels the in-flight AI rewrite. */
   (e: 'cancel-rewrite'): void;
   /** Whether the draft was changed (the caller uses it to decide whether to ask "Discard changes?" before closing). */
@@ -69,6 +71,8 @@ const emit = defineEmits<{
 const open = ref(false);
 
 const editingOnly = ref(false);
+const previewHeading = ref<HTMLElement | null>(null);
+const rewriteButton = ref<HTMLButtonElement | null>(null);
 const tag = ref(props.content.tag);
 const nl = ref(props.content.nl);
 const negative = ref(props.content.negative);
@@ -155,24 +159,30 @@ const error = computed(() => {
 
 const canApply = computed(() => !error.value && !props.busy && !props.rewriting && !editingOnly.value);
 
-/**
- * After an AI rewrite is saved, reads the new prompt back into the input box.
- *
- * The rewrite is **really saved** (the runner writes the text + generates the image), so a change in content means "this is the version
- * now in the text"; the dialog's draft must follow, otherwise clicking "Apply" would overwrite the fresh rewrite with the old draft.
- * It deliberately doesn't ask "discard the draft?": the user clicked the rewrite themselves, and the draft content lies unchanged in the input box below,
- * where they can see it and edit it again at any time.
- */
-watch(
-  () => props.content,
-  next => {
-    tag.value = next.tag;
-    nl.value = next.nl;
-    negative.value = next.negative;
-    size.value = next.size;
-    characters.value = next.characters.map(character => ({ ...character }));
-  },
-);
+
+function characterPromptText(content: ImageTagContent): string {
+  return content.characters
+    .map(character => [character.name, character.tag, character.nl].filter(Boolean).join('\n'))
+    .join('\n\n');
+}
+
+const changes = computed(() => {
+  const next = props.preview;
+  if (!next) return [];
+  const current = props.content;
+  return [
+    { label: 'Image tags', before: current.tag, after: next.tag },
+    { label: 'Natural language', before: current.nl, after: next.nl },
+    { label: 'Negative prompt', before: current.negative, after: next.negative },
+    { label: 'Character prompts', before: characterPromptText(current), after: characterPromptText(next) },
+    { label: 'Frame orientation', before: current.size, after: next.size },
+  ].filter(change => change.before !== change.after);
+});
+
+watch(() => props.preview, (preview, previous) => {
+  if (preview) previewHeading.value?.focus();
+  else if (previous) rewriteButton.value?.focus();
+}, { flush: 'post' });
 
 function fillDraft(next: ImageTagContent): void {
   tag.value = next.tag; nl.value = next.nl; negative.value = next.negative; size.value = next.size;
@@ -193,7 +203,7 @@ function apply(regenerate: boolean): void {
 }
 
 function rewrite(): void {
-  if (props.busy || props.rewriting || editingOnly.value || !props.configured) return;
+  if (props.busy || props.rewriting || editingOnly.value) return;
   emit('rewrite');
 }
 
@@ -243,183 +253,205 @@ onBeforeUnmount(() => {
       class="bbi-modal bbi-modal-wide"
       role="dialog"
       aria-modal="true"
-      aria-label="Edit prompt"
+      :aria-label="preview ? 'AI rewrite preview' : 'Edit prompt'"
     >
       <header class="bbi-modal-head">
-        <span class="bbi-modal-title">Edit prompt</span>
+        <span v-if="preview" ref="previewHeading" class="bbi-modal-title" tabindex="-1">AI rewrite preview</span>
+        <span v-else class="bbi-modal-title">Edit prompt</span>
         <button class="bbi-icon-mini" type="button" title="Close" @click="requestClose">
           <Icon name="close" />
         </button>
       </header>
 
-      <!-- AI rewrite: editing by hand and by AI are two means to the same end, so they share one dialog.
-           When it finishes it saves and generates directly (see promptEditor.ts), and the result is refilled into the inputs below. -->
-      <PromptOnlyEdit :draft="draft" :disabled="busy || rewriting" @result="fillDraft" @busy="editingOnly = $event" />
-      <div class="bbi-rewrite-row">
-        <button
-          v-if="!rewriting"
-          class="bbi-btn bbi-btn-sm"
-          type="button"
-          :disabled="busy || editingOnly || !configured"
-          :title="
-            configured
-              ? 'Let AI reread this floor and rewrite this image\'s prompt'
-              : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'
-          "
-          @click="rewrite"
-        >
-          <Icon name="sparkles" /> AI rewrite prompt
-        </button>
-        <template v-else>
-          <span class="bbi-rewrite-busy">
-            <span class="bbi-rewrite-spin" />
-            AI is rewriting the prompt…
+      <template v-if="preview">
+        <p v-if="!changes.length" class="bbi-editor-note">The rewrite matches the saved prompt.</p>
+        <section v-for="change in changes" :key="change.label" class="bbi-rewrite-change">
+          <h3>{{ change.label }}</h3>
+          <div class="bbi-rewrite-comparison">
+            <div>
+              <h4>Saved prompt</h4>
+              <p>{{ change.before || '(empty)' }}</p>
+            </div>
+            <div>
+              <h4>AI rewrite</h4>
+              <p>{{ change.after || '(empty)' }}</p>
+            </div>
+          </div>
+        </section>
+        <footer class="bbi-modal-foot bbi-rewrite-actions">
+          <button class="bbi-btn" type="button" :disabled="busy" @click="emit('discard-preview')">Discard</button>
+          <span class="bbi-modal-foot-spacer"></span>
+          <button class="bbi-btn" type="button" :disabled="busy || !changes.length" @click="emit('apply-preview', false)">Apply</button>
+          <button
+            class="bbi-btn bbi-btn-primary"
+            type="button"
+            :disabled="busy || !changes.length || !configured"
+            @click="emit('apply-preview', true)"
+          >
+            <Icon name="palette" /> Apply and redraw
+          </button>
+        </footer>
+      </template>
+
+      <div v-show="!preview" class="bbi-editor-fields">
+        <PromptOnlyEdit :draft="draft" :disabled="busy || rewriting" @result="fillDraft" @busy="editingOnly = $event" />
+        <div class="bbi-rewrite-row">
+          <button
+            v-if="!rewriting"
+            ref="rewriteButton"
+            class="bbi-btn bbi-btn-sm"
+            type="button"
+            :disabled="busy || editingOnly"
+            title="Reread the scene and character sheets, then review the rewritten prompt"
+            @click="rewrite"
+          >
+            <Icon name="sparkles" /> AI rewrite prompt
+          </button>
+          <template v-else>
+            <span class="bbi-rewrite-busy" role="status">
+              <span class="bbi-rewrite-spin" />
+              AI is rewriting the prompt…
+            </span>
+            <button class="bbi-btn bbi-btn-sm" type="button" @click="emit('cancel-rewrite')">
+              Cancel rewrite
+            </button>
+          </template>
+        </div>
+        <p v-if="rewriting" class="bbi-editor-note">
+          Rereading the scene and character sheets. You can close the editor and return to the preview when it’s ready.
+        </p>
+
+        <div class="bbi-modal-field">
+          <span class="bbi-modal-label">Image tags (short danbooru tags, comma-separated)</span>
+          <BbiTextarea
+            v-model="tag"
+            class="bbi-prompt-area"
+            :rows="4"
+            :max-rows="14"
+            mono
+            placeholder="1girl, long black hair, school uniform, classroom"
+          />
+        </div>
+
+        <div class="bbi-modal-field">
+          <span class="bbi-modal-label">Natural language (optional; used by some backends/models)</span>
+          <BbiTextarea
+            v-model="nl"
+            class="bbi-prompt-area"
+            :rows="2"
+            :max-rows="10"
+            placeholder="A girl standing by the classroom window at sunset."
+          />
+        </div>
+
+        <div class="bbi-modal-field">
+          <span class="bbi-modal-label">Negative prompt for this image (optional; added to the channel negative prompt)</span>
+          <BbiTextarea
+            v-model="negative"
+            class="bbi-prompt-area"
+            :rows="2"
+            :max-rows="10"
+            mono
+            placeholder="extra people, duplicate"
+          />
+        </div>
+
+        <div class="bbi-modal-field">
+          <span class="bbi-modal-label">Frame orientation (pixel sizes are set on the &quot;Backend&quot; page)</span>
+          <div class="bbi-segmented" role="tablist" aria-label="Frame direction">
+            <button
+              class="bbi-seg"
+              :class="{ 'is-on': (lockedSize ?? size) === 'portrait' }"
+              type="button"
+              role="tab"
+              :aria-selected="(lockedSize ?? size) === 'portrait'"
+              :disabled="!!lockedSize"
+              @click="size = 'portrait'"
+            >
+              Portrait
+            </button>
+            <button
+              class="bbi-seg"
+              :class="{ 'is-on': (lockedSize ?? size) === 'landscape' }"
+              type="button"
+              role="tab"
+              :aria-selected="(lockedSize ?? size) === 'landscape'"
+              :disabled="!!lockedSize"
+              @click="size = 'landscape'"
+            >
+              Landscape
+            </button>
+          </div>
+          <span v-if="lockedSize" class="bbi-field-hint">
+            The current channel is locked to {{ lockedSize === 'portrait' ? 'portrait' : 'landscape' }}, so every image uses that orientation.
+            To use each image's own orientation, set the size lock on the &quot;Backend&quot; page back to &quot;Auto&quot;.
           </span>
-          <button class="bbi-btn bbi-btn-sm" type="button" @click="emit('cancel-rewrite')">
-            Cancel rewrite
-          </button>
-        </template>
-      </div>
-      <p v-if="rewriting" class="bbi-editor-note">
-        When it finishes, the new prompt is saved and an image is generated from it. The result is filled into the boxes below.
-        Closing this window will not stop it. Reopen it to see the progress.
-      </p>
-      <!-- Saved but the dialog is still open: the inputs below look the same as "something the user half-typed"; without saying which one is in effect,
-           users would think they still need to click "Apply" (or, conversely, that the draft was saved too). -->
-      <p v-else-if="rewritten" class="bbi-editor-note">
-        AI rewrite done. The new prompt is saved and generating has started; it is filled in below. To adjust it, edit below and click &quot;Apply&quot;.
-      </p>
-
-      <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Image tags (short danbooru tags, comma-separated)</span>
-        <BbiTextarea
-          v-model="tag"
-          class="bbi-prompt-area"
-          :rows="4"
-          :max-rows="14"
-          mono
-          placeholder="1girl, long black hair, school uniform, classroom"
-        />
-      </div>
-
-      <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Natural language (optional; used by some backends/models)</span>
-        <BbiTextarea
-          v-model="nl"
-          class="bbi-prompt-area"
-          :rows="2"
-          :max-rows="10"
-          placeholder="A girl standing by the classroom window at sunset."
-        />
-      </div>
-
-      <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Negative prompt for this image (optional; added to the channel negative prompt)</span>
-        <BbiTextarea
-          v-model="negative"
-          class="bbi-prompt-area"
-          :rows="2"
-          :max-rows="10"
-          mono
-          placeholder="extra people, duplicate"
-        />
-      </div>
-
-      <div class="bbi-modal-field">
-        <span class="bbi-modal-label">Frame orientation (pixel sizes are set on the &quot;Backend&quot; page)</span>
-        <div class="bbi-segmented" role="tablist" aria-label="Frame direction">
-          <button
-            class="bbi-seg"
-            :class="{ 'is-on': (lockedSize ?? size) === 'portrait' }"
-            type="button"
-            role="tab"
-            :aria-selected="(lockedSize ?? size) === 'portrait'"
-            :disabled="!!lockedSize"
-            @click="size = 'portrait'"
-          >
-            Portrait
-          </button>
-          <button
-            class="bbi-seg"
-            :class="{ 'is-on': (lockedSize ?? size) === 'landscape' }"
-            type="button"
-            role="tab"
-            :aria-selected="(lockedSize ?? size) === 'landscape'"
-            :disabled="!!lockedSize"
-            @click="size = 'landscape'"
-          >
-            Landscape
-          </button>
         </div>
-        <span v-if="lockedSize" class="bbi-field-hint">
-          The current channel is locked to {{ lockedSize === 'portrait' ? 'portrait' : 'landscape' }}, so every image uses that orientation.
-          To use each image's own orientation, set the size lock on the &quot;Backend&quot; page back to &quot;Auto&quot;.
-        </span>
-      </div>
 
-      <div class="bbi-modal-field">
-        <span class="bbi-modal-label">
-          Character prompts (multiple characters; sent only by the NAI backend)
-        </span>
-        <div v-for="(character, index) in characters" :key="index" class="bbi-char-row">
-          <input
-            v-model="character.name"
-            class="bbi-input bbi-char-name"
-            type="text"
-            placeholder="Character name"
-          />
-          <input
-            v-model="character.tag"
-            class="bbi-input bbi-char-tag"
-            type="text"
-            placeholder="tags (e.g. girl, black hair)"
-          />
-          <input
-            v-model="character.nl"
-            class="bbi-input bbi-char-nl"
-            type="text"
-            placeholder="Natural language (optional)"
-          />
-          <button
-            class="bbi-icon-mini"
-            type="button"
-            title="Remove this character"
-            @click="removeCharacter(index)"
-          >
-            <Icon name="trash" />
+        <div class="bbi-modal-field">
+          <span class="bbi-modal-label">
+            Character prompts (multiple characters; sent only by the NAI backend)
+          </span>
+          <div v-for="(character, index) in characters" :key="index" class="bbi-char-row">
+            <input
+              v-model="character.name"
+              class="bbi-input bbi-char-name"
+              type="text"
+              placeholder="Character name"
+            />
+            <input
+              v-model="character.tag"
+              class="bbi-input bbi-char-tag"
+              type="text"
+              placeholder="tags (e.g. girl, black hair)"
+            />
+            <input
+              v-model="character.nl"
+              class="bbi-input bbi-char-nl"
+              type="text"
+              placeholder="Natural language (optional)"
+            />
+            <button
+              class="bbi-icon-mini"
+              type="button"
+              title="Remove this character"
+              @click="removeCharacter(index)"
+            >
+              <Icon name="trash" />
+            </button>
+          </div>
+          <button class="bbi-btn bbi-btn-sm bbi-char-add" type="button" @click="addCharacter">
+            <Icon name="plus" /> Add role
           </button>
+          <span class="bbi-field-hint">A row applies only when both the character name and tags are filled in. Blank rows are dropped on save.</span>
         </div>
-        <button class="bbi-btn bbi-btn-sm bbi-char-add" type="button" @click="addCharacter">
-          <Icon name="plus" /> Add role
-        </button>
-        <span class="bbi-field-hint">A row applies only when both the character name and tags are filled in. Blank rows are dropped on save.</span>
+
+        <!-- Changing the prompt switches the promptHash bucket, and the stale state shows only the newest image with no pager.
+             That is the existing storage design, but manual prompt edits turn it from an edge case into an everyday one, so it is stated explicitly. -->
+        <p v-if="historyCount > 1" class="bbi-editor-note">
+          The current prompt already has {{ historyCount }} images. After the change only the latest one is shown (no image is deleted;
+          change the prompt back to recover them all).
+        </p>
+
+        <p v-if="error" class="bbi-editor-error">{{ error }}</p>
+
+        <footer class="bbi-modal-foot">
+          <span class="bbi-modal-foot-spacer"></span>
+          <button class="bbi-btn" type="button" :disabled="busy" @click="requestClose">Cancel</button>
+          <button class="bbi-btn" type="button" :disabled="!canApply" @click="apply(false)">
+            Apply
+          </button>
+          <button
+            class="bbi-btn bbi-btn-primary"
+            type="button"
+            :disabled="!canApply || !configured"
+            :title="configured ? 'Save the prompt and generate an image' : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'"
+            @click="apply(true)"
+          >
+            <Icon name="palette" /> Apply and regenerate
+          </button>
+        </footer>
       </div>
-
-      <!-- Changing the prompt switches the promptHash bucket, and the stale state shows only the newest image with no pager.
-           That is the existing storage design, but manual prompt edits turn it from an edge case into an everyday one, so it is stated explicitly. -->
-      <p v-if="historyCount > 1" class="bbi-editor-note">
-        The current prompt already has {{ historyCount }} images. After the change only the latest one is shown (no image is deleted;
-        change the prompt back to recover them all).
-      </p>
-
-      <p v-if="error" class="bbi-editor-error">{{ error }}</p>
-
-      <footer class="bbi-modal-foot">
-        <span class="bbi-modal-foot-spacer"></span>
-        <button class="bbi-btn" type="button" :disabled="busy" @click="requestClose">Cancel</button>
-        <button class="bbi-btn" type="button" :disabled="!canApply" @click="apply(false)">
-          Apply
-        </button>
-        <button
-          class="bbi-btn bbi-btn-primary"
-          type="button"
-          :disabled="!canApply || !configured"
-          :title="configured ? 'Save the prompt and generate an image' : 'Finish setup on the &quot;Backend&quot; page of BaiBai Image first.'"
-          @click="apply(true)"
-        >
-          <Icon name="palette" /> Apply and regenerate
-        </button>
-      </footer>
     </div>
   </ModalMask>
 </template>
@@ -452,6 +484,39 @@ onBeforeUnmount(() => {
 
 .bbi-modal-foot-spacer {
   flex: 1 1 auto;
+}
+
+
+.bbi-editor-fields {
+  display: contents;
+}
+
+.bbi-rewrite-change h3,
+.bbi-rewrite-change h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.bbi-rewrite-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bbi-rewrite-comparison > div {
+  padding: 10px;
+  border-radius: var(--bbi-radius-sm);
+  background: var(--bbi-surface-2);
+}
+
+.bbi-rewrite-comparison p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bbi-rewrite-actions {
+  flex-wrap: wrap;
 }
 
 .bbi-prompt-area {
@@ -533,6 +598,10 @@ onBeforeUnmount(() => {
 
 /* Narrow screens: the character row stacks vertically, otherwise the three inputs squeeze into slivers */
 @media (max-width: 560px) {
+  .bbi-rewrite-comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .bbi-char-row {
     flex-wrap: wrap;
   }
