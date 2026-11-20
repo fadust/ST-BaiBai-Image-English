@@ -273,7 +273,9 @@ describe('validate: history success = the caller acceptance passed', () => {
       }),
     ).rejects.toThrow('协议不合法');
     expect(h.finishLlm).not.toHaveBeenCalled();
-    expect(h.failLlm).toHaveBeenCalledWith(1, '协议不合法', false);
+    expect(h.failLlm).toHaveBeenCalledWith(1, '协议不合法', false, {
+      promptTokens: 5, completionTokens: 7, cacheReadTokens: null,
+    });
   });
 
   it('validate must never be called when HTTP fails', async () => {
@@ -285,5 +287,60 @@ describe('validate: history success = the caller acceptance passed', () => {
     await expect(requestCompletion(channel, messages, { validate })).rejects.toThrow('500');
     expect(validate).not.toHaveBeenCalled();
     expect(h.failLlm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('provider cache usage in request history', () => {
+  it.each([
+    ['DeepSeek cache hits', { prompt_cache_hit_tokens: 800, prompt_cache_miss_tokens: 200 }, 800],
+    ['OpenAI-compatible cache details', { prompt_tokens_details: { cached_tokens: 600 } }, 600],
+    ['an explicit cold cache', { prompt_tokens_details: { cached_tokens: 0 } }, 0],
+    ['cache writes without cache reads', { cache_creation_input_tokens: 250 }, null],
+    ['a cache count larger than input', { prompt_cache_hit_tokens: 1100 }, null],
+  ])('records %s from a JSON reply', async (_name, details, expected) => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      ...okPayload,
+      usage: { prompt_tokens: 1000, completion_tokens: 20, ...details },
+    })));
+
+    await requestCompletion(channel, messages);
+
+    expect(h.finishLlm).toHaveBeenLastCalledWith(1, {
+      response: '答案文本',
+      promptTokens: 1000,
+      completionTokens: 20,
+      cacheReadTokens: expected,
+      tokensEstimated: false,
+    });
+  });
+
+  it('uses an SSE usage block without asking for extra request fields', async () => {
+    const response = sseResponse([
+      'data: {"choices":[{"delta":{"content":"draft"}}],"usage":null}',
+      'data: {"choices":[],"usage":{"prompt_tokens":500,"completion_tokens":15,"prompt_tokens_details":{"cached_tokens":400}}}',
+      'data: [DONE]',
+      '',
+    ].join('\n\n'));
+    const fetchMock = vi.fn(async () => response);
+    vi.stubGlobal('fetch', fetchMock);
+    const streaming = { ...channel, stream: true };
+
+    await expect(requestCompletion(streaming, messages)).resolves.toBe('draft');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/backends/chat-completions/generate', expect.objectContaining({
+      body: JSON.stringify(buildRequestBody(streaming, messages, 'https://api.example.com/v1', true)),
+    }));
+    expect(h.finishLlm).toHaveBeenLastCalledWith(1, {
+      response: 'draft', promptTokens: 500, completionTokens: 15, cacheReadTokens: 400, tokensEstimated: false,
+    });
+  });
+
+  it('leaves cache usage unavailable when a stream carries no usage', async () => {
+    const response = sseResponse('data: {"choices":[{"delta":{"content":"draft"}}]}\n\ndata: [DONE]\n\n');
+    vi.stubGlobal('fetch', vi.fn(async () => response));
+
+    await requestCompletion({ ...channel, stream: true }, messages);
+
+    expect(h.finishLlm).toHaveBeenLastCalledWith(1, expect.objectContaining({ cacheReadTokens: null }));
   });
 });

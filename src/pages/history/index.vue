@@ -5,6 +5,7 @@ import Collapsible from '@/components/Collapsible.vue';
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
 import {
+  cacheHitRate,
   clearHistory,
   records,
   roughTokens,
@@ -89,6 +90,19 @@ function tokenTitle(record: LlmRecord): string {
     : 'Real usage returned upstream (usage)';
 }
 
+const hitRateFormat = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 2 });
+
+function cacheLabels(record: LlmRecord): string[] {
+  if (record.cacheReadTokens === null) {
+    return record.status === 'ok' ? ['Cache usage unavailable'] : [];
+  }
+  const rate = cacheHitRate(record);
+  return [
+    `${record.cacheReadTokens.toLocaleString()} cached input tokens`,
+    rate === null ? 'Cache hit rate unavailable' : `${hitRateFormat.format(rate)} cache hit`,
+  ];
+}
+
 /** Spreads one record into "several segments in order"; the expanded area renders in exactly this order. */
 function segments(record: HistoryRecord): Segment[] {
   if (record.kind === 'llm') {
@@ -122,10 +136,11 @@ function facts(record: HistoryRecord): string[] {
   if (record.kind === 'llm') {
     if (record.stream) out.push('Stream');
     // The number on the title row is prompt tokens (the title row is cramped, so no unit); the full rule is given here.
-    if (record.promptTokens !== null) out.push(`prompt word ${tokenLabel(record)} token`);
+    if (record.promptTokens !== null) out.push(`${tokenLabel(record)} input tokens`);
     if (record.completionTokens !== null) {
-      out.push(`output ${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()} token`);
+      out.push(`${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()} output tokens`);
     }
+    out.push(...cacheLabels(record));
   } else {
     out.push(`seeds ${record.seed}`, record.size);
   }
@@ -140,6 +155,10 @@ function copyAll(record: HistoryRecord): void {
     record.kind === 'llm' && record.promptTokens !== null
       ? `Prompt tokens: ${tokenLabel(record)}`
       : '',
+    record.kind === 'llm' && record.completionTokens !== null
+      ? `Output tokens: ${record.tokensEstimated ? '≈' : ''}${record.completionTokens.toLocaleString()}`
+      : '',
+    ...(record.kind === 'llm' ? cacheLabels(record) : []),
     record.error ? `Error: ${record.error}` : '',
   ].filter(Boolean);
   const body = segments(record).map(s => `--- ${s.label} ---\n${s.text}`);
@@ -212,7 +231,7 @@ function copyAll(record: HistoryRecord): void {
           v-if="record.kind === 'llm' && record.tokensEstimated && record.promptTokens !== null"
           class="bbi-field-hint"
         >
-          Token counts marked ≈ are local estimates: streaming and &quot;follow the main API&quot; get no upstream usage.
+          Token counts marked ≈ are local estimates for requests without reported usage.
           They use the tokenizer of ST's current main model, which may differ from this channel's model.
         </p>
 

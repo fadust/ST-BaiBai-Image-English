@@ -59,10 +59,12 @@ export interface LlmRecord extends BaseRecord {
   response: string;
   promptTokens: number | null;
   completionTokens: number | null;
+  /** Cached input tokens reported by the provider. Null means unavailable. */
+  cacheReadTokens: number | null;
   /**
    * Whether the token count is a local estimate.
-   * Real values are only available with "own channel + non-streaming" (the ST proxy passes upstream usage through unchanged);
-   * streaming and following the main API can only estimate with ST's tokenizer, which is the tokenizer of **the main screen's current model**,
+   * Real values require the provider to include usage in its response.
+   * Local estimates use ST's tokenizer, which is the tokenizer of **the main screen's current model**,
    * not necessarily the same as the secondary API channel's model. So the UI must distinguish it with ≈ and never mix it with real values.
    */
   tokensEstimated: boolean;
@@ -185,6 +187,7 @@ export function beginLlm(info: LlmBegin): number {
     response: '',
     promptTokens: null,
     completionTokens: null,
+    cacheReadTokens: null,
     tokensEstimated: false,
   });
   return id;
@@ -194,6 +197,7 @@ export interface LlmFinish {
   response: string;
   promptTokens: number | null;
   completionTokens: number | null;
+  cacheReadTokens?: number | null;
   tokensEstimated: boolean;
 }
 
@@ -205,19 +209,33 @@ export function finishLlm(id: number, info: LlmFinish): void {
   record.response = truncate(info.response);
   record.promptTokens = info.promptTokens;
   record.completionTokens = info.completionTokens;
+  record.cacheReadTokens = info.cacheReadTokens ?? null;
   record.tokensEstimated = info.tokensEstimated;
+}
+
+export type LlmUsage = Pick<LlmRecord, 'promptTokens' | 'completionTokens' | 'cacheReadTokens'>;
+
+/** Fraction of actual input tokens served from the provider's cache. */
+export function cacheHitRate(record: Pick<LlmRecord, 'promptTokens' | 'cacheReadTokens' | 'tokensEstimated'>): number | null {
+  const { promptTokens, cacheReadTokens } = record;
+  if (record.tokensEstimated || promptTokens === null || cacheReadTokens === null
+    || !Number.isSafeInteger(promptTokens) || !Number.isSafeInteger(cacheReadTokens)
+    || promptTokens <= 0 || cacheReadTokens < 0 || cacheReadTokens > promptTokens) return null;
+  return cacheReadTokens / promptTokens;
 }
 
 /**
  * Request failed or was cancelled. aborted and error are separate: the former is a user cancel, not a fault,
  * so the UI uses a neutral colour, not red.
  */
-export function failLlm(id: number, message: string, aborted = false): void {
+export function failLlm(id: number, message: string, aborted = false, usage?: LlmUsage): void {
   const record = find(id);
   if (record?.kind !== 'llm') return;
   record.status = aborted ? 'aborted' : 'error';
   record.durationMs = Date.now() - record.startedAt;
   record.error = aborted ? '' : message;
+  // The provider can report usage for a response rejected by the caller's validator.
+  if (usage) Object.assign(record, usage);
 }
 
 /** Late token estimate: when the request succeeded but the real value is unavailable, the estimate arrives after finishLlm. */

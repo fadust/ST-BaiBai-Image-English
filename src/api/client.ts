@@ -7,6 +7,7 @@ import {
   patchLlmTokens,
   safeHistory,
   FOLLOW_MAIN_API,
+  type LlmUsage,
 } from '@/state/history';
 
 /**
@@ -72,19 +73,24 @@ export interface RequestOptions {
 
 /* ============ Request history tracking (purely auxiliary; never allowed to affect the main flow) ============ */
 
-/** Reads OpenAI-standard usage from the response body. ST's proxy passes the upstream JSON through unchanged on the non-streaming branch, so this is the real value. */
-function readUsage(data: any): { prompt: number | null; completion: number | null } {
+/** Read the provider's reported usage from a JSON response or an SSE usage block. */
+function readUsage(data: any): LlmUsage {
   const usage = data?.usage;
-  const num = (v: unknown): number | null =>
-    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+  const count = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const promptTokens = count(usage?.prompt_tokens);
+  const cached = count(usage?.prompt_cache_hit_tokens) ?? count(usage?.prompt_tokens_details?.cached_tokens);
   return {
-    prompt: num(usage?.prompt_tokens),
-    completion: num(usage?.completion_tokens),
+    promptTokens,
+    completionTokens: count(usage?.completion_tokens),
+    cacheReadTokens: cached !== null && (promptTokens === null || cached <= promptTokens) ? cached : null,
   };
 }
 
+const EMPTY_USAGE: LlmUsage = { promptTokens: null, completionTokens: null, cacheReadTokens: null };
+
 /**
- * Local token estimate (fallback when no real value is available): neither streaming nor "follow main API" has usage.
+ * Local token estimate when no reported usage is available.
  *
  * Uses ST's getTokenCountAsync, but that uses the tokenizer of **the main screen's current model**,
  * which may not match the secondary API channel's model, so the result is only an estimate, marked with ≈ in the UI.
@@ -265,6 +271,7 @@ async function requestCompletionAtUrl(
     }),
   );
 
+  let receivedUsage: LlmUsage | undefined;
   try {
     const result = await withTimeout(timeoutSec, opts.signal, 'Auxiliary API request', async signal => {
       const resp = await fetch(GENERATE_URL, {
@@ -281,45 +288,43 @@ async function requestCompletionAtUrl(
 
       // Streaming: concatenate SSE increments; non-streaming: parse JSON directly.
       if (stream) {
-        const streamed = await readSseContent(resp);
+        const streamed = await readSseContent(resp, usage => { receivedUsage = usage; });
         if (!streamed) throw new ApiError('The secondary API returned no content');
-        // Streaming has no usage: ST builds the upstream body from a field allowlist without stream_options,
-        // so the upstream can't be asked to send a usage chunk at the end. Only a local estimate afterwards is possible.
-        return { content: streamed, usage: { prompt: null, completion: null } };
+        return streamed;
       }
 
       const data = await resp.json();
       if (data?.error) {
         throw new ApiError(data.error.message || 'The secondary API returned an error');
       }
+      receivedUsage = readUsage(data);
 
       const parsed = extractContent(data);
       if (!parsed) throw new ApiError('The secondary API returned no content');
-      // ST's proxy non-streaming branch passes through with response.send(json), so usage is the real upstream value.
-      return { content: parsed, usage: readUsage(data) };
+      return parsed;
     });
 
     // Validation comes before recording history: a failed validation → falls into catch and is recorded as a failure, never giving the false impression of "HTTP success"
-    opts.validate?.(result.content);
+    opts.validate?.(result);
 
     if (historyId !== null) {
-      const hasReal = result.usage.prompt !== null;
+      const usage = receivedUsage ?? EMPTY_USAGE;
       safeHistory(() =>
         finishLlm(historyId, {
-          response: result.content,
-          promptTokens: result.usage.prompt,
-          completionTokens: result.usage.completion,
+          response: result,
+          ...usage,
           tokensEstimated: false,
         }),
       );
-      // Only estimate when there is no real value (streaming). The estimate is async and not awaited, so it can't slow the main flow.
-      if (!hasReal) void estimateTokens(historyId, messages, result.content);
+      if (usage.promptTokens === null && usage.completionTokens === null && usage.cacheReadTokens === null) {
+        void estimateTokens(historyId, messages, result);
+      }
     }
-    return result.content;
+    return result;
   } catch (e) {
     if (historyId !== null) {
       const aborted = e instanceof DOMException && e.name === 'AbortError';
-      safeHistory(() => failLlm(historyId, e instanceof Error ? e.message : String(e), aborted));
+      safeHistory(() => failLlm(historyId, e instanceof Error ? e.message : String(e), aborted, receivedUsage));
     }
     throw e;
   }
@@ -331,7 +336,7 @@ async function requestCompletionAtUrl(
  * Reasoning-model thought increments (delta.reasoning etc.) are buffered separately and only used as a fallback when content is entirely empty,
  * avoiding mixing the thought chain into the text when content is normal.
  */
-export async function readSseContent(resp: Response): Promise<string> {
+export async function readSseContent(resp: Response, onUsage?: (usage: LlmUsage) => void): Promise<string> {
   const reader = resp.body?.getReader();
   if (!reader) {
     // Can't read as a stream (shouldn't happen): fall back to treating it as a whole JSON
@@ -357,6 +362,7 @@ export async function readSseContent(resp: Response): Promise<string> {
       try {
         const json = JSON.parse(payload);
         if (json?.error) throw new ApiError(json.error.message || 'The secondary API returned an error');
+        if (json?.usage) onUsage?.(readUsage(json));
         const choice = json?.choices?.[0];
         const src = choice?.delta ?? choice?.message;
         const piece = textOf(src?.content) || textOf(choice?.text);

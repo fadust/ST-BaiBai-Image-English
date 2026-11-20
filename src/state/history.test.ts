@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   beginImage,
   beginLlm,
+  cacheHitRate,
   clearHistory,
   failImage,
   failLlm,
@@ -240,6 +241,29 @@ describe('token 补录', () => {
     const record = records[0] as LlmRecord;
     expect(record.promptTokens).toBe(100);
     expect(record.tokensEstimated).toBe(false);
+  });
+});
+
+describe('cache hit rate', () => {
+  it.each([
+    { promptTokens: 100, cacheReadTokens: 80, tokensEstimated: false, rate: 0.8 },
+    { promptTokens: 100, cacheReadTokens: 0, tokensEstimated: false, rate: 0 },
+    { promptTokens: 100, cacheReadTokens: null, tokensEstimated: false, rate: null },
+    { promptTokens: 100, cacheReadTokens: 80, tokensEstimated: true, rate: null },
+    { promptTokens: null, cacheReadTokens: 80, tokensEstimated: false, rate: null },
+    { promptTokens: 0, cacheReadTokens: 0, tokensEstimated: false, rate: null },
+  ])('handles $cacheReadTokens cached from $promptTokens input tokens (estimated $tokensEstimated)', ({ rate, ...record }) => {
+    expect(cacheHitRate(record)).toBe(rate);
+  });
+
+  it('retains the reported usage when caller validation rejects an API response', () => {
+    const id = llm();
+    failLlm(id, 'Invalid plan', false, { promptTokens: 100, completionTokens: 6, cacheReadTokens: 75 });
+    const record = records[0] as LlmRecord;
+    expect(record.status).toBe('error');
+    expect(record.response).toBe('');
+    expect(record.completionTokens).toBe(6);
+    expect(cacheHitRate(record)).toBe(0.75);
   });
 });
 
